@@ -1,0 +1,1 @@
+ALTER TABLE `work_order_elevators` ADD `evidence_photo_urls` text;

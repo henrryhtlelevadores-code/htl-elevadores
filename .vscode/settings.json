@@ -1,0 +1,7 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "css.lint.unknownAtRules": "ignore",
+  "tailwindCSS.classFunctions": ["cn", "cva", "clsx", "twMerge"],
+  "tailwindCSS.classAttributes": ["class", "className"]
+}

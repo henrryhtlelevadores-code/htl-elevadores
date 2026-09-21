@@ -1,0 +1,1 @@
+ALTER TABLE cost_center ADD COLUMN password_hash TEXT;

@@ -1,0 +1,1 @@
+ALTER TABLE `work_order_elevators` ADD `final_equipment_status` text;

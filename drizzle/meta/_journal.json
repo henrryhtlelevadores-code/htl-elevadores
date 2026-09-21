@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788879767192,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788904667409,
+      "tag": "0001_preventive_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788991200000,
+      "tag": "0002_contract_document_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788993849004,
+      "tag": "0003_work_orders_scheduled_datetime",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788995000000,
+      "tag": "0004_work_order_elevators_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789014325596,
+      "tag": "0005_work_order_elevators_final_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789110000000,
+      "tag": "0006_cost_center_password_hash",
+      "breakpoints": true
+    }
+  ]
+}
