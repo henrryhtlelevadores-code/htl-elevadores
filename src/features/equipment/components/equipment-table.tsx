@@ -109,7 +109,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
   });
 
   function handleOpenCreate() {
-    const nextCode = `ASC-${String(initialEquipment.length + 1).padStart(2, "0")}`;
+    const nextCode = `HTL-${String(initialEquipment.length + 1).padStart(2, "0")}`;
     createForm.reset({ ...defaultValues, internalCode: nextCode } as never);
     setSelectedClientId("");
     setIsCreateOpen(true);
@@ -416,7 +416,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                       <FormLabel className="text-xs font-semibold">Código Interno</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Ej: ASC-01"
+                          placeholder="Ej: HTL-01"
                           readOnly={!editingEquipment}
                           title={editingEquipment ? undefined : "Se genera automáticamente"}
                           {...field}
@@ -462,7 +462,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                               {formData.clients.find((c) => c.id === selectedClientId)?.legalName ?? null}
                             </SelectValue>
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent searchable>
                             {formData.clients.map((c) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.legalName}
@@ -495,7 +495,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                               })()}
                             </SelectValue>
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent searchable>
                             {formData.costCenters
                               .filter((cc) => cc.clientId === selectedClientId)
                               .map((cc) => (

@@ -167,7 +167,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
                         <Input
                           type="email"
                           autoComplete="email"
-                          placeholder="usuario@htl.com.pe"
+                          placeholder="example@htl-elevadores.com"
                           className="bg-background border-border text-sm pl-9 h-11 focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                           {...field}
                         />

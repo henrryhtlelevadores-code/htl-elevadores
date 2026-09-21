@@ -16,11 +16,26 @@ export default async function ContractsPage() {
     getEquipmentList(),
   ]);
 
-  const equipmentOptions = equipment.map((e) => ({
-    id: e.id,
-    internalCode: e.internalCode,
-    name: e.name,
-  }));
+  const equipmentOptions = equipment
+    .map((e) => ({
+      id: e.id,
+      internalCode: e.internalCode,
+      name: e.name,
+    }))
+    .filter((e) => {
+      const assignedToActive = contractElevators.some(
+        (ce) =>
+          ce.elevatorUnityId === e.id &&
+          contracts.some(
+            (c) =>
+              c.id === ce.contractId &&
+              c.deletedAt == null &&
+              c.status !== "CANCELLED" &&
+              c.status !== "EXPIRED"
+          )
+      );
+      return !assignedToActive;
+    });
 
   return (
     <div className="space-y-6">

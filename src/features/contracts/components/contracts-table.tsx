@@ -11,11 +11,12 @@ import {
   type ContractElevatorWithRelations,
   createContract,
   updateContract,
-  deleteContract,
+  cancelContract,
 } from "../actions";
 import { contractFormSchema, type ContractFormValues } from "../schema";
 import { DataTable } from "@/components/ui/data-table";
 import { ContractElevatorsTable } from "./contract-elevators-table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,10 +47,9 @@ import { useRouter } from "next/navigation";
 import {
   Plus,
   Pencil,
-  Trash2,
+  Ban,
   Loader2,
   FileSignature,
-  AlertTriangle,
   ArrowUpDown,
   MapPin,
   Eye,
@@ -68,11 +68,20 @@ interface ContractsTableProps {
   equipmentOptions: Array<{ id: string; internalCode: string; name: string }>;
 }
 
+type ContractTab = "ACTIVE" | "DRAFT" | "HISTORY";
+
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
   DRAFT: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20",
   EXPIRED: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
   CANCELLED: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Activo",
+  DRAFT: "Borrador",
+  EXPIRED: "Vencido",
+  CANCELLED: "Cancelado",
 };
 
 function formatDate(ts: number | null): string {
@@ -116,10 +125,48 @@ export function ContractsTable({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [editingContract, setEditingContract] = useState<ContractWithRelations | null>(null);
-  const [deletingContract, setDeletingContract] = useState<ContractWithRelations | null>(null);
+  const [cancellingContract, setCancellingContract] = useState<ContractWithRelations | null>(null);
   const [viewingContract, setViewingContract] = useState<ContractWithRelations | null>(null);
+  const [activeTab, setActiveTab] = useState<ContractTab>("ACTIVE");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  const tabs = useMemo<Array<{ key: ContractTab; label: string; predicate: (c: ContractWithRelations) => boolean }>>(
+    () => [
+      {
+        key: "ACTIVE",
+        label: "Activos",
+        predicate: (c) => c.deletedAt == null && c.status === "ACTIVE",
+      },
+      {
+        key: "DRAFT",
+        label: "Borradores",
+        predicate: (c) => c.deletedAt == null && c.status === "DRAFT",
+      },
+      {
+        key: "HISTORY",
+        label: "Histórico",
+        predicate: (c) =>
+          c.deletedAt != null || c.status === "EXPIRED" || c.status === "CANCELLED",
+      },
+    ],
+    []
+  );
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<ContractTab, number> = { ACTIVE: 0, DRAFT: 0, HISTORY: 0 };
+    for (const c of initialContracts) {
+      for (const t of tabs) {
+        if (t.predicate(c)) counts[t.key]++;
+      }
+    }
+    return counts;
+  }, [initialContracts, tabs]);
+
+  const visibleContracts = useMemo(
+    () => initialContracts.filter(tabs.find((t) => t.key === activeTab)!.predicate),
+    [initialContracts, activeTab, tabs]
+  );
 
   const createForm = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
@@ -175,15 +222,15 @@ export function ContractsTable({
     });
   }
 
-  function handleDeleteConfirm() {
-    if (!deletingContract) return;
+  function handleCancelConfirm() {
+    if (!cancellingContract) return;
     startTransition(async () => {
-      const res = await deleteContract(deletingContract.id);
+      const res = await cancelContract(cancellingContract.id);
       if (res.success) {
-        toast.success("Contrato eliminado", { description: "Se eliminó el contrato." });
-        setDeletingContract(null);
+        toast.success("Contrato anulado", { description: res.message });
+        setCancellingContract(null);
       } else {
-        toast.error("Error al eliminar", { description: res.error });
+        toast.error("Error al anular", { description: res.error });
       }
     });
   }
@@ -234,7 +281,7 @@ export function ContractsTable({
           const style = STATUS_STYLES[status] || STATUS_STYLES.DRAFT;
           return (
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${style}`}>
-              {status}
+              {STATUS_LABELS[status] ?? status}
             </span>
           );
         },
@@ -302,15 +349,17 @@ export function ContractsTable({
               >
                 <Pencil className="size-3.5" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => setDeletingContract(contract)}
-                className="text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                title="Eliminar contrato"
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+              {contract.status !== "CANCELLED" && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setCancellingContract(contract)}
+                  className="text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                  title="Anular contrato"
+                >
+                  <Ban className="size-3.5" />
+                </Button>
+              )}
             </div>
           );
         },
@@ -326,9 +375,24 @@ export function ContractsTable({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ContractTab)}>
+          <TabsList variant="line" className="h-9">
+            {tabs.map((t) => (
+              <TabsTrigger key={t.key} value={t.key} className="px-3 text-xs">
+                {t.label}
+                <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[#0066CC]/10 text-[#0066CC] dark:text-blue-400 text-[10px] font-bold">
+                  {tabCounts[t.key]}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+
       <DataTable
         columns={columns}
-        data={initialContracts}
+        data={visibleContracts}
         searchPlaceholder="Buscar por número, centro de costo o servicio..."
         extraActions={
           <Button
@@ -544,12 +608,14 @@ export function ContractsTable({
                       <FormControl>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue />
+                            <SelectValue>
+                              {field.value ? (STATUS_LABELS[field.value] ?? field.value) : null}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {["ACTIVE", "DRAFT", "EXPIRED", "CANCELLED"].map((s) => (
                               <SelectItem key={s} value={s}>
-                                {s}
+                                {STATUS_LABELS[s] ?? s}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -742,27 +808,30 @@ export function ContractsTable({
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Confirmar Eliminación */}
-      <Dialog open={!!deletingContract} onOpenChange={(open) => !open && setDeletingContract(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[400px] text-foreground shadow-lg">
+      {/* Dialog: Confirmar Anulación */}
+      <Dialog open={!!cancellingContract} onOpenChange={(open) => !open && setCancellingContract(null)}>
+        <DialogContent className="bg-card border-border sm:max-w-[440px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertTriangle className="size-4 text-red-600 dark:text-red-400" />
-              Eliminar Contrato
+              <Ban className="size-4 text-red-600 dark:text-red-400" />
+              Anular Contrato
             </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              ¿Confirmas la eliminación del contrato{" "}
-              <strong className="text-foreground font-mono">{deletingContract?.contractNumber}</strong>?
+            <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+              Vas a anular el contrato{" "}
+              <strong className="text-foreground font-mono">{cancellingContract?.contractNumber}</strong>.
+              Esto desvinculará sus equipos, quitará las paradas de rutas preventivas asociadas y
+              eliminará las OTs preventivas <strong className="text-foreground">pendientes y futuras</strong>{" "}
+              (el histórico ejecutado se conserva). Podrás crear un contrato nuevo y reasignar los equipos.
             </DialogDescription>
           </DialogHeader>
 
           <DialogFooter className="pt-3 gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setDeletingContract(null)} className="text-xs border-border">
+            <Button type="button" variant="outline" size="sm" onClick={() => setCancellingContract(null)} className="text-xs border-border">
               Cancelar
             </Button>
-            <Button type="button" size="sm" disabled={isPending} onClick={handleDeleteConfirm} className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2">
+            <Button type="button" size="sm" disabled={isPending} onClick={handleCancelConfirm} className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2">
               {isPending && <Loader2 className="size-3.5 animate-spin" />}
-              Eliminar Definitivamente
+              Anular Contrato
             </Button>
           </DialogFooter>
         </DialogContent>

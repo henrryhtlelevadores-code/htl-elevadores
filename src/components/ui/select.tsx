@@ -6,7 +6,48 @@ import { cn } from "cn"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon, SearchIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
-const Select = SelectPrimitive.Root
+function collectSelectItemMap(children: React.ReactNode): Record<string, React.ReactNode> {
+  const map: Record<string, React.ReactNode> = {};
+  walkSelectChildren(children, map);
+  return map;
+}
+
+function walkSelectChildren(
+  children: React.ReactNode,
+  map: Record<string, React.ReactNode>
+): void {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return;
+    const element = child as React.ReactElement<{
+      value?: unknown;
+      children?: React.ReactNode;
+    }>;
+    if (element.type === SelectItem) {
+      const value = element.props.value;
+      if (typeof value === "string" || typeof value === "number") {
+        map[String(value)] = element.props.children;
+      }
+      return;
+    }
+    walkSelectChildren(element.props.children, map);
+  });
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>({
+  items,
+  children,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const effectiveItems = React.useMemo(
+    () => items ?? collectSelectItemMap(children),
+    [items, children]
+  );
+  return (
+    <SelectPrimitive.Root<Value, Multiple> items={effectiveItems} {...props}>
+      {children}
+    </SelectPrimitive.Root>
+  );
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
@@ -64,15 +105,18 @@ function SelectContent({
   align = "center",
   alignOffset = 0,
   alignItemWithTrigger = true,
+  searchable = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
-  >) {
+  > & {
+    searchable?: boolean;
+  }) {
   const [query, setQuery] = React.useState("");
   const totalItems = React.useMemo(() => countSelectItems(children), [children]);
-  const showSearch = totalItems >= 6;
+  const showSearch = searchable || totalItems >= 6;
   const filteredChildren = React.useMemo(
     () => (showSearch ? filterSelectChildren(children, query) : children),
     [children, query, showSearch]

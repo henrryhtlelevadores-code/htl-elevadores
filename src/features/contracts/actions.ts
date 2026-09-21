@@ -21,7 +21,8 @@ import {
   type ContractFormValues,
   type ContractElevatorFormValues,
 } from "./schema";
-import { eq, asc, desc, isNull, and, like, count } from "drizzle-orm";
+import { eq, asc, desc, isNull, and, or, gte, inArray, like, count } from "drizzle-orm";
+import { preventiveRouteStops, workOrders, workOrderElevators } from "@/db/index";
 
 export type ContractWithRelations = Contract & {
   cost_center_name?: string | null;
@@ -83,7 +84,6 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
       .from(contracts)
       .innerJoin(costCenters, eq(contracts.costCenterId, costCenters.id))
       .innerJoin(serviceTypes, eq(contracts.serviceTypeId, serviceTypes.id))
-      .where(isNull(contracts.deletedAt))
       .orderBy(desc(contracts.createdAt));
   } catch (error) {
     console.error("Error al obtener contratos:", error);
@@ -175,6 +175,81 @@ export async function deleteContract(id: string) {
     return { success: true, message: "Contrato eliminado correctamente" };
   } catch (error) {
     console.error("Error al eliminar contrato:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function cancelContract(id: string) {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+
+    const elevatorRows = await db
+      .select({
+        id: contractElevators.id,
+        elevatorUnityId: contractElevators.elevatorUnityId,
+      })
+      .from(contractElevators)
+      .where(eq(contractElevators.contractId, id));
+
+    const ceIds = elevatorRows.map((r) => r.id);
+    const elevatorIds = elevatorRows.map((r) => r.elevatorUnityId);
+
+    if (ceIds.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+
+      const [prev] = await db
+        .select({ id: serviceTypes.id })
+        .from(serviceTypes)
+        .where(eq(serviceTypes.code, "PREV"))
+        .limit(1);
+      const prevServiceTypeId = prev?.id;
+
+      const typeFilter = prevServiceTypeId
+        ? or(eq(workOrders.type, prevServiceTypeId), eq(workOrders.type, "PREVENTIVE"))
+        : eq(workOrders.type, "PREVENTIVE");
+
+      const futurePending = await db
+        .select({ id: workOrders.id })
+        .from(workOrders)
+        .innerJoin(workOrderElevators, eq(workOrderElevators.workOrderId, workOrders.id))
+        .where(
+          and(
+            inArray(workOrderElevators.elevatorUnityId, elevatorIds),
+            eq(workOrders.status, "PENDING"),
+            gte(workOrders.scheduledDate, today),
+            isNull(workOrders.deletedAt),
+            typeFilter
+          )
+        );
+
+      const pendingIds = [...new Set(futurePending.map((r) => r.id))];
+      if (pendingIds.length > 0) {
+        await db
+          .update(workOrders)
+          .set({ deletedAt: now })
+          .where(inArray(workOrders.id, pendingIds));
+      }
+
+      await db
+        .delete(preventiveRouteStops)
+        .where(inArray(preventiveRouteStops.contractElevatorId, ceIds));
+      await db.delete(contractElevators).where(inArray(contractElevators.id, ceIds));
+    }
+
+    await db
+      .update(contracts)
+      .set({ status: "CANCELLED", deletedAt: now })
+      .where(eq(contracts.id, id));
+
+    revalidatePath("/contracts");
+    revalidatePath("/routes");
+    revalidatePath("/work-orders");
+    return {
+      success: true,
+      message: `Contrato anulado. ${ceIds.length} ${ceIds.length === 1 ? "equipo desvinculado" : "equipos desvinculados"}`,
+    };
+  } catch (error) {
+    console.error("Error al anular contrato:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }
