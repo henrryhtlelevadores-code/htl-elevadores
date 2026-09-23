@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -28,6 +28,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   Plus,
   Pencil,
   Trash2,
@@ -52,7 +60,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
   const [isPending, startTransition] = useTransition();
 
   const createForm = useForm<ClientFormValues>({
-    resolver: zodResolver(clientFormSchema),
+    resolver: zodResolver(clientFormSchema) as unknown as Resolver<ClientFormValues>,
     defaultValues: {
       legalName: "",
       taxId: "",
@@ -80,7 +88,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
     setEditingClient(client);
     editForm.reset({
       legalName: client.legalName,
-      taxId: client.taxId,
+      taxId: client.taxId || "",
       billingAddress: client.billingAddress || "",
       billingEmail: client.billingEmail || "",
     });
@@ -147,9 +155,11 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
           </Button>
         ),
         cell: ({ row }) => (
-          <div className="flex items-center gap-2 font-medium text-foreground">
-            <Building2 className="size-3.5 text-[#0066CC] shrink-0" />
-            <span className="font-semibold">{row.getValue("legalName")}</span>
+          <div className="flex items-start gap-2 font-medium text-foreground">
+            <Building2 className="size-3.5 text-[#0066CC] shrink-0 mt-0.5" />
+            <span className="font-semibold leading-snug min-w-0 max-w-[200px] whitespace-normal break-words">
+              {row.getValue("legalName")}
+            </span>
           </div>
         ),
       },
@@ -278,7 +288,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                 name="legalName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Razón Social</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Razón Social/Nombre Comercial</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Ej: Corporación Real S.A."
@@ -293,18 +303,86 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
 
               <FormField
                 control={createForm.control}
-                name="taxId"
+                name="taxIdType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">RUC</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Tipo de Documento</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                          <SelectValue placeholder="Selecciona el tipo de documento" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="RUC">RUC</SelectItem>
+                        <SelectItem value="DNI">DNI</SelectItem>
+                        <SelectItem value="CE">Carnet de Extranjería</SelectItem>
+                        <SelectItem value="SIN_DOC">Sin Documento</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {createForm.watch("taxIdType") !== "SIN_DOC" && (
+                <FormField
+                  control={createForm.control}
+                  name="taxId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Número del Documento</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={
+                            createForm.watch("taxIdType") === "DNI"
+                              ? "Ej: 12345678"
+                              : createForm.watch("taxIdType") === "CE"
+                                ? "Ej: 001234567"
+                                : "Ej: 20100047218"
+                          }
+                          {...field}
+                          className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={createForm.control}
+                name="billingAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-semibold">Dirección Fiscal</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Ej: 20100047218"
+                        placeholder="Ej: Av. Larco 1234, Miraflores"
                         {...field}
-                        className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                       />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={createForm.control}
+                name="isProcessingRuc"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormLabel className="text-xs font-semibold">
+                      Documento en trámite (está procesando su RUC)
+                    </FormLabel>
                   </FormItem>
                 )}
               />
@@ -327,6 +405,64 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={createForm.control}
+                name="createDefaultHeadquarters"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormLabel className="text-xs font-semibold">
+                      Crear sede por defecto
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+
+              {createForm.watch("createDefaultHeadquarters") && (
+                <>
+                  <FormField
+                    control={createForm.control}
+                    name="headquartersAddress"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Dirección de la Sede</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Av. Larco 1234"
+                            {...field}
+                            className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="district"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Distrito</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Miraflores"
+                            {...field}
+                            className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
 
               <DialogFooter className="pt-2">
                 <Button
@@ -388,7 +524,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
             <div className="space-y-2">
               <label className="text-xs font-semibold">RUC</label>
               <Input
-                defaultValue={editingClient?.taxId}
+                defaultValue={editingClient?.taxId || ""}
                 onChange={(e) => editForm.setValue("taxId", e.target.value)}
                 className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                 required

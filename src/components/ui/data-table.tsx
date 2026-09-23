@@ -38,6 +38,8 @@ interface DataTableProps<TData, TValue> {
   searchPlaceholder?: string;
   searchKey?: string;
   extraActions?: React.ReactNode;
+  hideSearch?: boolean;
+  emptyState?: React.ReactNode;
 }
 
 export function DataTable<TData, TValue>({
@@ -46,6 +48,8 @@ export function DataTable<TData, TValue>({
   searchPlaceholder = "Buscar registros...",
   searchKey,
   extraActions,
+  hideSearch = false,
+  emptyState,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -79,45 +83,49 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-4">
       {/* Top Controls: Search & Extra Actions */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={
-              searchKey
-                ? (table.getColumn(searchKey)?.getFilterValue() as string) ?? ""
-                : globalFilter ?? ""
-            }
-            onChange={(e) => {
-              if (searchKey) {
-                table.getColumn(searchKey)?.setFilterValue(e.target.value);
-              } else {
-                setGlobalFilter(e.target.value);
-              }
-            }}
-            className="pl-9 pr-8 bg-card border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-          />
-          {Boolean(globalFilter || (searchKey && table.getColumn(searchKey)?.getFilterValue())) && (
-            <button
-              onClick={() => {
-                if (searchKey) {
-                  table.getColumn(searchKey)?.setFilterValue("");
-                } else {
-                  setGlobalFilter("");
+      {(!hideSearch || extraActions) && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {!hideSearch && (
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                value={
+                  searchKey
+                    ? (table.getColumn(searchKey)?.getFilterValue() as string) ?? ""
+                    : globalFilter ?? ""
                 }
-              }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
+                onChange={(e) => {
+                  if (searchKey) {
+                    table.getColumn(searchKey)?.setFilterValue(e.target.value);
+                  } else {
+                    setGlobalFilter(e.target.value);
+                  }
+                }}
+                className="pl-9 pr-8 bg-card border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+              />
+              {Boolean(globalFilter || (searchKey && table.getColumn(searchKey)?.getFilterValue())) && (
+                <button
+                  onClick={() => {
+                    if (searchKey) {
+                      table.getColumn(searchKey)?.setFilterValue("");
+                    } else {
+                      setGlobalFilter("");
+                    }
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {extraActions && (
+            <div className="flex items-center gap-2 shrink-0">{extraActions}</div>
           )}
         </div>
-
-        {extraActions && (
-          <div className="flex items-center gap-2 shrink-0">{extraActions}</div>
-        )}
-      </div>
+      )}
 
       {/* Table Container */}
       <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
@@ -162,9 +170,9 @@ export function DataTable<TData, TValue>({
               <TableRow className="border-border">
                 <TableCell
                   colSpan={columns.length}
-                  className="h-32 text-center text-xs text-muted-foreground"
+                  className={emptyState ? "p-0" : "h-32 text-center text-xs text-muted-foreground"}
                 >
-                  No se encontraron registros.
+                  {emptyState ?? "No se encontraron registros."}
                 </TableCell>
               </TableRow>
             )}

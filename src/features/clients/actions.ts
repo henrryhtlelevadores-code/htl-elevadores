@@ -74,7 +74,7 @@ export async function createClient(data: ClientFormValues) {
     await db.insert(clients).values({
       id: generateUuid(),
       legalName: validated.legalName.trim(),
-      taxId: validated.taxId.trim(),
+      taxId: validated.taxId?.trim() || null,
       taxIdType: validated.taxIdType || "RUC",
       billingAddress: validated.billingAddress?.trim() || null,
       billingEmail: validated.billingEmail?.trim() || null,

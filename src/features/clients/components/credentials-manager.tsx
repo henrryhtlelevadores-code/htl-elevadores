@@ -15,55 +15,58 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  KeyRound,
-  Loader2,
-  Link2,
-  ShieldCheck,
-  Trash2,
-  Copy,
-  Check,
-  AlertTriangle,
-} from "lucide-react";
+  IconKey,
+  IconKeyOff,
+  IconLoader2,
+  IconLink,
+  IconShieldCheck,
+  IconTrash,
+  IconCopy,
+  IconCheck,
+  IconAlertTriangle,
+  IconEye,
+  IconEyeOff,
+  IconId,
+  IconWorld,
+} from "@tabler/icons-react";
+import { cn } from "cn";
 
 interface CredentialsManagerProps {
-  costCenters: CostCenter[];
+  costCenter: CostCenter;
 }
 
-type HasPasswordMap = Record<string, boolean>;
-
-export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
-  const [selectedCostCenterId, setSelectedCostCenterId] = useState<string>("");
-  const [hasPassword, setHasPassword] = useState<HasPasswordMap>(() => {
-    const map: HasPasswordMap = {};
-    for (const cc of costCenters) {
-      map[cc.id] = Boolean(cc.passwordHash);
-    }
-    return map;
-  });
+export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
+  const [hasPassword, setHasPassword] = useState<boolean>(Boolean(costCenter.passwordHash));
   const [isSetOpen, setIsSetOpen] = useState(false);
   const [isClearOpen, setIsClearOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [showConfirmPin, setShowConfirmPin] = useState(false);
+  const [copied, setCopied] = useState<null | "code" | "link">(null);
   const [isPending, startTransition] = useTransition();
 
-  const selected = costCenters.find((cc) => cc.id === selectedCostCenterId);
+  const portalUrl = `${window.location.origin}/portal/${costCenter.id}/login`;
 
-  function handleSelect(value: string | null) {
-    setSelectedCostCenterId(value ?? "");
-    setIsSetOpen(false);
-    setIsClearOpen(false);
+  function handleCopy(key: "code" | "link") {
+    navigator.clipboard
+      .writeText(key === "code" ? costCenter.id : portalUrl)
+      .then(() => {
+        setCopied(key);
+        setTimeout(() => setCopied(null), 2000);
+        toast.success(key === "code" ? "Código copiado" : "Enlace copiado", {
+          description:
+            key === "code"
+              ? "Comparte el código del edificio con el administrador."
+              : "Comparte el enlace con el administrador del edificio.",
+        });
+      })
+      .catch(() => {
+        toast.error("No se pudo copiar", { description: "Inténtalo nuevamente." });
+      });
   }
 
   function handleSetPassword() {
-    if (!selected) return;
     if (pin.length < 6) {
       toast.error("Contraseña muy corta", {
         description: "La contraseña debe tener al menos 6 caracteres.",
@@ -78,14 +81,16 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
     }
 
     startTransition(async () => {
-      const res = await setCostCenterPassword(selected.id, pin);
+      const res = await setCostCenterPassword(costCenter.id, pin);
       if (res.success) {
-        setHasPassword((prev) => ({ ...prev, [selected.id]: true }));
+        setHasPassword(true);
         setPin("");
         setConfirmPin("");
+        setShowPin(false);
+        setShowConfirmPin(false);
         setIsSetOpen(false);
         toast.success("Credencial creada", {
-          description: `Se habilitó el acceso al portal para "${selected.name}".`,
+          description: `Se habilitó el acceso al portal para "${costCenter.name}".`,
         });
       } else {
         toast.error("Error al crear credencial", { description: res.error });
@@ -94,14 +99,13 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
   }
 
   function handleClearPassword() {
-    if (!selected) return;
     startTransition(async () => {
-      const res = await clearCostCenterPassword(selected.id);
+      const res = await clearCostCenterPassword(costCenter.id);
       if (res.success) {
-        setHasPassword((prev) => ({ ...prev, [selected.id]: false }));
+        setHasPassword(false);
         setIsClearOpen(false);
         toast.success("Credencial eliminada", {
-          description: `El acceso al portal de "${selected.name}" fue deshabilitado.`,
+          description: `El acceso al portal de "${costCenter.name}" fue deshabilitado.`,
         });
       } else {
         toast.error("Error al eliminar credencial", { description: res.error });
@@ -109,155 +113,138 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
     });
   }
 
-  const portalUrl = selected
-    ? `${window.location.origin}/portal/${selected.id}/login`
-    : "";
-
-  function handleCopyLink() {
-    navigator.clipboard.writeText(portalUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.success("Enlace copiado", {
-        description: "Comparte el enlace con el administrador del edificio.",
-      });
-    });
-  }
-
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-        <label className="text-xs font-semibold text-foreground">
-          Centro de Costo
-        </label>
-        <p className="text-xs text-muted-foreground mt-0.5 mb-2">
-          Selecciona la sede para crear o gestionar su contraseña de acceso al portal.
-        </p>
-        <div className="max-w-sm">
-          <Select value={selectedCostCenterId} onValueChange={handleSelect}>
-            <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-              <SelectValue placeholder="Selecciona un centro de costo">
-                {selected?.name ?? null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {costCenters.map((cc) => (
-                <SelectItem key={cc.id} value={cc.id}>
-                  {cc.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Estado del portal */}
+      <div
+        className={cn(
+          "rounded-xl border p-5 shadow-xs flex items-center gap-3",
+          hasPassword
+            ? "border-green-200 dark:border-green-500/20 bg-green-50/60 dark:bg-green-500/10"
+            : "border-border bg-card"
+        )}
+      >
+        <div
+          className={cn(
+            "size-10 rounded-lg flex items-center justify-center shrink-0",
+            hasPassword ? "bg-green-100 dark:bg-green-500/20 text-green-600" : "bg-muted text-muted-foreground"
+          )}
+        >
+          {hasPassword ? (
+            <IconShieldCheck className="size-5" />
+          ) : (
+            <IconKeyOff className="size-5" />
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-bold text-foreground">
+            {hasPassword ? "Acceso al portal habilitado" : "Sin contraseña configurada"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {hasPassword
+              ? "El administrador de la sede puede ingresar al portal con esta credencial."
+              : "Configura una contraseña para habilitar el acceso al portal."}
+          </p>
         </div>
       </div>
 
-      {selectedCostCenterId && selected ? (
-        <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <KeyRound className="size-4 text-[#0066CC]" />
-                {selected.name}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {hasPassword[selected.id] ? (
-                  "Acceso al portal habilitado"
-                ) : (
-                  "Sin contraseña configurada"
-                )}
-              </p>
+      {/* Datos de acceso: código y enlace */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <IconLink className="size-3.5 text-[#0066CC]" />
+          Datos de acceso al portal
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3.5 py-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <IconId className="size-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-muted-foreground">Código del edificio</p>
+              <p className="text-xs font-mono font-medium text-foreground truncate">{costCenter.id}</p>
             </div>
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border ${
-                hasPassword[selected.id]
-                  ? "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20"
-                  : "text-muted-foreground bg-muted border-border"
-              }`}
-            >
-              <ShieldCheck className="size-3.5" />
-              {hasPassword[selected.id] ? "Configurada" : "Sin configurar"}
-            </span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Button
-              size="sm"
-              onClick={() => {
-                setIsSetOpen(true);
-                setIsClearOpen(false);
-              }}
-              className="bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold text-xs gap-2"
-            >
-              <KeyRound className="size-3.5" />
-              {hasPassword[selected.id] ? "Cambiar Contraseña" : "Crear Contraseña"}
-            </Button>
-
-            {hasPassword[selected.id] && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsClearOpen(true)}
-                className="text-xs border-border gap-2 font-semibold text-red-600 dark:text-red-400 hover:text-red-700"
-              >
-                <Trash2 className="size-3.5" />
-                Eliminar Credencial
-              </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleCopy("code")}
+            className="text-xs border-border gap-1.5 font-semibold shrink-0"
+          >
+            {copied === "code" ? (
+              <IconCheck className="size-3.5 text-green-600" />
+            ) : (
+              <IconCopy className="size-3.5" />
             )}
+            {copied === "code" ? "¡Copiado!" : "Copiar Código"}
+          </Button>
+        </div>
 
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3.5 py-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <IconWorld className="size-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-muted-foreground">Enlace de acceso</p>
+              <p className="text-xs font-mono font-medium text-foreground truncate">{portalUrl}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleCopy("link")}
+            className="text-xs border-border gap-1.5 font-semibold shrink-0"
+          >
+            {copied === "link" ? (
+              <IconCheck className="size-3.5 text-green-600" />
+            ) : (
+              <IconCopy className="size-3.5" />
+            )}
+            {copied === "link" ? "¡Copiado!" : "Copiar Enlace"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Acciones de seguridad */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Button
+          size="sm"
+          onClick={() => setIsSetOpen(true)}
+          className="bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold text-xs gap-2 h-10 justify-center"
+        >
+          <IconKey className="size-4" />
+          {hasPassword ? "Cambiar Contraseña" : "Configurar Contraseña"}
+        </Button>
+
+        {hasPassword && (
+          <div className="rounded-lg border border-red-200 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/5 p-2.5 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold text-red-700 dark:text-red-400 ml-1">
+              Zona de riesgo
+              <span className="block font-normal text-red-600/70 dark:text-red-400/70">
+                Deshabilitará el acceso al portal.
+              </span>
+            </p>
             <Button
               variant="outline"
               size="sm"
-              onClick={handleCopyLink}
-              disabled={!hasPassword[selected.id]}
-              className="text-xs border-border gap-2 font-semibold"
+              onClick={() => setIsClearOpen(true)}
+              className="text-xs border-red-200 dark:border-red-500/30 gap-1.5 font-semibold text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 shrink-0"
             >
-              {copied ? (
-                <Check className="size-3.5 text-green-600" />
-              ) : (
-                <Copy className="size-3.5" />
-              )}
-              {copied ? "Enlace copiado" : "Copiar enlace del portal"}
+              <IconTrash className="size-3.5" />
+              Deshabilitar Acceso
             </Button>
           </div>
-
-          {hasPassword[selected.id] && (
-            <div className="pt-2 border-t border-border">
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                <Link2 className="size-3" />
-                Código del edificio:{" "}
-                <span className="font-mono font-semibold text-foreground">
-                  {selected.id}
-                </span>
-              </p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-border bg-card/40 p-8 text-center">
-          <KeyRound className="mx-auto size-6 text-muted-foreground/60" />
-          <p className="mt-2 text-sm font-semibold text-foreground">
-            {costCenters.length === 0
-              ? "Este cliente aún no tiene centros de costo"
-              : "Elige un centro de costo"}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {costCenters.length === 0
-              ? "Registra una sede en el tab Centros de Costo para poder asignar credenciales."
-              : "Selecciona arriba la sede a la que quieres crear su contraseña de acceso al portal."}
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Dialog: Crear / Cambiar contraseña */}
       <Dialog open={isSetOpen} onOpenChange={setIsSetOpen}>
         <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <KeyRound className="size-4 text-[#0066CC]" />
-              {hasPassword[selected?.id ?? ""] ? "Cambiar Contraseña" : "Crear Credencial"}
+              <IconKey className="size-4 text-[#0066CC]" />
+              {hasPassword ? "Cambiar Contraseña" : "Configurar Credencial"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Define la contraseña de acceso al portal del cliente para{" "}
-              <strong className="text-foreground">{selected?.name}</strong>. Se
+              Define la contraseña de acceso al portal de{" "}
+              <strong className="text-foreground">{costCenter.name}</strong>. Se
               almacena encriptada, nunca en texto plano.
             </DialogDescription>
           </DialogHeader>
@@ -265,23 +252,43 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <label className="text-xs font-semibold">Contraseña</label>
-              <Input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-              />
+              <div className="relative">
+                <Input
+                  type={showPin ? "text" : "password"}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="bg-background border-border text-xs pr-9 focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  title={showPin ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPin ? <IconEyeOff className="size-3.5" /> : <IconEye className="size-3.5" />}
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold">Confirmar Contraseña</label>
-              <Input
-                type="password"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
-                placeholder="Repite la contraseña"
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-              />
+              <div className="relative">
+                <Input
+                  type={showConfirmPin ? "text" : "password"}
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  className="bg-background border-border text-xs pr-9 focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPin(!showConfirmPin)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  title={showConfirmPin ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showConfirmPin ? <IconEyeOff className="size-3.5" /> : <IconEye className="size-3.5" />}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -302,7 +309,7 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
               onClick={handleSetPassword}
               className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-2"
             >
-              {isPending && <Loader2 className="size-3.5 animate-spin" />}
+              {isPending && <IconLoader2 className="size-3.5 animate-spin" />}
               Guardar Credencial
             </Button>
           </DialogFooter>
@@ -314,13 +321,13 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
         <DialogContent className="bg-card border-border sm:max-w-[400px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertTriangle className="size-4 text-red-600 dark:text-red-400" />
-              Eliminar Credencial
+              <IconAlertTriangle className="size-4 text-red-600 dark:text-red-400" />
+              Deshabilitar Acceso
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               ¿Estás seguro de eliminar la contraseña del portal de{" "}
-              <strong className="text-foreground">{selected?.name}</strong>? El
-              acceso al portal quedará deshabilitado hasta que crees una nueva.
+              <strong className="text-foreground">{costCenter.name}</strong>? El
+              acceso al portal quedará deshabilitado hasta que configures una nueva.
             </DialogDescription>
           </DialogHeader>
 
@@ -341,8 +348,8 @@ export function CredentialsManager({ costCenters }: CredentialsManagerProps) {
               onClick={handleClearPassword}
               className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2"
             >
-              {isPending && <Loader2 className="size-3.5 animate-spin" />}
-              Eliminar Definitivamente
+              {isPending && <IconLoader2 className="size-3.5 animate-spin" />}
+              Deshabilitar Definitivamente
             </Button>
           </DialogFooter>
         </DialogContent>

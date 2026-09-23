@@ -42,7 +42,7 @@ export const staffProfiles = sqliteTable("staff_profiles", {
 export const clients = sqliteTable("clients", {
   id: text("id").primaryKey(),
   legalName: text("legal_name").notNull(),
-  taxId: text("tax_id").notNull().unique(),
+  taxId: text("tax_id").unique(),
   taxIdType: text("tax_id_type").default("RUC"),
   billingAddress: text("billing_address"),
   billingEmail: text("billing_email"),
