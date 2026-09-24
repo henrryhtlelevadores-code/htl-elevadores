@@ -1,0 +1,1 @@
+ALTER TABLE `invoice_items` DROP COLUMN `line_type`;

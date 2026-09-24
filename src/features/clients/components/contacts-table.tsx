@@ -340,7 +340,7 @@ export function ContactsTable({ costCenterId, contacts }: ContactsTableProps) {
 
       {/* Modal: Editar Contacto */}
       <Dialog open={!!editingContact} onOpenChange={(open) => !open && setEditingContact(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingContact?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <IconPencil className="size-4 text-[#0066CC]" />

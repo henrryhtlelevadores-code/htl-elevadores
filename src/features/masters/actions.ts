@@ -7,10 +7,12 @@ import {
   elevatorTypes,
   models,
   serviceTypes,
+  ubigeos,
   type Brand,
   type ElevatorType,
   type Model,
   type ServiceType,
+  type Ubigeo,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
@@ -19,10 +21,14 @@ import {
   elevatorTypeFormSchema,
   modelFormSchema,
   serviceTypeFormSchema,
+  ubigeoFormSchema,
+  ubigeoBulkImportSchema,
   type BrandFormValues,
   type ElevatorTypeFormValues,
   type ModelFormValues,
   type ServiceTypeFormValues,
+  type UbigeoFormValues,
+  type UbigeoBulkImportValues,
 } from "./schema";
 import { eq, asc } from "drizzle-orm";
 
@@ -324,6 +330,123 @@ export async function deleteServiceType(id: string) {
       return {
         success: false,
         error: "No se puede eliminar el tipo de servicio porque tiene contratos asociados.",
+      };
+    }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+// ==========================================
+// 5. UBIGEOS
+// ==========================================
+
+export async function getUbigeos(): Promise<Ubigeo[]> {
+  try {
+    return await db
+      .select()
+      .from(ubigeos)
+      .orderBy(asc(ubigeos.departamento), asc(ubigeos.provincia), asc(ubigeos.distrito));
+  } catch (error) {
+    console.error("Error al obtener ubigeos desde Turso:", error);
+    return [];
+  }
+}
+
+export async function createUbigeo(data: UbigeoFormValues) {
+  try {
+    const validated = ubigeoFormSchema.parse(data);
+
+    await db.insert(ubigeos).values({
+      id: validated.id.trim().toUpperCase(),
+      departamento: validated.departamento.trim(),
+      provincia: validated.provincia.trim(),
+      distrito: validated.distrito.trim(),
+      latitud: validated.latitud ? Number(validated.latitud) : null,
+      longitud: validated.longitud ? Number(validated.longitud) : null,
+    });
+
+    revalidatePath("/masters");
+    return { success: true, message: "Ubigeo creado correctamente" };
+  } catch (error) {
+    console.error("Error al crear ubigeo:", error);
+    if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
+      return { success: false, error: "El código de ubigeo ya existe." };
+    }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function updateUbigeo(id: string, data: Partial<UbigeoFormValues>) {
+  try {
+    const updateData: {
+      departamento?: string;
+      provincia?: string;
+      distrito?: string;
+      latitud?: number | null;
+      longitud?: number | null;
+    } = {};
+    if (data.departamento !== undefined) updateData.departamento = data.departamento.trim();
+    if (data.provincia !== undefined) updateData.provincia = data.provincia.trim();
+    if (data.distrito !== undefined) updateData.distrito = data.distrito.trim();
+    if (data.latitud !== undefined)
+      updateData.latitud = data.latitud ? Number(data.latitud) : null;
+    if (data.longitud !== undefined)
+      updateData.longitud = data.longitud ? Number(data.longitud) : null;
+
+    await db.update(ubigeos).set(updateData).where(eq(ubigeos.id, id));
+
+    revalidatePath("/masters");
+    return { success: true, message: "Ubigeo actualizado" };
+  } catch (error) {
+    console.error("Error al actualizar ubigeo:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function deleteUbigeo(id: string) {
+  try {
+    await db.delete(ubigeos).where(eq(ubigeos.id, id));
+    revalidatePath("/masters");
+    return { success: true, message: "Ubigeo eliminado correctamente" };
+  } catch (error) {
+    console.error("Error al eliminar ubigeo:", error);
+    if (getErrorMessage(error).includes("FOREIGN KEY constraint failed")) {
+      return {
+        success: false,
+        error: "No se puede eliminar el ubigeo porque tiene sedes asignadas.",
+      };
+    }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function importUbigeosBulk(data: UbigeoBulkImportValues) {
+  try {
+    const validated = ubigeoBulkImportSchema.parse(data);
+
+    await db.insert(ubigeos).values(
+      validated.map((item) => ({
+        id: item.Ubigeo.trim().toUpperCase(),
+        departamento: item.Departamento.trim(),
+        provincia: item.Provincia.trim(),
+        distrito: item.Distrito.trim(),
+        latitud: item.Latitud != null ? Number(item.Latitud) : null,
+        longitud: item.Longitud != null ? Number(item.Longitud) : null,
+      }))
+    );
+
+    revalidatePath("/masters");
+    return {
+      success: true,
+      message: `${validated.length} ubigeos importados correctamente`,
+    };
+  } catch (error) {
+    console.error("Error al importar ubigeos:", error);
+    if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
+      return {
+        success: false,
+        error:
+          "Uno o más códigos de ubigeo ya existen. Revisa los datos e intenta nuevamente.",
       };
     }
     return { success: false, error: getErrorMessage(error) };

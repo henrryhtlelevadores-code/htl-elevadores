@@ -257,7 +257,7 @@ export function TypesTab({ initialTypes }: TypesTabProps) {
 
       {/* Modal: Editar Tipo */}
       <Dialog open={!!editingType} onOpenChange={(open) => !open && setEditingType(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingType?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Pencil className="size-4 text-[#0066CC]" />

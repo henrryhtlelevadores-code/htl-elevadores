@@ -491,7 +491,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
 
       {/* Modal: Editar Cliente */}
       <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingClient?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Pencil className="size-4 text-[#0066CC]" />

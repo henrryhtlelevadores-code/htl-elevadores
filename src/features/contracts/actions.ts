@@ -10,6 +10,7 @@ import {
   elevatorUnities,
   contractElevators,
   brands,
+  ubigeos,
   type Contract,
   type ContractElevator,
 } from "@/db/index";
@@ -432,12 +433,13 @@ export async function getContractById(id: string): Promise<ContractDetail | null
         deletedAt: contracts.deletedAt,
         cost_center_name: costCenters.name,
         cost_center_address: costCenters.address,
-        cost_center_district: costCenters.district,
+        cost_center_district: ubigeos.distrito,
         service_type_name: serviceTypes.name,
         client_legal_name: clients.legalName,
       })
       .from(contracts)
       .innerJoin(costCenters, eq(contracts.costCenterId, costCenters.id))
+      .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
       .innerJoin(serviceTypes, eq(contracts.serviceTypeId, serviceTypes.id))
       .innerJoin(clients, eq(costCenters.clientId, clients.id))
       .where(eq(contracts.id, id))

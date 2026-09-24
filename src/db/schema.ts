@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, unique, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const unixNow = () => sql`(cast(strftime('%s','now') as int))`;
 
@@ -52,6 +52,24 @@ export const clients = sqliteTable("clients", {
   deletedAt: integer("deleted_at"),
 });
 
+export const ubigeos = sqliteTable(
+  "ubigeos",
+  {
+    id: text("id").primaryKey(),
+    departamento: text("departamento").notNull(),
+    provincia: text("provincia").notNull(),
+    distrito: text("distrito").notNull(),
+    latitud: real("latitud"),
+    longitud: real("longitud"),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [
+    index("idx_ubigeos_departamento").on(t.departamento),
+    index("idx_ubigeos_provincia").on(t.provincia),
+    index("idx_ubigeos_distrito").on(t.distrito),
+  ]
+);
+
 export const costCenters = sqliteTable("cost_center", {
   id: text("id").primaryKey(),
   clientId: text("client_id")
@@ -59,7 +77,7 @@ export const costCenters = sqliteTable("cost_center", {
     .references(() => clients.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   address: text("address").notNull(),
-  district: text("district"),
+  ubigeoId: text("ubigeo_id").references(() => ubigeos.id),
   latitude: real("latitude"),
   longitude: real("longitude"),
   mainPhotoUrl: text("main_photo_url"),
@@ -145,6 +163,10 @@ export const serviceTypes = sqliteTable("service_types", {
   defaultSlaMins: integer("default_sla_mins"),
   isBillableByDefault: integer("is_billable_by_default", { mode: "boolean" }).default(true),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
+  isSystem: integer("is_system", { mode: "boolean" }).default(false),
+  billingTrigger: text("billing_trigger").default("MANUAL"),
+  billingDelayDays: integer("billing_delay_days").default(0),
+  allowedDocumentTypes: text("allowed_document_types").default("FACTURA,BOLETA,NOTA_VENTA_INTERNA"),
   createdAt: integer("created_at").default(unixNow()),
 });
 
@@ -227,6 +249,7 @@ export const workOrders = sqliteTable("work_orders", {
     .notNull()
     .references(() => costCenters.id, { onDelete: "restrict" }),
   technicianId: text("technician_id").references(() => users.id),
+  serviceTypeId: text("service_type_id").references(() => serviceTypes.id),
 
   type: text("type").default("CORRECTIVE"),
   status: text("status").default("PENDING"),
@@ -318,6 +341,64 @@ export const preventiveRouteStops = sqliteTable("preventive_route_stops", {
   createdAt: integer("created_at").default(unixNow()),
 });
 
+export const invoices = sqliteTable(
+  "invoices",
+  {
+    id: text("id").primaryKey(),
+    documentType: text("document_type").notNull(),
+    series: text("series"),
+    number: text("number"),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    costCenterId: text("cost_center_id").references(() => costCenters.id, { onDelete: "restrict" }),
+    contractId: text("contract_id").references(() => contracts.id, { onDelete: "restrict" }),
+    workOrderId: text("work_order_id").references(() => workOrders.id, { onDelete: "restrict" }),
+    issueDate: integer("issue_date"),
+    dueDate: integer("due_date"),
+    taxPeriod: text("tax_period"),
+    currency: text("currency").default("PEN"),
+    total: real("total").notNull(),
+    taxableBase: real("taxable_base"),
+    igv: real("igv"),
+    rentaRate: real("renta_rate").default(0),
+    rentaAmount: real("renta_amount").default(0),
+    detractionRate: real("detraction_rate").default(0),
+    detractionAmount: real("detraction_amount").default(0),
+    netPayable: real("net_payable"),
+    sunatStatus: text("sunat_status").default("DRAFT"),
+    paymentStatus: text("payment_status").default("PENDING"),
+    clientTaxIdSnapshot: text("client_tax_id_snapshot"),
+    clientTaxIdTypeSnapshot: text("client_tax_id_type_snapshot"),
+    clientNameSnapshot: text("client_name_snapshot"),
+    clientAddressSnapshot: text("client_address_snapshot"),
+    createdAt: integer("created_at").default(unixNow()),
+    updatedAt: integer("updated_at").default(unixNow()),
+  },
+  (t) => [
+    uniqueIndex("invoices_doc_series_number_unique")
+      .on(t.documentType, t.series, t.number)
+      .where(sql`${t.number} IS NOT NULL`),
+  ]
+);
+
+export const invoiceItems = sqliteTable("invoice_items", {
+  id: text("id").primaryKey(),
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => invoices.id, { onDelete: "cascade" }),
+  serviceTypeId: text("service_type_id").references(() => serviceTypes.id),
+  description: text("description").notNull(),
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  quantity: real("quantity").default(1),
+  unitPrice: real("unit_price").notNull(),
+  subtotal: real("subtotal").notNull(),
+  igv: real("igv").notNull(),
+  total: real("total").notNull(),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -328,6 +409,8 @@ export type Client = typeof clients.$inferSelect;
 export type NewClient = typeof clients.$inferInsert;
 export type CostCenter = typeof costCenters.$inferSelect;
 export type NewCostCenter = typeof costCenters.$inferInsert;
+export type Ubigeo = typeof ubigeos.$inferSelect;
+export type NewUbigeo = typeof ubigeos.$inferInsert;
 export type CostCenterContact = typeof costCenterContacts.$inferSelect;
 export type NewCostCenterContact = typeof costCenterContacts.$inferInsert;
 export type Brand = typeof brands.$inferSelect;
@@ -358,5 +441,9 @@ export type PreventiveRoute = typeof preventiveRoutes.$inferSelect;
 export type NewPreventiveRoute = typeof preventiveRoutes.$inferInsert;
 export type PreventiveRouteStop = typeof preventiveRouteStops.$inferSelect;
 export type NewPreventiveRouteStop = typeof preventiveRouteStops.$inferInsert;
+export type Invoice = typeof invoices.$inferSelect;
+export type NewInvoice = typeof invoices.$inferInsert;
+export type InvoiceItem = typeof invoiceItems.$inferSelect;
+export type NewInvoiceItem = typeof invoiceItems.$inferInsert;
 export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;

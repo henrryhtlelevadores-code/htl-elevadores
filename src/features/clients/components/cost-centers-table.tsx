@@ -5,9 +5,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { type Client, type CostCenter } from "@/db";
+import { type Client, type CostCenter, type Ubigeo } from "@/db";
 import { createCostCenter, updateCostCenter, deleteCostCenter } from "../actions";
 import { costCenterFormSchema, type CostCenterFormValues } from "../schema";
+import { UbigeoSelector } from "./ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import { cn } from "cn";
 interface CostCentersTableProps {
   client: Client;
   costCenters: CostCenter[];
+  ubigeos: Ubigeo[];
   contactsCount: Record<string, number>;
   onSelectCostCenter?: (center: CostCenter) => void;
   onManageCredential?: (center: CostCenter) => void;
@@ -49,6 +51,7 @@ interface CostCentersTableProps {
 export function CostCentersTable({
   client,
   costCenters,
+  ubigeos,
   contactsCount,
   onSelectCostCenter,
   onManageCredential,
@@ -58,17 +61,23 @@ export function CostCentersTable({
   const [deletingCenter, setDeletingCenter] = useState<CostCenter | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const distritoFor = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const u of ubigeos) map[u.id] = u.distrito;
+    return map;
+  }, [ubigeos]);
+
   const createForm = useForm<CostCenterFormValues>({
     resolver: zodResolver(costCenterFormSchema),
-    defaultValues: { clientId: client.id, name: "", address: "", district: "" },
+    defaultValues: { clientId: client.id, name: "", address: "", ubigeoId: "" },
   });
 
-  const editForm = useForm<{ name: string; address: string; district: string }>({
-    defaultValues: { name: "", address: "", district: "" },
+  const editForm = useForm<{ name: string; address: string; ubigeoId: string }>({
+    defaultValues: { name: "", address: "", ubigeoId: "" },
   });
 
   function handleOpenCreate() {
-    createForm.reset({ clientId: client.id, name: "", address: "", district: "" });
+    createForm.reset({ clientId: client.id, name: "", address: "", ubigeoId: "" });
     setIsCreateOpen(true);
   }
 
@@ -77,7 +86,7 @@ export function CostCentersTable({
     editForm.reset({
       name: center.name,
       address: center.address || "",
-      district: center.district || "",
+      ubigeoId: center.ubigeoId || "",
     });
   }
 
@@ -94,7 +103,7 @@ export function CostCentersTable({
     });
   }
 
-  function handleEditSubmit(values: { name: string; address: string; district: string }) {
+  function handleEditSubmit(values: { name: string; address: string; ubigeoId: string }) {
     if (!editingCenter) return;
     startTransition(async () => {
       const res = await updateCostCenter(editingCenter.id, values);
@@ -160,11 +169,11 @@ export function CostCentersTable({
         ),
       },
       {
-        accessorKey: "district",
+        accessorKey: "ubigeoId",
         header: "Distrito",
         cell: ({ row }) => {
-          const district = row.getValue<string | null>("district");
-          return <span className="text-xs text-muted-foreground">{district || "—"}</span>;
+          const ubigeoId = row.getValue<string | null>("ubigeoId");
+          return <span className="text-xs text-muted-foreground">{ubigeoId ? distritoFor[ubigeoId] || "—" : "—"}</span>;
         },
       },
       {
@@ -261,7 +270,7 @@ export function CostCentersTable({
         },
       },
     ],
-    []
+    [distritoFor]
   );
 
   return (
@@ -326,12 +335,16 @@ export function CostCentersTable({
 
               <FormField
                 control={createForm.control}
-                name="district"
+                name="ubigeoId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Distrito</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Ubicación (Departamento / Provincia / Distrito)</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ej: San Miguel" {...field} className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]" />
+                      <UbigeoSelector
+                        ubigeos={ubigeos}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -354,7 +367,7 @@ export function CostCentersTable({
 
       {/* Modal: Editar Sede */}
       <Dialog open={!!editingCenter} onOpenChange={(open) => !open && setEditingCenter(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingCenter?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <IconPencil className="size-4 text-[#0066CC]" />
@@ -368,7 +381,7 @@ export function CostCentersTable({
               handleEditSubmit({
                 name: editForm.getValues("name"),
                 address: editForm.getValues("address"),
-                district: editForm.getValues("district"),
+                ubigeoId: editForm.getValues("ubigeoId") || "",
               });
             }}
             className="space-y-4 pt-2"
@@ -393,11 +406,13 @@ export function CostCentersTable({
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold">Distrito</label>
-              <Input
-                defaultValue={editingCenter?.district || ""}
-                onChange={(e) => editForm.setValue("district", e.target.value)}
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+              <label className="text-xs font-semibold">
+                Ubicación (Departamento / Provincia / Distrito)
+              </label>
+              <UbigeoSelector
+                ubigeos={ubigeos}
+                value={editingCenter?.ubigeoId || ""}
+                onChange={(id) => editForm.setValue("ubigeoId", id || "")}
               />
             </div>
 

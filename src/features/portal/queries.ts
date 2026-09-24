@@ -13,6 +13,7 @@ import {
   users,
   clients,
   serviceTypes,
+  ubigeos,
 } from "@/db/index";
 
 export interface PortalLoginInfo {
@@ -31,10 +32,11 @@ export async function getPortalLoginInfo(
       id: costCenters.id,
       name: costCenters.name,
       address: costCenters.address,
-      district: costCenters.district,
+      district: ubigeos.distrito,
       passwordHash: costCenters.passwordHash,
     })
     .from(costCenters)
+    .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
     .where(and(eq(costCenters.id, costCenterId), isNull(costCenters.deletedAt)))
     .limit(1);
 
@@ -139,10 +141,11 @@ export async function getPortalDashboardData(
       id: costCenters.id,
       name: costCenters.name,
       address: costCenters.address,
-      district: costCenters.district,
+      district: ubigeos.distrito,
       mainPhotoUrl: costCenters.mainPhotoUrl,
     })
     .from(costCenters)
+    .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
     .where(and(eq(costCenters.id, costCenterId), isNull(costCenters.deletedAt)))
     .limit(1);
 
@@ -256,12 +259,13 @@ export async function getPortalWorkOrderDocument(
         clientName: clients.legalName,
         costCenterName: costCenters.name,
         costCenterAddress: costCenters.address,
-        costCenterDistrict: costCenters.district,
+        costCenterDistrict: ubigeos.distrito,
         technicianName: users.fullName,
         serviceTypeName: serviceTypes.name,
       })
       .from(workOrders)
       .innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id))
+      .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
       .innerJoin(clients, eq(costCenters.clientId, clients.id))
       .leftJoin(users, eq(workOrders.technicianId, users.id))
       .leftJoin(serviceTypes, eq(workOrders.type, serviceTypes.id))

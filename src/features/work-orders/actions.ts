@@ -139,6 +139,7 @@ export async function getWorkOrders(): Promise<WorkOrderWithRelations[]> {
         id: workOrders.id,
         otNumber: workOrders.otNumber,
         costCenterId: workOrders.costCenterId,
+        serviceTypeId: workOrders.serviceTypeId,
         technicianId: workOrders.technicianId,
         type: workOrders.type,
         status: workOrders.status,

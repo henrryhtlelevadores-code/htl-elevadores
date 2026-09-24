@@ -54,3 +54,30 @@ export const serviceTypeFormSchema = z.object({
 });
 
 export type ServiceTypeFormValues = z.infer<typeof serviceTypeFormSchema>;
+
+export const ubigeoFormSchema = z.object({
+  id: z
+    .string()
+    .min(2, "El código del ubigeo debe tener al menos 2 caracteres")
+    .max(20, "Máximo 20 caracteres"),
+  departamento: z.string().min(1, "El departamento es obligatorio"),
+  provincia: z.string().min(1, "La provincia es obligatoria"),
+  distrito: z.string().min(1, "El distrito es obligatorio"),
+  latitud: z.union([z.literal(""), z.coerce.number()]).optional(),
+  longitud: z.union([z.literal(""), z.coerce.number()]).optional(),
+});
+
+export type UbigeoFormValues = z.infer<typeof ubigeoFormSchema>;
+
+export const ubigeoBulkItemSchema = z.object({
+  Ubigeo: z.string().min(1, "El código de ubigeo es obligatorio"),
+  Departamento: z.string().min(1, "El departamento es obligatorio"),
+  Provincia: z.string().min(1, "La provincia es obligatoria"),
+  Distrito: z.string().min(1, "El distrito es obligatorio"),
+  Latitud: z.coerce.number().optional(),
+  Longitud: z.coerce.number().optional(),
+});
+
+export const ubigeoBulkImportSchema = z.array(ubigeoBulkItemSchema).min(1);
+
+export type UbigeoBulkImportValues = z.infer<typeof ubigeoBulkImportSchema>;

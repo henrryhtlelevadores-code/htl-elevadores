@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { type Client, type CostCenter, type CostCenterContact } from "@/db";
+import { type Client, type CostCenter, type CostCenterContact, type Ubigeo } from "@/db";
 import { updateCostCenter } from "../actions";
 import { CredentialsManager } from "./credentials-manager";
 import { ContactsTable } from "./contacts-table";
+import { UbigeoSelector } from "./ubigeo-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ export type VenueTab = "credentials" | "contacts" | "settings";
 interface CostCenterDetailViewProps {
   client: Client;
   costCenter: CostCenter;
+  ubigeos: Ubigeo[];
   contacts: CostCenterContact[];
   tab: VenueTab;
   onTabChange: (tab: VenueTab) => void;
@@ -39,6 +41,7 @@ interface CostCenterDetailViewProps {
 export function CostCenterDetailView({
   client,
   costCenter,
+  ubigeos,
   contacts,
   tab,
   onTabChange,
@@ -48,8 +51,10 @@ export function CostCenterDetailView({
   const [copied, setCopied] = useState(false);
   const [name, setName] = useState(costCenter.name);
   const [address, setAddress] = useState(costCenter.address || "");
-  const [district, setDistrict] = useState(costCenter.district || "");
+  const [ubigeoId, setUbigeoId] = useState(costCenter.ubigeoId || "");
   const [isPending, startTransition] = useTransition();
+
+  const distrito = ubigeos.find((u) => u.id === ubigeoId)?.distrito || "";
 
   function handleCopyId() {
     navigator.clipboard.writeText(costCenter.id).then(() => {
@@ -62,7 +67,7 @@ export function CostCenterDetailView({
   function handleResetForm() {
     setName(costCenter.name);
     setAddress(costCenter.address || "");
-    setDistrict(costCenter.district || "");
+    setUbigeoId(costCenter.ubigeoId || "");
   }
 
   function handleSaveSettings() {
@@ -73,7 +78,7 @@ export function CostCenterDetailView({
       return;
     }
     startTransition(async () => {
-      const res = await updateCostCenter(costCenter.id, { name, address, district });
+      const res = await updateCostCenter(costCenter.id, { name, address, ubigeoId });
       if (res.success) {
         toast.success("Sede actualizada", {
           description: "Los cambios de configuración se guardaron.",
@@ -137,7 +142,9 @@ export function CostCenterDetailView({
                 <IconMapPin className="size-3 text-[#0066CC] shrink-0" />
                 <span>
                   {costCenter.address || "Sin dirección registrada"}
-                  {costCenter.district ? `, ${costCenter.district}` : ""}
+                  {ubigeos.find((u) => u.id === costCenter.ubigeoId)?.distrito
+                    ? `, ${ubigeos.find((u) => u.id === costCenter.ubigeoId)?.distrito}`
+                    : ""}
                 </span>
               </p>
             </div>
@@ -223,14 +230,18 @@ export function CostCenterDetailView({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold">Distrito</label>
-              <Input
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                placeholder="Ej: San Miguel"
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+              <label className="text-xs font-semibold">
+                Ubicación (Departamento / Provincia / Distrito)
+              </label>
+              <UbigeoSelector
+                ubigeos={ubigeos}
+                value={ubigeoId}
+                onChange={(id) => setUbigeoId(id || "")}
               />
             </div>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              {distrito ? `Distrito seleccionado: ${distrito}` : "Sin distrito seleccionado."}
+            </p>
 
             <div className="flex justify-end gap-2">
               <Button

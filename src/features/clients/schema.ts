@@ -63,9 +63,8 @@ export const costCenterFormSchema = z.object({
     .string()
     .min(2, "La dirección es obligatoria")
     .max(250, "Máximo 250 caracteres"),
-  district: z
+  ubigeoId: z
     .string()
-    .max(120, "Máximo 120 caracteres")
     .optional()
     .or(z.literal("")),
 });

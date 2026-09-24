@@ -378,7 +378,7 @@ function BrandsTable({ brands, models, onSelectBrand }: BrandsTableProps) {
 
       {/* Modal: Editar Marca */}
       <Dialog open={!!editingBrand} onOpenChange={(open) => !open && setEditingBrand(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingBrand?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Pencil className="size-4 text-[#0066CC]" />
@@ -772,7 +772,7 @@ function ModelsPanel({ brand, models, onBack }: ModelsPanelProps) {
 
       {/* Modal: Editar Modelo */}
       <Dialog open={!!editingModel} onOpenChange={(open) => !open && setEditingModel(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent key={editingModel?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Pencil className="size-4 text-[#0066CC]" />

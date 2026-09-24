@@ -161,7 +161,7 @@ export async function createCostCenter(data: CostCenterFormValues) {
       clientId: validated.clientId,
       name: validated.name.trim(),
       address: validated.address.trim(),
-      district: validated.district?.trim() || null,
+      ubigeoId: validated.ubigeoId?.trim() || null,
     });
 
     revalidatePath("/clients");
@@ -174,10 +174,10 @@ export async function createCostCenter(data: CostCenterFormValues) {
 
 export async function updateCostCenter(id: string, data: Partial<CostCenterFormValues>) {
   try {
-    const updateData: { name?: string; address?: string; district?: string | null } = {};
+    const updateData: { name?: string; address?: string; ubigeoId?: string | null } = {};
     if (data.name) updateData.name = data.name.trim();
     if (data.address) updateData.address = data.address.trim();
-    if (data.district !== undefined) updateData.district = data.district?.trim() || null;
+    if (data.ubigeoId !== undefined) updateData.ubigeoId = data.ubigeoId?.trim() || null;
 
     await db.update(costCenters).set(updateData).where(eq(costCenters.id, id));
 

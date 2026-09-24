@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import { type CostCenter } from "@/db";
+import { type CostCenter, type Ubigeo } from "@/db";
 import { type ClientWithStats } from "../actions";
 import { ClientsTable } from "./clients-table";
 import { CostCentersTable } from "./cost-centers-table";
@@ -37,12 +37,14 @@ interface ClientUnifiedViewProps {
   initialClients: ClientWithStats[];
   initialCostCenters: CostCenter[];
   initialContacts: ContactItem[];
+  initialUbigeos: Ubigeo[];
 }
 
 export function ClientUnifiedView({
   initialClients,
   initialCostCenters,
   initialContacts,
+  initialUbigeos,
 }: ClientUnifiedViewProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<string>("");
@@ -186,6 +188,7 @@ export function ClientUnifiedView({
         <CostCenterDetailView
           client={selectedClient}
           costCenter={selectedCostCenter}
+          ubigeos={initialUbigeos}
           contacts={costCenterContacts}
           tab={venueTab}
           onTabChange={setVenueTab}
@@ -297,6 +300,7 @@ export function ClientUnifiedView({
       <CostCentersTable
         client={selectedClient}
         costCenters={clientCostCenters}
+        ubigeos={initialUbigeos}
         contactsCount={contactsCountMap}
         onSelectCostCenter={handleSelectCostCenter}
         onManageCredential={handleManageCredential}

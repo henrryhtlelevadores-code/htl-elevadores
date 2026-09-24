@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Map,
+  ReceiptText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -50,6 +51,11 @@ const navItems = [
     title: "Órdenes de Trabajo",
     href: "/work-orders",
     icon: ClipboardList,
+  },
+  {
+    title: "Facturas",
+    href: "/invoices",
+    icon: ReceiptText,
   },
   {
     title: "Seguridad",

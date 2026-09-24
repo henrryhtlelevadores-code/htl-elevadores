@@ -1,22 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { type Brand, type ElevatorType, type ServiceType } from "@/db";
+import { type Brand, type ElevatorType, type ServiceType, type Ubigeo } from "@/db";
 import { type ModelWithBrand } from "../actions";
 import { BrandsModelsTab } from "./brands-models-tab";
 import { TypesTab } from "./types-tab";
 import { ServiceTypesTab } from "./service-types-tab";
+import { UbigeosTab } from "./ubigeos-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tag, Cpu, Layers, Database, Wrench } from "lucide-react";
+import { Tag, Cpu, Layers, Database, Wrench, MapPin } from "lucide-react";
 
 interface MastersViewProps {
   brands: Brand[];
   types: ElevatorType[];
   models: ModelWithBrand[];
   serviceTypes: ServiceType[];
+  ubigeos: Ubigeo[];
 }
 
-export function MastersView({ brands, types, models, serviceTypes }: MastersViewProps) {
+export function MastersView({ brands, types, models, serviceTypes, ubigeos }: MastersViewProps) {
   const [activeTab, setActiveTab] = useState("brands-models");
 
   return (
@@ -57,32 +59,44 @@ export function MastersView({ brands, types, models, serviceTypes }: MastersView
             <span className="text-muted-foreground">Servicios:</span>
             <span className="text-foreground font-bold">{serviceTypes.length}</span>
           </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-card border border-border text-xs font-mono shadow-xs">
+            <MapPin className="size-3 text-[#0066CC]" />
+            <span className="text-muted-foreground">Ubigeos:</span>
+            <span className="text-foreground font-bold">{ubigeos.length}</span>
+          </div>
         </div>
       </div>
 
       {/* Tabs Layout */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="bg-card border border-border p-1 h-10 rounded-lg shadow-xs">
+        <TabsList className="w-full overflow-x-auto bg-card border border-border p-1 h-10 rounded-lg shadow-xs sm:w-fit sm:overflow-x-visible">
           <TabsTrigger
             value="brands-models"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
           >
             <Tag className="size-3.5" />
             <span>Marcas y Modelos</span>
           </TabsTrigger>
           <TabsTrigger
             value="types"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
           >
             <Cpu className="size-3.5" />
             <span>Tipos de Equipos ({types.length})</span>
           </TabsTrigger>
           <TabsTrigger
             value="service-types"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
           >
             <Wrench className="size-3.5" />
             <span>Tipos de Servicio ({serviceTypes.length})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="ubigeos"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+          >
+            <MapPin className="size-3.5" />
+            <span>Ubigeos ({ubigeos.length})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -96,6 +110,10 @@ export function MastersView({ brands, types, models, serviceTypes }: MastersView
 
         <TabsContent value="service-types" className="outline-hidden focus:outline-none">
           <ServiceTypesTab initialServiceTypes={serviceTypes} />
+        </TabsContent>
+
+        <TabsContent value="ubigeos" className="outline-hidden focus:outline-none">
+          <UbigeosTab initialUbigeos={ubigeos} />
         </TabsContent>
       </Tabs>
     </div>
