@@ -177,7 +177,7 @@ export function ClientUnifiedView({
     return (
       <div className="space-y-6">
         {header}
-        <ClientsTable clients={initialClients} onSelectClient={handleSelectClient} />
+        <ClientsTable clients={initialClients} ubigeos={initialUbigeos} onSelectClient={handleSelectClient} />
       </div>
     );
   }

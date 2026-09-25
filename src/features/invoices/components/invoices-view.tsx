@@ -27,6 +27,7 @@ import {
   type InvoiceFormData,
   getInvoiceItems,
 } from "../actions";
+import { PAYER_RELATIONSHIP_LABELS, PAYER_TAX_ID_TYPE_LABELS } from "../schema";
 import { InvoiceCreateDialog } from "./invoice-create-dialog";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +39,7 @@ import {
   MapPin,
   Plus,
   ReceiptText,
+  User,
 } from "lucide-react";
 
 interface InvoicesViewProps {
@@ -131,6 +133,100 @@ function InfoChip({ label, value }: { label: string; value: React.ReactNode }) {
         {label}
       </div>
       <div className="text-xs font-bold truncate">{value}</div>
+    </div>
+  );
+}
+
+function isThirdPartyPayer(invoice: InvoiceListItem) {
+  return invoice.payerType === "THIRD_PARTY";
+}
+
+function PayerBadge({ invoice }: { invoice: InvoiceListItem }) {
+  if (isThirdPartyPayer(invoice)) {
+    return (
+      <Badge
+        variant="outline"
+        className="border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold gap-1"
+      >
+        <User className="size-3" />
+        Pagador: tercero
+      </Badge>
+    );
+  }
+  return (
+    <span className="text-[11px] text-muted-foreground">Centro de costos</span>
+  );
+}
+
+function PayerBlock({ invoice }: { invoice: InvoiceListItem }) {
+  if (!isThirdPartyPayer(invoice)) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/30 p-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <User className="size-3.5" />
+          Pagador
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Paga el centro de costos{" "}
+          <strong className="text-foreground">
+            {invoice.cost_center_name ?? "—"}
+          </strong>
+          . El comprobante se emite a nombre de {invoice.client_name}
+          {invoice.clientTaxIdSnapshot ? ` (${invoice.clientTaxIdSnapshot})` : ""}.
+        </p>
+      </div>
+    );
+  }
+
+  const rows: Array<{ label: string; value: React.ReactNode }> = [
+    {
+      label: invoice.payerTaxIdType
+        ? (PAYER_TAX_ID_TYPE_LABELS[invoice.payerTaxIdType] ?? invoice.payerTaxIdType)
+        : "Documento",
+      value: invoice.payerTaxId ?? "—",
+    },
+    {
+      label: "Relación",
+      value: invoice.payerRelationship
+        ? (PAYER_RELATIONSHIP_LABELS[invoice.payerRelationship] ?? invoice.payerRelationship)
+        : "—",
+    },
+  ];
+
+  if (invoice.payerCommercialName) {
+    rows.push({ label: "Nombre comercial", value: invoice.payerCommercialName });
+  }
+  if (invoice.payerPhone) rows.push({ label: "Teléfono", value: invoice.payerPhone });
+  if (invoice.payerEmail) rows.push({ label: "Correo", value: invoice.payerEmail });
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <User className="size-3.5" />
+        Pagador
+      </div>
+      <div className="flex items-center gap-1.5 text-sm font-bold text-amber-700 dark:text-amber-400">
+        <User className="size-3.5" />
+        Tercero: {invoice.payerName ?? "—"}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {rows.map((row) => (
+          <InfoChip key={row.label} label={row.label} value={row.value} />
+        ))}
+      </div>
+      {invoice.payerNotes && (
+        <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Notas
+          </div>
+          <div className="text-xs">{invoice.payerNotes}</div>
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground leading-snug">
+        El comprobante fiscal se emitió a nombre de {invoice.client_name}
+        {invoice.clientTaxIdSnapshot ? ` (${invoice.clientTaxIdSnapshot})` : ""}. El pagador es
+        solo referencial y no altera los datos fiscales del comprobante.
+      </p>
     </div>
   );
 }
@@ -314,6 +410,11 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
         cell: ({ row }) => <PaymentBadge status={row.getValue("paymentStatus")} />,
       },
       {
+        id: "payer",
+        header: "Pagador",
+        cell: ({ row }) => <PayerBadge invoice={row.original} />,
+      },
+      {
         id: "actions",
         header: () => <div className="text-right">Acciones</div>,
         cell: ({ row }) => (
@@ -474,7 +575,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
                 />
                 <InfoChip label="IGV" value={formatAmount(viewing.currency, viewing.igv)} />
                 <InfoChip
-                  label="Total"
+                  label="Precio Total"
                   value={
                     <span className="text-sm font-extrabold text-[#0066CC] dark:text-blue-400">
                       {formatAmount(viewing.currency, viewing.total)}
@@ -498,6 +599,9 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
                   value={formatAmount(viewing.currency, viewing.netPayable)}
                 />
               </div>
+
+              {/* Pagador */}
+              <PayerBlock invoice={viewing} />
 
               {/* Conceptos */}
               <div className="space-y-2">

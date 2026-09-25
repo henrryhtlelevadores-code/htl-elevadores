@@ -71,8 +71,9 @@ export async function createClient(data: ClientFormValues) {
   try {
     const validated = clientFormSchema.parse(data);
 
+    const clientId = generateUuid();
     await db.insert(clients).values({
-      id: generateUuid(),
+      id: clientId,
       legalName: validated.legalName.trim(),
       taxId: validated.taxId?.trim() || null,
       taxIdType: validated.taxIdType || "RUC",
@@ -80,8 +81,20 @@ export async function createClient(data: ClientFormValues) {
       billingEmail: validated.billingEmail?.trim() || null,
     });
 
+    let createdHeadquarters = false;
+    if (validated.createDefaultHeadquarters && validated.headquartersAddress?.trim()) {
+      await db.insert(costCenters).values({
+        id: generateUuid(),
+        clientId,
+        name: "Sede Principal",
+        address: validated.headquartersAddress.trim(),
+        ubigeoId: validated.headquartersUbigeoId?.trim() || null,
+      });
+      createdHeadquarters = true;
+    }
+
     revalidatePath("/clients");
-    return { success: true, message: "Cliente registrado correctamente" };
+    return { success: true, message: "Cliente registrado correctamente", createdHeadquarters };
   } catch (error) {
     console.error("Error al crear cliente:", error);
     if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
@@ -95,13 +108,15 @@ export async function updateClient(id: string, data: Partial<ClientFormValues>) 
   try {
     const updateData: {
       legalName?: string;
-      taxId?: string;
+      taxId?: string | null;
+      taxIdType?: string;
       billingAddress?: string | null;
       billingEmail?: string | null;
       status?: string;
     } = {};
     if (data.legalName) updateData.legalName = data.legalName.trim();
-    if (data.taxId) updateData.taxId = data.taxId.trim();
+    if (data.taxId !== undefined) updateData.taxId = data.taxId?.trim() || null;
+    if (data.taxIdType) updateData.taxIdType = data.taxIdType;
     if (data.billingAddress !== undefined)
       updateData.billingAddress = data.billingAddress?.trim() || null;
     if (data.billingEmail !== undefined)

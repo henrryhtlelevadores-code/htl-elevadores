@@ -5,12 +5,15 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
+import { type Ubigeo } from "@/db";
 import { type ClientWithStats, createClient, updateClient, deleteClient } from "../actions";
 import { clientFormSchema, type ClientFormValues } from "../schema";
+import { UbigeoSelector } from "./ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "cn";
 import {
   Plus,
   Pencil,
@@ -46,41 +50,55 @@ import {
   Eye,
   MapPin,
   FileCheck2,
+  Check,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
+
+const CREATE_STEPS = [
+  { title: "Datos del Cliente" },
+  { title: "Sede por Defecto" },
+];
+
+const EMPTY_CLIENT_VALUES: ClientFormValues = {
+  legalName: "",
+  taxId: "",
+  taxIdType: "RUC",
+  isProcessingRuc: false,
+  billingAddress: "",
+  billingEmail: "",
+  createDefaultHeadquarters: false,
+  headquartersAddress: "",
+  headquartersUbigeoId: "",
+};
 
 interface ClientsTableProps {
   clients: ClientWithStats[];
+  ubigeos: Ubigeo[];
   onSelectClient: (client: ClientWithStats) => void;
 }
 
-export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
+export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState(0);
   const [editingClient, setEditingClient] = useState<ClientWithStats | null>(null);
   const [deletingClient, setDeletingClient] = useState<ClientWithStats | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const createForm = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as unknown as Resolver<ClientFormValues>,
-    defaultValues: {
-      legalName: "",
-      taxId: "",
-      taxIdType: "RUC",
-      billingAddress: "",
-      billingEmail: "",
-    },
+    defaultValues: EMPTY_CLIENT_VALUES,
   });
 
-  const editForm = useForm<{ legalName: string; taxId: string; billingAddress: string; billingEmail: string }>({
-    defaultValues: {
-      legalName: "",
-      taxId: "",
-      billingAddress: "",
-      billingEmail: "",
-    },
+  const editForm = useForm<ClientFormValues>({
+    resolver: zodResolver(clientFormSchema) as unknown as Resolver<ClientFormValues>,
+    defaultValues: { ...EMPTY_CLIENT_VALUES, createDefaultHeadquarters: false },
   });
 
   function handleOpenCreate() {
-    createForm.reset({ legalName: "", taxId: "", taxIdType: "RUC", billingAddress: "", billingEmail: "" });
+    createForm.reset(EMPTY_CLIENT_VALUES);
+    createForm.clearErrors();
+    setCreateStep(0);
     setIsCreateOpen(true);
   }
 
@@ -89,27 +107,65 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
     editForm.reset({
       legalName: client.legalName,
       taxId: client.taxId || "",
+      taxIdType: (client.taxIdType as ClientFormValues["taxIdType"]) || "RUC",
       billingAddress: client.billingAddress || "",
       billingEmail: client.billingEmail || "",
+      isProcessingRuc: false,
+      createDefaultHeadquarters: false,
+      headquartersAddress: "",
+      headquartersUbigeoId: "",
     });
   }
 
+  const wantsHeadquarters = createForm.watch("createDefaultHeadquarters");
+  const visibleSteps = wantsHeadquarters ? CREATE_STEPS : CREATE_STEPS.slice(0, 1);
+
+  async function handleCreateNext() {
+    const ok = await createForm.trigger([
+      "legalName",
+      "taxIdType",
+      "taxId",
+      "billingAddress",
+      "billingEmail",
+    ]);
+    if (ok) setCreateStep((s) => Math.min(s + 1, visibleSteps.length - 1));
+  }
+
+  function handleCreateBack() {
+    setCreateStep((s) => Math.max(s - 1, 0));
+  }
+
+  function handleToggleHeadquarters(checked: boolean) {
+    createForm.setValue("createDefaultHeadquarters", checked, { shouldValidate: true });
+    if (!checked) {
+      setCreateStep(0);
+      createForm.clearErrors("headquartersAddress");
+    }
+  }
+
   function handleCreateSubmit(values: ClientFormValues) {
+    if (createStep < visibleSteps.length - 1) {
+      handleCreateNext();
+      return;
+    }
     startTransition(async () => {
       const res = await createClient(values);
       if (res.success) {
         toast.success("Cliente registrado", {
-          description: `El cliente "${values.legalName}" se guardó correctamente.`,
+          description: res.createdHeadquarters
+            ? `El cliente "${values.legalName}" se guardó junto con su sede principal.`
+            : `El cliente "${values.legalName}" se guardó correctamente.`,
         });
         setIsCreateOpen(false);
-        createForm.reset();
+        setCreateStep(0);
+        createForm.reset(EMPTY_CLIENT_VALUES);
       } else {
         toast.error("Error al registrar cliente", { description: res.error });
       }
     });
   }
 
-  function handleEditSubmit(values: { legalName: string; taxId: string; billingAddress: string; billingEmail: string }) {
+  function handleEditSubmit(values: ClientFormValues) {
     if (!editingClient) return;
     startTransition(async () => {
       const res = await updateClient(editingClient.id, values);
@@ -270,7 +326,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
 
       {/* Modal: Crear Cliente */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
+        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Plus className="size-4 text-[#0066CC]" />
@@ -281,19 +337,308 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
             </DialogDescription>
           </DialogHeader>
 
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {visibleSteps.map((s, i) => {
+              const done = createStep > i;
+              const active = createStep === i;
+              return (
+                <div key={s.title} className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <div
+                      className={cn(
+                        "size-6 rounded-full border flex items-center justify-center shrink-0",
+                        active
+                          ? "bg-[#0066CC] border-[#0066CC] text-white"
+                          : done
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "bg-muted/60 border-border text-muted-foreground"
+                      )}
+                    >
+                      {done ? <Check className="size-3.5" /> : <span className="text-[11px] font-bold">{i + 1}</span>}
+                    </div>
+                    <span
+                      className={cn(
+                        "text-xs font-semibold whitespace-nowrap",
+                        active ? "text-foreground" : done ? "text-foreground/70" : "text-muted-foreground"
+                      )}
+                    >
+                      {s.title}
+                    </span>
+                  </div>
+                  {i < visibleSteps.length - 1 && <div className="h-px w-6 bg-border mx-1 shrink-0" />}
+                </div>
+              );
+            })}
+          </div>
+
           <Form {...createForm}>
-            <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4 pt-2">
+            <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4 pt-1">
+              {createStep === 0 && (
+                <>
+                  <FormField
+                    control={createForm.control}
+                    name="legalName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Razón Social/Nombre Comercial</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            rows={2}
+                            placeholder="Ej: Corporación Real S.A."
+                            {...field}
+                            className="resize-none bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="taxIdType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Tipo de Documento</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                              <SelectValue placeholder="Selecciona el tipo de documento" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="RUC">RUC</SelectItem>
+                            <SelectItem value="DNI">DNI</SelectItem>
+                            <SelectItem value="CE">Carnet de Extranjería</SelectItem>
+                            <SelectItem value="SIN_DOC">Sin Documento</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {createForm.watch("taxIdType") !== "SIN_DOC" && (
+                    <FormField
+                      control={createForm.control}
+                      name="taxId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-semibold">Número del Documento</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder={
+                                createForm.watch("taxIdType") === "DNI"
+                                  ? "Ej: 12345678"
+                                  : createForm.watch("taxIdType") === "CE"
+                                    ? "Ej: 001234567"
+                                    : "Ej: 20100047218"
+                              }
+                              {...field}
+                              className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  <FormField
+                    control={createForm.control}
+                    name="billingAddress"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Dirección Fiscal</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            rows={2}
+                            placeholder="Ej: Av. Larco 1234, Miraflores"
+                            {...field}
+                            className="resize-none bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="isProcessingRuc"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className="text-xs font-semibold">
+                          Documento en trámite (está procesando su RUC)
+                        </FormLabel>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="billingEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Correo de Facturación</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="Ej: facturacion@empresa.com"
+                            {...field}
+                            className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="createDefaultHeadquarters"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={(checked) => handleToggleHeadquarters(checked === true)}
+                          />
+                        </FormControl>
+                        <FormLabel className="text-xs font-semibold">
+                          Crear sede por defecto
+                        </FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              {createStep === 1 && (
+                <>
+                  <FormField
+                    control={createForm.control}
+                    name="headquartersAddress"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Dirección de la Sede</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            rows={2}
+                            placeholder="Ej: Av. Larco 1234, Miraflores"
+                            {...field}
+                            className="resize-none bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="headquartersUbigeoId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">
+                          Ubicación (Departamento / Provincia / Distrito)
+                        </FormLabel>
+                        <FormControl>
+                          <UbigeoSelector
+                            ubigeos={ubigeos}
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="text-xs border-border"
+                >
+                  Cancelar
+                </Button>
+                {createStep > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCreateBack}
+                    className="text-xs border-border gap-1"
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    Volver
+                  </Button>
+                )}
+                {createStep < visibleSteps.length - 1 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCreateNext}
+                    className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-1"
+                  >
+                    Siguiente
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isPending}
+                    className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-2"
+                  >
+                    {isPending && <Loader2 className="size-3.5 animate-spin" />}
+                    Guardar Cliente
+                  </Button>
+                )}
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Editar Cliente */}
+      <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
+        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Pencil className="size-4 text-[#0066CC]" />
+              Editar Cliente
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Actualiza los datos comerciales de {editingClient?.legalName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4 pt-1">
               <FormField
-                control={createForm.control}
+                control={editForm.control}
                 name="legalName"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Razón Social/Nombre Comercial</FormLabel>
                     <FormControl>
-                      <Input
+                      <Textarea
+                        rows={2}
                         placeholder="Ej: Corporación Real S.A."
                         {...field}
-                        className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        className="resize-none bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                       />
                     </FormControl>
                     <FormMessage />
@@ -302,7 +647,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
               />
 
               <FormField
-                control={createForm.control}
+                control={editForm.control}
                 name="taxIdType"
                 render={({ field }) => (
                   <FormItem>
@@ -325,9 +670,9 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                 )}
               />
 
-              {createForm.watch("taxIdType") !== "SIN_DOC" && (
+              {editForm.watch("taxIdType") !== "SIN_DOC" && (
                 <FormField
-                  control={createForm.control}
+                  control={editForm.control}
                   name="taxId"
                   render={({ field }) => (
                     <FormItem>
@@ -335,9 +680,9 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                       <FormControl>
                         <Input
                           placeholder={
-                            createForm.watch("taxIdType") === "DNI"
+                            editForm.watch("taxIdType") === "DNI"
                               ? "Ej: 12345678"
-                              : createForm.watch("taxIdType") === "CE"
+                              : editForm.watch("taxIdType") === "CE"
                                 ? "Ej: 001234567"
                                 : "Ej: 20100047218"
                           }
@@ -352,16 +697,17 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
               )}
 
               <FormField
-                control={createForm.control}
+                control={editForm.control}
                 name="billingAddress"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Dirección Fiscal</FormLabel>
                     <FormControl>
-                      <Input
+                      <Textarea
+                        rows={2}
                         placeholder="Ej: Av. Larco 1234, Miraflores"
                         {...field}
-                        className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        className="resize-none bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                       />
                     </FormControl>
                     <FormMessage />
@@ -370,7 +716,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
               />
 
               <FormField
-                control={createForm.control}
+                control={editForm.control}
                 name="isProcessingRuc"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
@@ -388,7 +734,7 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
               />
 
               <FormField
-                control={createForm.control}
+                control={editForm.control}
                 name="billingEmail"
                 render={({ field }) => (
                   <FormItem>
@@ -406,70 +752,12 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                 )}
               />
 
-              <FormField
-                control={createForm.control}
-                name="createDefaultHeadquarters"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 space-y-0 rounded-md border border-border p-3">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormLabel className="text-xs font-semibold">
-                      Crear sede por defecto
-                    </FormLabel>
-                  </FormItem>
-                )}
-              />
-
-              {createForm.watch("createDefaultHeadquarters") && (
-                <>
-                  <FormField
-                    control={createForm.control}
-                    name="headquartersAddress"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-semibold">Dirección de la Sede</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ej: Av. Larco 1234"
-                            {...field}
-                            className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={createForm.control}
-                    name="district"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-semibold">Distrito</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ej: Miraflores"
-                            {...field}
-                            className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-
               <DialogFooter className="pt-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsCreateOpen(false)}
+                  onClick={() => setEditingClient(null)}
                   className="text-xs border-border"
                 >
                   Cancelar
@@ -481,86 +769,11 @@ export function ClientsTable({ clients, onSelectClient }: ClientsTableProps) {
                   className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-2"
                 >
                   {isPending && <Loader2 className="size-3.5 animate-spin" />}
-                  Guardar Cliente
+                  Guardar Cambios
                 </Button>
               </DialogFooter>
             </form>
           </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: Editar Cliente */}
-      <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-        <DialogContent key={editingClient?.id ?? "none"} className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <Pencil className="size-4 text-[#0066CC]" />
-              Editar Cliente
-            </DialogTitle>
-          </DialogHeader>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleEditSubmit({
-                legalName: editForm.getValues("legalName"),
-                taxId: editForm.getValues("taxId"),
-                billingAddress: editForm.getValues("billingAddress"),
-                billingEmail: editForm.getValues("billingEmail"),
-              });
-            }}
-            className="space-y-4 pt-2 space-y-3"
-          >
-            <div className="space-y-2">
-              <label className="text-xs font-semibold">Razón Social</label>
-              <Input
-                defaultValue={editingClient?.legalName}
-                onChange={(e) => editForm.setValue("legalName", e.target.value)}
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold">RUC</label>
-              <Input
-                defaultValue={editingClient?.taxId || ""}
-                onChange={(e) => editForm.setValue("taxId", e.target.value)}
-                className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold">Correo de Facturación</label>
-              <Input
-                defaultValue={editingClient?.billingEmail || ""}
-                onChange={(e) => editForm.setValue("billingEmail", e.target.value)}
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-              />
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setEditingClient(null)}
-                className="text-xs border-border"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isPending}
-                className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-2"
-              >
-                {isPending && <Loader2 className="size-3.5 animate-spin" />}
-                Guardar Cambios
-              </Button>
-            </DialogFooter>
-          </form>
         </DialogContent>
       </Dialog>
 

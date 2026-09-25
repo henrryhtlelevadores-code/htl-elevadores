@@ -14,6 +14,7 @@ import {
   clients,
   serviceTypes,
   ubigeos,
+  quotations,
 } from "@/db/index";
 
 export interface PortalLoginInfo {
@@ -86,6 +87,16 @@ export interface PortalInformeItem {
   equipmentCount: number;
 }
 
+export interface PortalQuotationItem {
+  id: string;
+  quotationNumber: string;
+  issueDate: number | null;
+  validUntil: number | null;
+  status: string | null;
+  total: number | null;
+  lineCount: number;
+}
+
 export interface PortalDashboardData {
   costCenter: {
     id: string;
@@ -97,6 +108,33 @@ export interface PortalDashboardData {
   equipments: PortalEquipmentItem[];
   recentWorkOrders: PortalWorkOrderItem[];
   informes: PortalInformeItem[];
+  quotations: PortalQuotationItem[];
+}
+
+export async function getPortalQuotations(
+  costCenterId: string
+): Promise<PortalQuotationItem[]> {
+  try {
+    const lineCount = sql<number>`(SELECT COUNT(*) FROM quotation_lines ql WHERE ql.quotation_id = quotations.id)`;
+
+    return await db
+      .select({
+        id: quotations.id,
+        quotationNumber: quotations.quotationNumber,
+        issueDate: quotations.issueDate,
+        validUntil: quotations.validUntil,
+        status: quotations.status,
+        total: quotations.total,
+        lineCount,
+      })
+      .from(quotations)
+      .where(eq(quotations.costCenterId, costCenterId))
+      .orderBy(desc(quotations.createdAt))
+      .limit(20);
+  } catch (error) {
+    console.error("Error al obtener cotizaciones del portal:", error);
+    return [];
+  }
 }
 
 export async function getPortalInformes(
@@ -152,7 +190,7 @@ export async function getPortalDashboardData(
   if (ccRows.length === 0) return null;
   const costCenter = ccRows[0];
 
-  const [equipments, workOrderRows, informeRows] = await Promise.all([
+  const [equipments, workOrderRows, informeRows, quotationRows] = await Promise.all([
     db
       .select({
         id: elevatorUnities.id,
@@ -189,9 +227,17 @@ export async function getPortalDashboardData(
       .limit(6),
 
     getPortalInformes(costCenterId),
+
+    getPortalQuotations(costCenterId),
   ]);
 
-  return { costCenter, equipments, recentWorkOrders: workOrderRows, informes: informeRows };
+  return {
+    costCenter,
+    equipments,
+    recentWorkOrders: workOrderRows,
+    informes: informeRows,
+    quotations: quotationRows,
+  };
 }
 
 export interface PortalDocumentTask {

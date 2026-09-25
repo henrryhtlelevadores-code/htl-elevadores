@@ -10,6 +10,8 @@ import {
   elevatorUnities,
   contractElevators,
   brands,
+  models,
+  elevatorTypes,
   ubigeos,
   type Contract,
   type ContractElevator,
@@ -264,6 +266,13 @@ export type ContractElevatorWithRelations = ContractElevator & {
   elevator_name?: string | null;
   cost_center_name?: string | null;
   brand_name?: string | null;
+  model_name?: string | null;
+  type_name?: string | null;
+  capacity_persons?: number | null;
+  capacity_kg?: number | null;
+  speed_ms?: number | null;
+  stops?: number | null;
+  floors?: number | null;
 };
 
 export async function getContractElevators(
@@ -282,11 +291,20 @@ export async function getContractElevators(
         elevator_name: elevatorUnities.name,
         cost_center_name: costCenters.name,
         brand_name: brands.name,
+        model_name: models.name,
+        type_name: elevatorTypes.name,
+        capacity_persons: elevatorUnities.capacityPersons,
+        capacity_kg: elevatorUnities.capacityKg,
+        speed_ms: elevatorUnities.speedMs,
+        stops: elevatorUnities.stops,
+        floors: elevatorUnities.floors,
       })
       .from(contractElevators)
       .innerJoin(elevatorUnities, eq(contractElevators.elevatorUnityId, elevatorUnities.id))
       .innerJoin(costCenters, eq(elevatorUnities.costCenterId, costCenters.id))
       .leftJoin(brands, eq(elevatorUnities.brandId, brands.id))
+      .leftJoin(models, eq(elevatorUnities.modelId, models.id))
+      .leftJoin(elevatorTypes, eq(elevatorUnities.elevatorTypeId, elevatorTypes.id))
       .orderBy(asc(elevatorUnities.internalCode));
 
     if (contractId) {

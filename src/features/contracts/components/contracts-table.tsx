@@ -182,6 +182,7 @@ export function ContractsTable({
   function handleOpenEdit(contract: ContractWithRelations) {
     setSelectedClientId(costCenters.find((cc) => cc.id === contract.costCenterId)?.clientId ?? "");
     setEditingContract(contract);
+    setIsCreateOpen(true);
     createForm.reset({
       costCenterId: contract.costCenterId,
       status: contract.status || "ACTIVE",
@@ -782,7 +783,7 @@ export function ContractsTable({
 
       {/* Modal: Ver Equipos del Contrato */}
       <Dialog open={!!viewingContract} onOpenChange={(open) => !open && setViewingContract(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent showCloseButton={false} className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <FileSignature className="size-4 text-[#0066CC]" />

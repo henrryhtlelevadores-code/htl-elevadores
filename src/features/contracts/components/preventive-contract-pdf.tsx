@@ -30,6 +30,13 @@ if (fs.existsSync(ARIAL_PATH) && fs.existsSync(ARIAL_BD_PATH)) {
 export interface ContractPdfElevator {
   brand: string;
   internalCode: string;
+  type: string;
+  model: string;
+  capacityKg: number | null;
+  capacityPersons: number | null;
+  speedMs: number | null;
+  stops: number | null;
+  floors: number | null;
 }
 
 export interface ContractTemplateData {
@@ -126,6 +133,27 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     marginBottom: 10,
   },
+  equipmentBlock: {
+    marginBottom: 8,
+  },
+  equipmentTitle: {
+    fontWeight: "bold",
+    marginBottom: 3,
+  },
+  equipmentColumns: {
+    flexDirection: "row",
+  },
+  equipmentColumn: {
+    width: "50%",
+    paddingRight: 12,
+  },
+  equipmentRow: {
+    fontSize: 9.5,
+    marginBottom: 2,
+  },
+  equipmentLabel: {
+    fontWeight: "bold",
+  },
   signaturesContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -219,14 +247,53 @@ export const PreventiveContractPDF: React.FC<ContractTemplateData> = (
 
         <View style={styles.list}>
           {data.elevators.map((elevator, index) => (
-            <Text key={index}>
-              {`• Equipo ${index + 1}: Marca ${elevator.brand || "—"} | Código Interno: ${elevator.internalCode}`}
-            </Text>
+            <View key={index} style={styles.equipmentBlock}>
+              <Text style={styles.equipmentTitle}>
+                {`Equipo ${index + 1} — Código Interno: ${elevator.internalCode || "—"}`}
+              </Text>
+              <View style={styles.equipmentColumns}>
+                <View style={styles.equipmentColumn}>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Tipo: </Text>
+                    {elevator.type || "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Marca: </Text>
+                    {elevator.brand || "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Modelo: </Text>
+                    {elevator.model || "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Capacidad: </Text>
+                    {elevator.capacityKg != null ? `${elevator.capacityKg} kg` : "—"}
+                  </Text>
+                </View>
+                <View style={styles.equipmentColumn}>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Personas: </Text>
+                    {elevator.capacityPersons != null ? String(elevator.capacityPersons) : "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Velocidad: </Text>
+                    {elevator.speedMs != null ? `${elevator.speedMs} m/s` : "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Paradas: </Text>
+                    {elevator.stops != null ? String(elevator.stops) : "—"}
+                  </Text>
+                  <Text style={styles.equipmentRow}>
+                    <Text style={styles.equipmentLabel}>Pisos: </Text>
+                    {elevator.floors != null ? String(elevator.floors) : "—"}
+                  </Text>
+                </View>
+              </View>
+            </View>
           ))}
           {data.elevatorsCount > 0 && (
             <Text>• Cantidad: {data.elevatorsCount} ascensor(es)</Text>
           )}
-          <Text>• Características: {data.elevatorsFeatures}</Text>
         </View>
 
         <Text style={styles.paragraph}>

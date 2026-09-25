@@ -29,15 +29,14 @@ export const clientFormSchema = z
       .max(150, "Máximo 150 caracteres")
       .optional()
       .or(z.literal("")),
-    createDefaultHeadquarters: z.boolean().default(true),
+    createDefaultHeadquarters: z.boolean().default(false),
     headquartersAddress: z
       .string()
       .max(250, "Máximo 250 caracteres")
       .optional()
       .or(z.literal("")),
-    district: z
+    headquartersUbigeoId: z
       .string()
-      .max(120, "Máximo 120 caracteres")
       .optional()
       .or(z.literal("")),
   })
@@ -47,6 +46,13 @@ export const clientFormSchema = z
         code: "custom",
         path: ["taxId"],
         message: "El documento es obligatorio para el tipo seleccionado",
+      });
+    }
+    if (data.createDefaultHeadquarters && !data.headquartersAddress?.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["headquartersAddress"],
+        message: "La dirección de la sede es obligatoria",
       });
     }
   });

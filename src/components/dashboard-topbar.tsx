@@ -16,6 +16,7 @@ const routeNames: Record<string, string> = {
   "/users": "Personal y Usuarios",
   "/masters": "Tablas Maestras",
   "/reports": "Informes Técnicos",
+  "/quotations": "Cotizaciones",
 };
 
 const ROLE_LABELS: Record<string, string> = {

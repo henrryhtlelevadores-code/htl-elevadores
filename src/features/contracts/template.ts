@@ -47,6 +47,13 @@ export function buildContractTemplateData(
     elevators: (contract.elevators ?? []).map((elevator) => ({
       brand: elevator.brand_name ?? "",
       internalCode: elevator.internal_code ?? "",
+      type: elevator.type_name ?? "",
+      model: elevator.model_name ?? "",
+      capacityKg: elevator.capacity_kg ?? null,
+      capacityPersons: elevator.capacity_persons ?? null,
+      speedMs: elevator.speed_ms ?? null,
+      stops: elevator.stops ?? null,
+      floors: elevator.floors ?? null,
     })),
     elevatorsBrand: firstElevator?.brand_name ?? variables.elevators_brand ?? "",
     elevatorsInternalCode:

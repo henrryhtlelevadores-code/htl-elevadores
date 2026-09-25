@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { PortalDashboardData, PortalInformeItem } from "../queries";
+import type { PortalDashboardData, PortalInformeItem, PortalQuotationItem } from "../queries";
 import {
   Building2,
   MapPin,
@@ -11,6 +11,7 @@ import {
   Activity,
   FileText,
   ArrowRight,
+  ReceiptText,
 } from "lucide-react";
 
 const COVER_FALLBACK =
@@ -76,8 +77,37 @@ function informeLink(costCenterId: string, item: PortalInformeItem): string {
   return `/portal/${costCenterId}/informes/${item.id}`;
 }
 
+function quotationLink(costCenterId: string, item: PortalQuotationItem): string {
+  return `/portal/${costCenterId}/cotizaciones/${item.id}`;
+}
+
+function quotationStatusLabel(status: string | null): { label: string; className: string } {
+  switch (status) {
+    case "ACCEPTED":
+      return {
+        label: "Aceptada",
+        className: "bg-emerald-50 text-emerald-700 border border-emerald-100",
+      };
+    case "SENT":
+      return { label: "Enviada", className: "bg-blue-50 text-blue-700 border border-blue-100" };
+    case "REJECTED":
+      return { label: "Rechazada", className: "bg-red-50 text-red-700 border border-red-100" };
+    case "DRAFT":
+      return { label: "Borrador", className: "bg-amber-50 text-amber-700 border border-amber-100" };
+    default:
+      return { label: status || "—", className: "bg-slate-100 text-slate-600" };
+  }
+}
+
+const quotationMoney = (value: number | null) =>
+  Number(value ?? 0).toLocaleString("es-PE", {
+    style: "currency",
+    currency: "PEN",
+    minimumFractionDigits: 2,
+  });
+
 export function CostCenterDashboard({ data }: { data: PortalDashboardData }) {
-  const { costCenter, equipments, recentWorkOrders, informes } = data;
+  const { costCenter, equipments, recentWorkOrders, informes, quotations } = data;
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -266,6 +296,51 @@ export function CostCenterDashboard({ data }: { data: PortalDashboardData }) {
                       </Link>
                     </li>
                   ))}
+                </ul>
+              )}
+            </div>
+            <div className="p-5 sm:p-6 rounded-lg bg-white border border-slate-200">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <ReceiptText className="w-5 h-5 text-[#021133]" /> Cotizaciones
+              </h3>
+              {quotations.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Aún no hay cotizaciones para este edificio.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {quotations.map((item) => {
+                    const status = quotationStatusLabel(item.status);
+                    return (
+                      <li key={item.id}>
+                        <Link
+                          href={quotationLink(costCenter.id, item)}
+                          className="group block p-3 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono font-semibold text-sm text-slate-900 truncate">
+                              {item.quotationNumber}
+                            </p>
+                            <span
+                              className={`px-2.5 py-0.5 text-[11px] rounded-full font-medium shrink-0 ${status.className}`}
+                            >
+                              {status.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {item.issueDate
+                              ? `Emitida el ${formatDate(item.issueDate)}`
+                              : "Sin fecha de emisión"}{" "}
+                            • {quotationMoney(item.total)}
+                          </p>
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-[#021133] mt-2">
+                            <FileText className="w-3.5 h-3.5" />
+                            Ver cotización y PDF
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

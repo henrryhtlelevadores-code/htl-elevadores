@@ -15,7 +15,8 @@ import {
 import { eq, asc, desc, isNull, count, sql, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
-import { type InvoiceFormValues } from "./schema";
+import { ZodError } from "zod";
+import { invoiceFormSchema, buildPayerColumns, type InvoiceFormValues } from "./schema";
 
 export interface ActionResult {
   success: boolean;
@@ -51,6 +52,15 @@ export type InvoiceListItem = {
   sunatStatus: string | null;
   paymentStatus: string | null;
   clientTaxIdSnapshot: string | null;
+  payerType: string | null;
+  payerTaxIdType: string | null;
+  payerTaxId: string | null;
+  payerName: string | null;
+  payerCommercialName: string | null;
+  payerPhone: string | null;
+  payerEmail: string | null;
+  payerRelationship: string | null;
+  payerNotes: string | null;
   itemCount: number;
   itemTotal: number;
 };
@@ -86,6 +96,15 @@ export async function getInvoices(): Promise<InvoiceListItem[]> {
         sunatStatus: invoices.sunatStatus,
         paymentStatus: invoices.paymentStatus,
         clientTaxIdSnapshot: invoices.clientTaxIdSnapshot,
+        payerType: invoices.payerType,
+        payerTaxIdType: invoices.payerTaxIdType,
+        payerTaxId: invoices.payerTaxId,
+        payerName: invoices.payerName,
+        payerCommercialName: invoices.payerCommercialName,
+        payerPhone: invoices.payerPhone,
+        payerEmail: invoices.payerEmail,
+        payerRelationship: invoices.payerRelationship,
+        payerNotes: invoices.payerNotes,
       })
       .from(invoices)
       .innerJoin(clients, eq(invoices.clientId, clients.id))
@@ -137,6 +156,15 @@ export async function getInvoices(): Promise<InvoiceListItem[]> {
         sunatStatus: row.sunatStatus,
         paymentStatus: row.paymentStatus,
         clientTaxIdSnapshot: row.clientTaxIdSnapshot,
+        payerType: row.payerType,
+        payerTaxIdType: row.payerTaxIdType,
+        payerTaxId: row.payerTaxId,
+        payerName: row.payerName,
+        payerCommercialName: row.payerCommercialName,
+        payerPhone: row.payerPhone,
+        payerEmail: row.payerEmail,
+        payerRelationship: row.payerRelationship,
+        payerNotes: row.payerNotes,
         itemCount: agg?.itemCount ?? 0,
         itemTotal: agg?.itemTotal ?? 0,
       };
@@ -289,9 +317,12 @@ function toTimestamp(dateStr: string | undefined): number | null {
 
 export async function createInvoice(values: InvoiceFormValues): Promise<ActionResult> {
   try {
-    const contractId = values.contractId || null;
-    const costCenterId = values.costCenterId || null;
-    const issueDate = values.issueDate || null;
+    const validated = invoiceFormSchema.parse(values);
+    const payer = buildPayerColumns(validated);
+
+    const contractId = validated.contractId || null;
+    const costCenterId = validated.costCenterId || null;
+    const issueDate = validated.issueDate || null;
     const taxPeriod = issueDate ? issueDate.slice(0, 7) : null;
 
     const clientRow = await db
@@ -302,10 +333,10 @@ export async function createInvoice(values: InvoiceFormValues): Promise<ActionRe
         billingAddress: clients.billingAddress,
       })
       .from(clients)
-      .where(eq(clients.id, values.clientId))
+      .where(eq(clients.id, validated.clientId))
       .limit(1);
 
-    const computedItems = values.items.map((item) => {
+    const computedItems = validated.items.map((item) => {
       const quantity = CENTS(Number(item.quantity) || 0);
       const unitPrice = CENTS(Number(item.unitPrice) || 0);
       const subtotal = CENTS(quantity * unitPrice);
@@ -318,27 +349,27 @@ export async function createInvoice(values: InvoiceFormValues): Promise<ActionRe
       };
     });
 
-    const taxableBase = CENTS(computedItems.reduce((acc, it) => acc + it.subtotal, 0));
-    const igv = CENTS(taxableBase * IGV_RATE);
-    const total = CENTS(taxableBase + igv);
+    const total = CENTS(computedItems.reduce((acc, it) => acc + it.subtotal, 0));
+    const taxableBase = CENTS(total / (1 + IGV_RATE));
+    const igv = CENTS(total - taxableBase);
     const rentaAmount = CENTS(total * RENTA_RATE);
     const detractionAmount =
-      total > DETRACTION_THRESHOLD ? CENTS(total * DETRACTION_RATE) : 0;
+      total >= DETRACTION_THRESHOLD ? CENTS(total * DETRACTION_RATE) : 0;
     const netPayable = CENTS(total - detractionAmount);
 
     const invoiceId = generateUuid();
     const stmts: BatchItem<"sqlite">[] = [
       db.insert(invoices).values({
         id: invoiceId,
-        documentType: values.documentType,
-        series: values.series || null,
-        number: values.number || null,
-        clientId: values.clientId,
+        documentType: validated.documentType,
+        series: validated.series || null,
+        number: validated.number || null,
+        clientId: validated.clientId,
         costCenterId,
         contractId,
         issueDate: toTimestamp(issueDate ?? undefined),
         taxPeriod,
-        currency: values.currency || "PEN",
+        currency: validated.currency || "PEN",
         total,
         taxableBase,
         igv,
@@ -353,6 +384,7 @@ export async function createInvoice(values: InvoiceFormValues): Promise<ActionRe
         clientTaxIdTypeSnapshot: clientRow[0]?.taxIdType ?? "RUC",
         clientNameSnapshot: clientRow[0]?.legalName ?? null,
         clientAddressSnapshot: clientRow[0]?.billingAddress ?? null,
+        ...payer,
       }),
     ];
 
@@ -383,6 +415,13 @@ export async function createInvoice(values: InvoiceFormValues): Promise<ActionRe
     };
   } catch (error) {
     console.error("Error al crear factura:", error);
+    if (error instanceof ZodError) {
+      const issue = error.issues[0];
+      return {
+        success: false,
+        error: issue?.message ?? "Revisa los datos de la factura.",
+      };
+    }
     if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
       return {
         success: false,

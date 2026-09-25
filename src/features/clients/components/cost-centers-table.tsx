@@ -285,7 +285,7 @@ export function CostCentersTable({
             className="bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold text-xs h-9 px-4 gap-2 shadow-xs shrink-0"
           >
             <IconPlus className="size-4" />
-            Nueva Sede
+            Nuevo Centro de Costos
           </Button>
         }
       />

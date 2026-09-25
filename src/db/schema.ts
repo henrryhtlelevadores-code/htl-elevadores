@@ -372,6 +372,15 @@ export const invoices = sqliteTable(
     clientTaxIdTypeSnapshot: text("client_tax_id_type_snapshot"),
     clientNameSnapshot: text("client_name_snapshot"),
     clientAddressSnapshot: text("client_address_snapshot"),
+    payerType: text("payer_type").default("COST_CENTER"),
+    payerTaxIdType: text("payer_tax_id_type"),
+    payerTaxId: text("payer_tax_id"),
+    payerName: text("payer_name"),
+    payerCommercialName: text("payer_commercial_name"),
+    payerPhone: text("payer_phone"),
+    payerEmail: text("payer_email"),
+    payerRelationship: text("payer_relationship"),
+    payerNotes: text("payer_notes"),
     createdAt: integer("created_at").default(unixNow()),
     updatedAt: integer("updated_at").default(unixNow()),
   },
@@ -379,6 +388,10 @@ export const invoices = sqliteTable(
     uniqueIndex("invoices_doc_series_number_unique")
       .on(t.documentType, t.series, t.number)
       .where(sql`${t.number} IS NOT NULL`),
+    index("idx_invoices_payer_type").on(t.payerType),
+    index("idx_invoices_payer_tax_id")
+      .on(t.payerTaxId)
+      .where(sql`${t.payerTaxId} IS NOT NULL`),
   ]
 );
 
@@ -397,6 +410,78 @@ export const invoiceItems = sqliteTable("invoice_items", {
   igv: real("igv").notNull(),
   total: real("total").notNull(),
   createdAt: integer("created_at").default(unixNow()),
+});
+
+export const laborConfig = sqliteTable("labor_config", {
+  id: text("id").primaryKey(),
+  hourlyCost: real("hourly_cost").notNull(),
+  updatedAt: integer("updated_at").default(unixNow()),
+});
+
+export const quotations = sqliteTable("quotations", {
+  id: text("id").primaryKey(),
+  quotationNumber: text("quotation_number").notNull().unique(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => clients.id),
+  costCenterId: text("cost_center_id").references(() => costCenters.id),
+  advisorId: text("advisor_id").references(() => users.id),
+  issueDate: integer("issue_date").notNull(),
+  validUntil: integer("valid_until").notNull(),
+  status: text("status").default("DRAFT"),
+  discountRate: real("discount_rate").default(0),
+  subtotal: real("subtotal").default(0),
+  discountAmount: real("discount_amount").default(0),
+  taxableBase: real("taxable_base").default(0),
+  igv: real("igv").default(0),
+  total: real("total").default(0),
+  notes: text("notes"),
+  terms: text("terms"),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const quotationLines = sqliteTable("quotation_lines", {
+  id: text("id").primaryKey(),
+  quotationId: text("quotation_id")
+    .notNull()
+    .references(() => quotations.id, { onDelete: "cascade" }),
+  elevatorUnityId: text("elevator_unity_id").references(() => elevatorUnities.id),
+  equipmentSerial: text("equipment_serial"),
+  description: text("description"),
+  orderIndex: integer("order_index").default(0),
+
+  totalHours: real("total_hours").default(0),
+  hourlyCost: real("hourly_cost").default(0),
+  laborCost: real("labor_cost").default(0),
+
+  productCost: real("product_cost").default(0),
+
+  subtotal: real("subtotal").default(0),
+  overheadRate: real("overhead_rate").default(0.2),
+  overheadAmount: real("overhead_amount").default(0),
+  totalCost: real("total_cost").default(0),
+  commissionRate: real("commission_rate").default(0.04),
+  commissionAmount: real("commission_amount").default(0),
+  profitRate: real("profit_rate").default(0.6),
+  profitAmount: real("profit_amount").default(0),
+  clientValue: real("client_value").default(0),
+  igv: real("igv").default(0),
+  clientPrice: real("client_price").default(0),
+
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const quotationLineProducts = sqliteTable("quotation_line_products", {
+  id: text("id").primaryKey(),
+  quotationLineId: text("quotation_line_id")
+    .notNull()
+    .references(() => quotationLines.id, { onDelete: "cascade" }),
+  description: text("description").notNull(),
+  quantity: real("quantity").default(1),
+  unit: text("unit"),
+  unitCost: real("unit_cost").notNull(),
+  totalCost: real("total_cost"),
+  orderIndex: integer("order_index").default(0),
 });
 
 export type Role = typeof roles.$inferSelect;
@@ -447,3 +532,11 @@ export type InvoiceItem = typeof invoiceItems.$inferSelect;
 export type NewInvoiceItem = typeof invoiceItems.$inferInsert;
 export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;
+export type LaborConfig = typeof laborConfig.$inferSelect;
+export type NewLaborConfig = typeof laborConfig.$inferInsert;
+export type Quotation = typeof quotations.$inferSelect;
+export type NewQuotation = typeof quotations.$inferInsert;
+export type QuotationLine = typeof quotationLines.$inferSelect;
+export type NewQuotationLine = typeof quotationLines.$inferInsert;
+export type QuotationLineProduct = typeof quotationLineProducts.$inferSelect;
+export type NewQuotationLineProduct = typeof quotationLineProducts.$inferInsert;

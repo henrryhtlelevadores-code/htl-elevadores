@@ -58,6 +58,11 @@ const navItems = [
     icon: ReceiptText,
   },
   {
+    title: "Cotizaciones",
+    href: "/quotations",
+    icon: FileText,
+  },
+  {
     title: "Seguridad",
     href: "/safety",
     icon: ShieldCheck,
