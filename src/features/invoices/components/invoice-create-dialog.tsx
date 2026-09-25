@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "cn";
 import {
   AlertTriangle,
@@ -434,25 +435,20 @@ export function InvoiceCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Cliente</FormLabel>
                       <FormControl>
-                        <Select
-                          value={field.value}
+                        <SearchableSelect
+                          items={clients}
+                          value={field.value ?? ""}
                           onValueChange={(v) => {
-                            field.onChange(v ?? "");
+                            field.onChange(v);
                             form.setValue("costCenterId", "", { shouldDirty: true });
                             form.setValue("contractId", "", { shouldDirty: true });
                           }}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder="Selecciona un cliente" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clients.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.legalName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          getValue={(c) => c.id}
+                          getLabel={(c) => c.legalName}
+                          placeholder="Selecciona un cliente"
+                          searchPlaceholder="Buscar cliente..."
+                          emptyText="No hay clientes registrados"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -465,26 +461,23 @@ export function InvoiceCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Centro de costo</FormLabel>
                       <FormControl>
-                        <Select
-                          value={field.value}
+                        <SearchableSelect
+                          items={filteredCostCenters}
+                          value={field.value ?? ""}
                           onValueChange={(v) => {
-                            field.onChange(v ?? "");
+                            field.onChange(v);
                             form.setValue("contractId", "", { shouldDirty: true });
                           }}
+                          getValue={(cc) => cc.id}
+                          getLabel={(cc) => cc.name}
+                          getKeywords={(cc) => cc.client_name}
+                          placeholder={clientId ? "Selecciona un centro de costo" : "Elige un cliente primero"}
+                          searchPlaceholder="Buscar centro de costo..."
+                          emptyText="Este cliente no tiene centros de costo"
                           disabled={!clientId}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder={clientId ? "Sin centro de costo" : "Elige un cliente primero"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Sin centro de costo</SelectItem>
-                            {filteredCostCenters.map((cc) => (
-                              <SelectItem key={cc.id} value={cc.id}>
-                                {cc.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          allowClear
+                          clearLabel="Sin centro de costo"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

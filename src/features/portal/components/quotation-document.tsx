@@ -192,6 +192,13 @@ export function PortalQuotationDocument({
                             .join(" — ")}
                         </p>
                       ) : null}
+                      {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          {line.lineMode === "FIXED_PRICE" ? "Precio fijo" : "Passthrough"}
+                          {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
+                          {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-bold text-sm text-slate-900">{money(line.clientPrice)}</p>
@@ -237,7 +244,7 @@ export function PortalQuotationDocument({
               </div>
               {Number(detail.discountAmount ?? 0) > 0 ? (
                 <div className="flex justify-between text-slate-500">
-                  <span>Descuento ({Math.round((detail.discountRate ?? 0) * 100)}%)</span>
+                  <span>Descuento ({Math.round(detail.discountRate ?? 0)}%)</span>
                   <span>-{money(detail.discountAmount)}</span>
                 </div>
               ) : null}

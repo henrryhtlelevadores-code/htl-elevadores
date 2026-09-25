@@ -12,6 +12,7 @@ import {
   ubigeos,
   elevatorUnities,
   laborConfig,
+  pricingConfig,
   quotations,
   quotationLines,
   quotationLineProducts,
@@ -23,7 +24,12 @@ import { eq, isNull, desc, count, like, inArray, asc } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
 import { quotationFormSchema, type QuotationFormValues } from "./schema";
-import { calculateQuotationLine, calculateQuotationHeader } from "./calc";
+import {
+  calculateQuotationLine,
+  calculateQuotationHeader,
+  DEFAULT_PRICING_RULES,
+  type PricingRules,
+} from "./calc";
 
 export interface ActionResult {
   success: boolean;
@@ -76,6 +82,83 @@ export async function upsertLaborConfig(hourlyCost: number): Promise<ActionResul
 }
 
 // ==========================================
+// CONFIGURACIÓN DE PRECIOS (pricing_config)
+// ==========================================
+
+const PRICING_CONFIG_ID = "default";
+
+function toRules(row: typeof pricingConfig.$inferSelect | undefined): PricingRules {
+  if (!row) return DEFAULT_PRICING_RULES;
+  return {
+    overheadRateLabor: row.overheadRateLabor ?? DEFAULT_PRICING_RULES.overheadRateLabor,
+    overheadRateQuote: row.overheadRateQuote ?? DEFAULT_PRICING_RULES.overheadRateQuote,
+    commissionRate: row.commissionRate ?? DEFAULT_PRICING_RULES.commissionRate,
+    profitRate: row.profitRate ?? DEFAULT_PRICING_RULES.profitRate,
+    igvRate: row.igvRate ?? DEFAULT_PRICING_RULES.igvRate,
+    allowPriceOverride: row.allowPriceOverride ?? true,
+    allowCostOverride: row.allowCostOverride ?? true,
+  };
+}
+
+export async function getPricingConfig(): Promise<PricingRules> {
+  try {
+    const [row] = await db.select().from(pricingConfig).limit(1);
+    return toRules(row);
+  } catch (error) {
+    console.error("Error al obtener pricing_config:", error);
+    return DEFAULT_PRICING_RULES;
+  }
+}
+
+export type PricingConfigInput = Partial<Omit<PricingRules, never>>;
+
+export async function upsertPricingConfig(input: PricingConfigInput): Promise<ActionResult> {
+  try {
+    const values = {
+      overheadRateLabor: Number(input.overheadRateLabor),
+      overheadRateQuote: Number(input.overheadRateQuote),
+      commissionRate: Number(input.commissionRate),
+      profitRate: Number(input.profitRate),
+      igvRate: Number(input.igvRate),
+      allowPriceOverride: Boolean(input.allowPriceOverride),
+      allowCostOverride: Boolean(input.allowCostOverride),
+    };
+
+    for (const [key, value] of Object.entries(values)) {
+      if (typeof value === "number" && (!Number.isFinite(value) || value < 0)) {
+        return { success: false, error: `El valor de "${key}" no es válido.` };
+      }
+    }
+    if (values.igvRate > 1) {
+      return { success: false, error: "El IGV debe expresarse como decimal (0.18 = 18%)." };
+    }
+
+    const updatedAt = Math.floor(Date.now() / 1000);
+    const existing = await db
+      .select({ id: pricingConfig.id })
+      .from(pricingConfig)
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(pricingConfig)
+        .set({ ...values, updatedAt })
+        .where(eq(pricingConfig.id, existing[0].id));
+    } else {
+      await db
+        .insert(pricingConfig)
+        .values({ id: PRICING_CONFIG_ID, ...values, updatedAt });
+    }
+
+    revalidatePath("/quotations");
+    return { success: true, message: "Configuración de precios actualizada." };
+  } catch (error) {
+    console.error("Error al actualizar pricing_config:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+// ==========================================
 // CORRELATIVO
 // ==========================================
 
@@ -116,6 +199,9 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         issueDate: quotations.issueDate,
         validUntil: quotations.validUntil,
         status: quotations.status,
+        discountMode: quotations.discountMode,
+        targetTotal: quotations.targetTotal,
+        targetTotalIncludesIgv: quotations.targetTotalIncludesIgv,
         discountRate: quotations.discountRate,
         subtotal: quotations.subtotal,
         discountAmount: quotations.discountAmount,
@@ -170,6 +256,9 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         issueDate: quotations.issueDate,
         validUntil: quotations.validUntil,
         status: quotations.status,
+        discountMode: quotations.discountMode,
+        targetTotal: quotations.targetTotal,
+        targetTotalIncludesIgv: quotations.targetTotalIncludesIgv,
         discountRate: quotations.discountRate,
         subtotal: quotations.subtotal,
         discountAmount: quotations.discountAmount,
@@ -204,6 +293,10 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         equipmentSerial: quotationLines.equipmentSerial,
         description: quotationLines.description,
         orderIndex: quotationLines.orderIndex,
+        lineMode: quotationLines.lineMode,
+        lineModeReason: quotationLines.lineModeReason,
+        lineOverridePrice: quotationLines.lineOverridePrice,
+        lineOverrideReason: quotationLines.lineOverrideReason,
         totalHours: quotationLines.totalHours,
         hourlyCost: quotationLines.hourlyCost,
         laborCost: quotationLines.laborCost,
@@ -277,6 +370,7 @@ export interface QuotationFormOptions {
   }>;
   advisors: Array<{ id: string; fullName: string | null }>;
   equipment: Array<{ id: string; internalCode: string | null; name: string | null }>;
+  pricing: PricingRules;
 }
 
 export async function getQuotationFormData(): Promise<QuotationFormOptions> {
@@ -325,6 +419,7 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
     })),
     advisors: advisorRows,
     equipment: equipmentRows,
+    pricing: await getPricingConfig(),
   };
 }
 
@@ -333,24 +428,35 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
 // ==========================================
 
 async function buildQuotationData(validated: QuotationFormValues) {
+  const rules = await getPricingConfig();
+
   const lines = validated.lines.map((l, i) => {
     const hourlyCost = Number(l.hourlyCost) || 0;
     const calc = calculateQuotationLine(
       {
         totalHours: Number(l.totalHours),
         hourlyCost,
+        lineMode: l.lineMode,
+        lineOverridePrice: Number(l.lineOverridePrice) || null,
         products: l.products.map((p) => ({
           quantity: Number(p.quantity),
           unitCost: Number(p.unitCost),
         })),
       },
-      hourlyCost
+      hourlyCost,
+      rules
     );
 
     return {
       elevatorUnityId: l.elevatorUnityId || null,
       description: l.description,
       orderIndex: i,
+      lineMode: calc.lineMode,
+      lineModeReason: l.lineModeReason?.trim() || null,
+      lineOverridePrice: l.lineOverridePrice && Number(l.lineOverridePrice) > 0
+        ? round2(Number(l.lineOverridePrice))
+        : null,
+      lineOverrideReason: l.lineOverrideReason?.trim() || null,
       totalHours: Number(l.totalHours),
       hourlyCost: calc.hourlyCostUsed,
       laborCost: calc.laborCost,
@@ -379,7 +485,15 @@ async function buildQuotationData(validated: QuotationFormValues) {
 
   const header = calculateQuotationHeader(
     lines.map((l) => ({ clientValue: l.clientValue })),
-    Number(validated.discountRate) || 0
+    {
+      discountMode: validated.discountMode,
+      discountRate: Number(validated.discountRate) || 0,
+      discountAmount: Number(validated.discountAmount) || 0,
+      targetTotal: Number(validated.targetTotal) || null,
+      targetTotalIncludesIgv: validated.targetTotalIncludesIgv,
+      igvRate: rules.igvRate,
+    },
+    rules
   );
 
   return {
@@ -389,6 +503,12 @@ async function buildQuotationData(validated: QuotationFormValues) {
     issueDate: toTimestamp(validated.issueDate),
     validUntil: toTimestamp(validated.validUntil),
     status: validated.status || "DRAFT",
+    discountMode: header.discountMode,
+    targetTotal:
+      validated.discountMode === "FINAL" && Number(validated.targetTotal) > 0
+        ? round2(Number(validated.targetTotal))
+        : null,
+    targetTotalIncludesIgv: validated.targetTotalIncludesIgv ?? true,
     discountRate: header.discountRate,
     subtotal: header.subtotal,
     discountAmount: header.discountAmount,
@@ -420,6 +540,9 @@ export async function createQuotation(
         issueDate: payload.issueDate,
         validUntil: payload.validUntil,
         status: payload.status,
+        discountMode: payload.discountMode,
+        targetTotal: payload.targetTotal,
+        targetTotalIncludesIgv: payload.targetTotalIncludesIgv,
         discountRate: payload.discountRate,
         subtotal: payload.subtotal,
         discountAmount: payload.discountAmount,
@@ -440,6 +563,10 @@ export async function createQuotation(
           elevatorUnityId: line.elevatorUnityId,
           description: line.description,
           orderIndex: line.orderIndex,
+          lineMode: line.lineMode,
+          lineModeReason: line.lineModeReason,
+          lineOverridePrice: line.lineOverridePrice,
+          lineOverrideReason: line.lineOverrideReason,
           totalHours: line.totalHours,
           hourlyCost: line.hourlyCost,
           laborCost: line.laborCost,
@@ -508,6 +635,9 @@ export async function updateQuotation(
         issueDate: payload.issueDate,
         validUntil: payload.validUntil,
         status: payload.status,
+        discountMode: payload.discountMode,
+        targetTotal: payload.targetTotal,
+        targetTotalIncludesIgv: payload.targetTotalIncludesIgv,
         discountRate: payload.discountRate,
         subtotal: payload.subtotal,
         discountAmount: payload.discountAmount,
@@ -531,6 +661,10 @@ export async function updateQuotation(
           elevatorUnityId: line.elevatorUnityId,
           description: line.description,
           orderIndex: line.orderIndex,
+          lineMode: line.lineMode,
+          lineModeReason: line.lineModeReason,
+          lineOverridePrice: line.lineOverridePrice,
+          lineOverrideReason: line.lineOverrideReason,
           totalHours: line.totalHours,
           hourlyCost: line.hourlyCost,
           laborCost: line.laborCost,

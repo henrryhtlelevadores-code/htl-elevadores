@@ -24,13 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
 import {
   ArrowUpDown,
@@ -433,36 +427,37 @@ export function InformesView({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Filtrar:
           </span>
-          <Select value={clientFilter} onValueChange={(v) => {
-            setClientFilter(v ?? "");
-            setCcFilter("");
-          }}>
-            <SelectTrigger size="sm" className="w-full sm:w-[220px] bg-card border-border text-xs">
-              <SelectValue placeholder="Todos los clientes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Todos los clientes</SelectItem>
-              {clients.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.legalName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            items={clients}
+            value={clientFilter}
+            onValueChange={(v) => {
+              setClientFilter(v);
+              setCcFilter("");
+            }}
+            getValue={(c) => c.id}
+            getLabel={(c) => c.legalName}
+            placeholder="Todos los clientes"
+            searchPlaceholder="Buscar cliente..."
+            emptyText="No hay clientes registrados"
+            allowClear
+            clearLabel="Todos los clientes"
+            className="h-7 sm:w-[220px]"
+          />
 
-          <Select value={ccFilter} onValueChange={(v) => setCcFilter(v ?? "")}>
-            <SelectTrigger size="sm" className="w-full sm:w-[220px] bg-card border-border text-xs">
-              <SelectValue placeholder="Todos los centros de costo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Todos los centros de costo</SelectItem>
-              {filteredCostCenters.map((cc) => (
-                <SelectItem key={cc.id} value={cc.id}>
-                  {cc.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            items={filteredCostCenters}
+            value={ccFilter}
+            onValueChange={(v) => setCcFilter(v)}
+            getValue={(cc) => cc.id}
+            getLabel={(cc) => cc.name}
+            getKeywords={(cc) => cc.client_name}
+            placeholder="Todos los centros de costo"
+            searchPlaceholder="Buscar centro de costo..."
+            emptyText="No hay centros de costo para este cliente"
+            allowClear
+            clearLabel="Todos los centros de costo"
+            className="h-7 sm:w-[220px]"
+          />
         </div>
       </div>
 

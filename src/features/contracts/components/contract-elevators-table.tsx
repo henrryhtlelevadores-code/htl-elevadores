@@ -39,16 +39,68 @@ import {
   MapPin,
   CheckCircle2,
   XCircle,
+  Info,
 } from "lucide-react";
+
+interface EquipmentOption {
+  id: string;
+  costCenterId: string;
+  internalCode: string;
+  name: string;
+  manufacturerSerial: string | null;
+  brand_name: string | null;
+  model_name: string | null;
+  elevator_type_name: string | null;
+  cost_center_name: string | null;
+  client_name: string | null;
+  capacityPersons: number | null;
+  capacityKg: number | null;
+  speedMs: number | null;
+  stops: number | null;
+  floors: number | null;
+  tractionType: string | null;
+  yearOfFabrication: number | null;
+  status: string | null;
+  installationDate: number | null;
+}
 
 interface ContractElevatorsTableProps {
   contract: ContractWithRelations | null;
   contractElevators: ContractElevatorWithRelations[];
-  equipmentOptions: Array<{ id: string; internalCode: string; name: string }>;
+  equipmentOptions: EquipmentOption[];
+}
+
+const EQUIPMENT_STATUS_LABEL: Record<string, string> = {
+  OPERATIVE: "Operativo",
+  MAINTENANCE: "En mantenimiento",
+  OUT_OF_SERVICE: "Fuera de servicio",
+  RETIRED: "Retirado",
+};
+
+function formatDate(ts: number | null): string {
+  if (!ts) return "—";
+  return new Date(ts * 1000).toLocaleDateString("es-PE");
 }
 
 function formatMoney(currency: string, amount: number): string {
   return `${currency} ${amount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+}
+
+function InfoField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={mono ? "font-mono font-medium" : "font-medium"}>{value || "—"}</span>
+    </div>
+  );
 }
 
 export function ContractElevatorsTable({
@@ -64,10 +116,25 @@ export function ContractElevatorsTable({
   const [editingElevator, setEditingElevator] = useState<ContractElevatorWithRelations | null>(null);
   const [freqInput, setFreqInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const availableOptions = equipmentOptions.filter(
-    (eq) => !contractElevators.some((ce) => ce.elevatorUnityId === eq.id)
+  const costCenterEquipment = useMemo(
+    () => equipmentOptions.filter((eq) => eq.costCenterId === contract?.costCenterId),
+    [equipmentOptions, contract?.costCenterId]
+  );
+
+  const availableOptions = useMemo(
+    () =>
+      costCenterEquipment.filter(
+        (eq) => !contractElevators.some((ce) => ce.elevatorUnityId === eq.id)
+      ),
+    [costCenterEquipment, contractElevators]
+  );
+
+  const selectedEquipment = useMemo(
+    () => availableOptions.find((eq) => eq.id === selectedEquipmentId) ?? null,
+    [availableOptions, selectedEquipmentId]
   );
 
   const totalEquipos = contractElevators.reduce((sum, ce) => sum + (ce.price || 0), 0);
@@ -236,7 +303,16 @@ export function ContractElevatorsTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5">
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <MapPin className="size-3 shrink-0" />
+          <span>
+            Equipos del centro de costos:{" "}
+            <span className="font-semibold text-foreground">
+              {contract.cost_center_name ?? contract.costCenterId}
+            </span>
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2.5">
           <Select value={selectedEquipmentId} onValueChange={(v) => v && setSelectedEquipmentId(v)}>
             <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
               <SelectValue placeholder="Selecciona un equipo disponible...">
@@ -249,7 +325,7 @@ export function ContractElevatorsTable({
             <SelectContent>
               {availableOptions.length === 0 ? (
                 <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  No hay equipos disponibles para vincular
+                  No hay equipos disponibles para vincular en este centro de costos
                 </div>
               ) : (
                 availableOptions.map((eq) => (
@@ -260,6 +336,18 @@ export function ContractElevatorsTable({
               )}
             </SelectContent>
           </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!selectedEquipment}
+            onClick={() => setIsInfoOpen(true)}
+            className="h-9 shrink-0 border-border text-xs gap-2"
+            title="Ver información del equipo"
+          >
+            <Info className="size-4" />
+            Info
+          </Button>
           <Button
             onClick={handleAdd}
             disabled={!selectedEquipmentId || isPending}
@@ -302,6 +390,94 @@ export function ContractElevatorsTable({
         data={contractElevators}
         searchPlaceholder="Buscar equipo vinculado..."
       />
+
+      {/* Dialog: Información del equipo */}
+      <Dialog open={isInfoOpen} onOpenChange={setIsInfoOpen}>
+        <DialogContent className="bg-card border-border sm:max-w-[520px] text-foreground shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Info className="size-4 text-[#0066CC]" />
+              Información del equipo
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Ficha técnica de{" "}
+              <strong className="text-foreground font-mono">
+                {selectedEquipment?.internalCode}
+              </strong>{" "}
+              — {selectedEquipment?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-1 text-xs">
+            <InfoField label="Código interno" value={selectedEquipment?.internalCode} mono />
+            <InfoField label="Nombre" value={selectedEquipment?.name} />
+            <InfoField label="Marca" value={selectedEquipment?.brand_name} />
+            <InfoField label="Modelo" value={selectedEquipment?.model_name} />
+            <InfoField label="Tipo" value={selectedEquipment?.elevator_type_name} />
+            <InfoField
+              label="N.° serie"
+              value={selectedEquipment?.manufacturerSerial}
+              mono
+            />
+            <InfoField
+              label="Capacidad"
+              value={
+                selectedEquipment
+                  ? [
+                      selectedEquipment.capacityPersons
+                        ? `${selectedEquipment.capacityPersons} personas`
+                        : null,
+                      selectedEquipment.capacityKg ? `${selectedEquipment.capacityKg} kg` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" / ") || "—"
+                  : "—"
+              }
+            />
+            <InfoField
+              label="Velocidad"
+              value={selectedEquipment?.speedMs ? `${selectedEquipment.speedMs} m/s` : "—"}
+            />
+            <InfoField
+              label="Paradas / pisos"
+              value={
+                selectedEquipment
+                  ? `${selectedEquipment.stops ?? "—"} / ${selectedEquipment.floors ?? "—"}`
+                  : "—"
+              }
+            />
+            <InfoField label="Tracción" value={selectedEquipment?.tractionType} />
+            <InfoField
+              label="Año de fabricación"
+              value={selectedEquipment?.yearOfFabrication?.toString()}
+            />
+            <InfoField
+              label="Instalación"
+              value={formatDate(selectedEquipment?.installationDate ?? null)}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">Estado</span>
+              <span className="font-medium">
+                {EQUIPMENT_STATUS_LABEL[selectedEquipment?.status ?? ""] ??
+                  selectedEquipment?.status ??
+                  "—"}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-3 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsInfoOpen(false)}
+              className="text-xs border-border"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: Editar Frecuencia y Precio */}
       <Dialog open={isEditOpen} onOpenChange={(open) => { setIsEditOpen(open); if (!open) setEditingElevator(null); }}>

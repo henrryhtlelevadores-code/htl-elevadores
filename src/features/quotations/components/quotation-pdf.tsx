@@ -34,6 +34,9 @@ export interface QuotationPdfProduct {
 export interface QuotationPdfLine {
   equipment: string | null;
   description: string;
+  lineMode?: string | null;
+  lineModeReason?: string | null;
+  lineOverrideReason?: string | null;
   totalHours: number;
   hourlyCost: number;
   productCost: number;
@@ -356,6 +359,15 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                     Equipo: {line.equipment}
                   </Text>
                 ) : null}
+                {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                  <Text style={styles.lineEquipment}>
+                    {line.lineMode === "FIXED_PRICE"
+                      ? "Precio fijo"
+                      : "Passthrough (costo del proveedor)"}
+                    {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
+                    {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
+                  </Text>
+                ) : null}
               </View>
               <Text style={styles.lineTitle}>{money(line.clientPrice)}</Text>
             </View>
@@ -409,12 +421,16 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                   <Text>{money(line.commissionAmount)}</Text>
                 </View>
                 <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>
-                    Margen ({Math.round(line.profitRate * 100)}%)
-                  </Text>
+                  <Text style={styles.calcLabel}>Margen ({Math.round(line.profitRate * 100)}%)</Text>
                   <Text>{money(line.profitAmount)}</Text>
                 </View>
               </View>
+              {line.lineMode === "FIXED_PRICE" ? (
+                <View style={styles.calcItem}>
+                  <Text style={styles.calcLabel}>Precio final pactado (c/IGV)</Text>
+                  <Text>{money(line.clientPrice)}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         ))}
@@ -428,7 +444,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
             {data.discountRate > 0 ? (
               <View style={styles.totalRow}>
                 <Text style={styles.totalRowLabel}>
-                  Descuento ({Math.round(data.discountRate * 100)}%)
+                  Descuento ({Math.round(data.discountRate)}%)
                 </Text>
                 <Text>-{money(data.discountAmount)}</Text>
               </View>

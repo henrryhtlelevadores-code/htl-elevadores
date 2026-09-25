@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { type Ubigeo } from "@/db";
 import { type ClientWithStats, createClient, updateClient, deleteClient } from "../actions";
 import { clientFormSchema, type ClientFormValues } from "../schema";
-import { UbigeoSelector } from "./ubigeo-selector";
+import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
 
 import { Button } from "@/components/ui/button";

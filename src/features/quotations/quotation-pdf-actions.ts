@@ -56,6 +56,9 @@ async function buildQuotationPdfData(
               .join(" — ")
           : null,
       description: line.description ?? "",
+      lineMode: line.lineMode ?? "CALCULATED",
+      lineModeReason: line.lineModeReason,
+      lineOverrideReason: line.lineOverrideReason,
       totalHours: line.totalHours ?? 0,
       hourlyCost: line.hourlyCost ?? 0,
       productCost: line.productCost ?? 0,

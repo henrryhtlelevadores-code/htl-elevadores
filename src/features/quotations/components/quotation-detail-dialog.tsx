@@ -189,6 +189,13 @@ export function QuotationDetailDialog({
                           Equipo: {[line.elevator_internal_code, line.elevator_name].filter(Boolean).join(" — ")}
                         </div>
                       ) : null}
+                      {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                        <div className="text-xs text-amber-700">
+                          {line.lineMode === "FIXED_PRICE" ? "Precio fijo" : "Passthrough"}
+                          {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
+                          {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-bold">{money(line.clientPrice)}</div>

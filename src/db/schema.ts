@@ -418,6 +418,21 @@ export const laborConfig = sqliteTable("labor_config", {
   updatedAt: integer("updated_at").default(unixNow()),
 });
 
+export const pricingConfig = sqliteTable("pricing_config", {
+  id: text("id").primaryKey(),
+  // Mano de obra
+  overheadRateLabor: real("overhead_rate_labor").default(0.4),
+  // Cotizador
+  overheadRateQuote: real("overhead_rate_quote").default(0.2),
+  commissionRate: real("commission_rate").default(0.05),
+  profitRate: real("profit_rate").default(0.6),
+  igvRate: real("igv_rate").default(0.18),
+  // Reglas
+  allowPriceOverride: integer("allow_price_override", { mode: "boolean" }).default(true),
+  allowCostOverride: integer("allow_cost_override", { mode: "boolean" }).default(true),
+  updatedAt: integer("updated_at").default(unixNow()),
+});
+
 export const quotations = sqliteTable("quotations", {
   id: text("id").primaryKey(),
   quotationNumber: text("quotation_number").notNull().unique(),
@@ -429,6 +444,9 @@ export const quotations = sqliteTable("quotations", {
   issueDate: integer("issue_date").notNull(),
   validUntil: integer("valid_until").notNull(),
   status: text("status").default("DRAFT"),
+  discountMode: text("discount_mode").default("PERCENT"),
+  targetTotal: real("target_total"),
+  targetTotalIncludesIgv: integer("target_total_includes_igv", { mode: "boolean" }).default(true),
   discountRate: real("discount_rate").default(0),
   subtotal: real("subtotal").default(0),
   discountAmount: real("discount_amount").default(0),
@@ -449,6 +467,10 @@ export const quotationLines = sqliteTable("quotation_lines", {
   equipmentSerial: text("equipment_serial"),
   description: text("description"),
   orderIndex: integer("order_index").default(0),
+  lineMode: text("line_mode").default("CALCULATED"),
+  lineModeReason: text("line_mode_reason"),
+  lineOverridePrice: real("line_override_price"),
+  lineOverrideReason: text("line_override_reason"),
 
   totalHours: real("total_hours").default(0),
   hourlyCost: real("hourly_cost").default(0),
@@ -534,6 +556,8 @@ export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;
 export type LaborConfig = typeof laborConfig.$inferSelect;
 export type NewLaborConfig = typeof laborConfig.$inferInsert;
+export type PricingConfig = typeof pricingConfig.$inferSelect;
+export type NewPricingConfig = typeof pricingConfig.$inferInsert;
 export type Quotation = typeof quotations.$inferSelect;
 export type NewQuotation = typeof quotations.$inferInsert;
 export type QuotationLine = typeof quotationLines.$inferSelect;

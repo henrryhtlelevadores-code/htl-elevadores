@@ -66,6 +66,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Select,
   SelectContent,
@@ -809,33 +810,20 @@ export function WorkOrdersCalendar({
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Cliente</FormLabel>
                     <FormControl>
-                      <Select
-                        value={field.value || ""}
+                      <SearchableSelect
+                        items={formData.clients}
+                        value={field.value ?? ""}
                         onValueChange={(v) => {
-                          const next = v ?? "";
-                          field.onChange(next);
+                          field.onChange(v);
                           form.setValue("costCenterId", "");
                           form.setValue("elevatorUnityIds", []);
                         }}
-                      >
-                        <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                          <SelectValue placeholder="Selecciona el cliente">
-                            {formData.clients.find((c) => c.id === field.value)?.legalName ?? null}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {formData.clients.length === 0 && (
-                            <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                              No hay clientes registrados
-                            </div>
-                          )}
-                          {formData.clients.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.legalName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        getValue={(c) => c.id}
+                        getLabel={(c) => c.legalName}
+                        placeholder="Selecciona el cliente"
+                        searchPlaceholder="Buscar cliente..."
+                        emptyText="No hay clientes registrados"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -849,31 +837,21 @@ export function WorkOrdersCalendar({
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Centro de Costo</FormLabel>
                     <FormControl>
-                      <Select value={field.value} onValueChange={(v) => field.onChange(v ?? "")}>
-                        <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                          <SelectValue placeholder="Selecciona el centro de costo">
-                            {costCentersByClient.find((cc) => cc.id === field.value)?.name ?? null}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {selectedClientId && costCentersByClient.length === 0 && (
-                            <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                              Este cliente no tiene centros de costo
-                            </div>
-                          )}
-                          {!selectedClientId && costCentersByClient.length === 0 && (
-                            <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                              No hay centros de costo registrados
-                            </div>
-                          )}
-                          {costCentersByClient.map((cc) => (
-                            <SelectItem key={cc.id} value={cc.id}>
-                              {cc.name}
-                              <span className="font-mono text-muted-foreground">{cc.client_name}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        items={costCentersByClient}
+                        value={field.value ?? ""}
+                        onValueChange={(v) => field.onChange(v)}
+                        getValue={(cc) => cc.id}
+                        getLabel={(cc) => cc.name}
+                        getKeywords={(cc) => cc.client_name}
+                        placeholder="Selecciona el centro de costo"
+                        searchPlaceholder="Buscar centro de costo..."
+                        emptyText={
+                          selectedClientId
+                            ? "Este cliente no tiene centros de costo"
+                            : "Elige un cliente primero"
+                        }
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

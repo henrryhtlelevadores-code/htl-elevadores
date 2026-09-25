@@ -19,8 +19,24 @@ export default async function ContractsPage() {
   const equipmentOptions = equipment
     .map((e) => ({
       id: e.id,
+      costCenterId: e.costCenterId,
       internalCode: e.internalCode,
       name: e.name,
+      manufacturerSerial: e.manufacturerSerial,
+      brand_name: e.brand_name ?? null,
+      model_name: e.model_name ?? null,
+      elevator_type_name: e.elevator_type_name ?? null,
+      cost_center_name: e.cost_center_name ?? null,
+      client_name: e.client_name ?? null,
+      capacityPersons: e.capacityPersons,
+      capacityKg: e.capacityKg,
+      speedMs: e.speedMs,
+      stops: e.stops,
+      floors: e.floors,
+      tractionType: e.tractionType,
+      yearOfFabrication: e.yearOfFabrication,
+      status: e.status,
+      installationDate: e.installationDate,
     }))
     .filter((e) => {
       const assignedToActive = contractElevators.some(

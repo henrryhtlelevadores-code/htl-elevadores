@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Plus,
   Pencil,
@@ -167,6 +168,11 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
     [filterClientId, formData.costCenters]
   );
 
+  const clientCostCenters = useMemo(
+    () => formData.costCenters.filter((cc) => cc.clientId === selectedClientId),
+    [selectedClientId, formData.costCenters]
+  );
+
   const filteredEquipment = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return initialEquipment.filter((e) => {
@@ -211,10 +217,6 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
     setFilterCostCenterId(next);
     updateUrl(filterClientId, next);
   }
-
-  const selectedCostCenterName = filterCostCenterId
-    ? formData.costCenters.find((c) => c.id === filterCostCenterId)?.name ?? null
-    : null;
 
   const defaultValues = {
     costCenterId: "",
@@ -347,7 +349,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
   const columns = useMemo<ColumnDef<ElevatorUnityWithRelations>[]>(
     () => [
       {
-        accessorKey: "internalCode",
+        accessorKey: "client_name",
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -355,15 +357,30 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             className="h-8 px-2 text-xs font-semibold hover:bg-muted/60"
           >
-            Código
+            Cliente
             <ArrowUpDown className="ml-1.5 size-3 text-muted-foreground" />
           </Button>
         ),
         cell: ({ row }) => (
-          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
-            {row.getValue("internalCode")}
-          </span>
+          <div className="flex items-center gap-1.5 text-xs text-foreground max-w-[180px]">
+            <Building2 className="size-3 shrink-0 text-muted-foreground" />
+            <span className="truncate font-semibold">{row.getValue("client_name")}</span>
+          </div>
         ),
+      },
+      {
+        accessorKey: "brand_name",
+        header: "Marca",
+        cell: ({ row }) => {
+          const brand = row.getValue<string | null>("brand_name");
+          return brand ? (
+            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border border-[#0066CC]/20 bg-[#0066CC]/5 text-[#0066CC] dark:text-blue-400">
+              {brand}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
       },
       {
         accessorKey: "name",
@@ -384,18 +401,23 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
         },
       },
       {
-        accessorKey: "brand_name",
-        header: "Marca",
-        cell: ({ row }) => {
-          const brand = row.getValue<string | null>("brand_name");
-          return brand ? (
-            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border border-[#0066CC]/20 bg-[#0066CC]/5 text-[#0066CC] dark:text-blue-400">
-              {brand}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          );
-        },
+        accessorKey: "internalCode",
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 text-xs font-semibold hover:bg-muted/60"
+          >
+            Código
+            <ArrowUpDown className="ml-1.5 size-3 text-muted-foreground" />
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
+            {row.getValue("internalCode")}
+          </span>
+        ),
       },
       {
         accessorKey: "cost_center_name",
@@ -404,26 +426,6 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground max-w-[200px]">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{row.getValue("cost_center_name")}</span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "client_name",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 text-xs font-semibold hover:bg-muted/60"
-          >
-            Cliente
-            <ArrowUpDown className="ml-1.5 size-3 text-muted-foreground" />
-          </Button>
-        ),
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground max-w-[180px]">
-            <Building2 className="size-3 shrink-0" />
-            <span className="truncate">{row.getValue("client_name")}</span>
           </div>
         ),
       },
@@ -513,47 +515,34 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
           )}
         </div>
 
-        <Select
-          value={filterClientId || "all"}
-          onValueChange={handleClientFilterChange}
-        >
-          <SelectTrigger className="w-full lg:w-[240px] bg-background border-border text-xs h-8 focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-            <SelectValue>
-              {filterClientId
-                ? formData.clients.find((c) => c.id === filterClientId)?.legalName ?? null
-                : "Todos los clientes"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent searchable>
-            <SelectItem value="all">Todos los clientes</SelectItem>
-            {formData.clients.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.legalName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          items={formData.clients}
+          value={filterClientId}
+          onValueChange={(v) => handleClientFilterChange(v)}
+          getValue={(c) => c.id}
+          getLabel={(c) => c.legalName}
+          placeholder="Todos los clientes"
+          searchPlaceholder="Buscar cliente..."
+          emptyText="No hay clientes registrados"
+          allowClear
+          clearLabel="Todos los clientes"
+          className="h-8 lg:w-[240px]"
+        />
 
-        <Select
-          value={filterCostCenterId || "all"}
-          onValueChange={handleCostCenterFilterChange}
-        >
-          <SelectTrigger className="w-full lg:w-[260px] bg-background border-border text-xs h-8 focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-            <SelectValue>
-              {selectedCostCenterName
-                ? `${selectedCostCenterName}${filterClientId ? "" : ""}`
-                : "Todos los centros de costo"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent searchable>
-            <SelectItem value="all">Todos los centros de costo</SelectItem>
-            {costCenterOptions.map((cc) => (
-              <SelectItem key={cc.id} value={cc.id}>
-                {cc.name} — {cc.client_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          items={costCenterOptions}
+          value={filterCostCenterId}
+          onValueChange={(v) => handleCostCenterFilterChange(v)}
+          getValue={(cc) => cc.id}
+          getLabel={(cc) => `${cc.name} — ${cc.client_name}`}
+          getKeywords={(cc) => cc.client_name}
+          placeholder="Todos los centros de costo"
+          searchPlaceholder="Buscar centro de costo..."
+          emptyText="No hay centros de costo registrados"
+          allowClear
+          clearLabel="Todos los centros de costo"
+          className="h-8 lg:w-[260px]"
+        />
 
         <Button
           onClick={handleOpenCreate}
@@ -642,27 +631,20 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                       <FormItem>
                         <FormLabel className="text-xs font-semibold">Cliente</FormLabel>
                         <FormControl>
-                          <Select
+                          <SearchableSelect
+                            items={formData.clients}
                             value={selectedClientId}
                             onValueChange={(v) => {
-                              setSelectedClientId(v ?? "");
+                              setSelectedClientId(v);
                               createForm.setValue("costCenterId", "");
                             }}
+                            getValue={(c) => c.id}
+                            getLabel={(c) => c.legalName}
+                            placeholder="Selecciona el cliente"
+                            searchPlaceholder="Buscar cliente..."
+                            emptyText="No hay clientes registrados"
                             disabled={contextLocked}
-                          >
-                            <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC] disabled:cursor-not-allowed">
-                              <SelectValue placeholder="Selecciona el cliente">
-                                {formData.clients.find((c) => c.id === selectedClientId)?.legalName ?? null}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent searchable>
-                              {formData.clients.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.legalName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -675,29 +657,22 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                       <FormItem>
                         <FormLabel className="text-xs font-semibold">Centro de Costo</FormLabel>
                         <FormControl>
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
+                          <SearchableSelect
+                            items={clientCostCenters}
+                            value={field.value ?? ""}
+                            onValueChange={(v) => field.onChange(v)}
+                            getValue={(cc) => cc.id}
+                            getLabel={(cc) => cc.name}
+                            getKeywords={(cc) => cc.client_name}
+                            placeholder={
+                              selectedClientId
+                                ? "Selecciona el centro de costo"
+                                : "Primero elige el cliente"
+                            }
+                            searchPlaceholder="Buscar centro de costo..."
+                            emptyText="Este cliente no tiene centros de costo"
                             disabled={!selectedClientId || contextLocked}
-                          >
-                            <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC] disabled:cursor-not-allowed">
-                              <SelectValue placeholder={selectedClientId ? "Selecciona el centro de costo" : "Primero elige el cliente"}>
-                                {(() => {
-                                  const cc = formData.costCenters.find((c) => c.id === field.value);
-                                  return cc ? `${cc.name} — ${cc.client_name}` : null;
-                                })()}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent searchable>
-                              {formData.costCenters
-                                .filter((cc) => cc.clientId === selectedClientId)
-                                .map((cc) => (
-                                  <SelectItem key={cc.id} value={cc.id}>
-                                    {cc.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -743,10 +718,11 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                       <FormItem>
                         <FormLabel className="text-xs font-semibold">Marca</FormLabel>
                         <FormControl>
-                          <Select
-                            value={field.value || ""}
+                          <SearchableSelect
+                            items={formData.brands}
+                            value={field.value ?? ""}
                             onValueChange={(v) => {
-                              field.onChange(v ?? "");
+                              field.onChange(v);
                               const currentModel = createForm.getValues("modelId");
                               if (
                                 currentModel &&
@@ -757,20 +733,14 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                                 createForm.setValue("modelId", "");
                               }
                             }}
-                          >
-                            <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                              <SelectValue placeholder="Marca">
-                                {formData.brands.find((b) => b.id === field.value)?.name ?? null}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent searchable>
-                              {formData.brands.map((b) => (
-                                <SelectItem key={b.id} value={b.id}>
-                                  {b.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            getValue={(b) => b.id}
+                            getLabel={(b) => b.name}
+                            placeholder="Marca"
+                            searchPlaceholder="Buscar marca..."
+                            emptyText="No hay marcas registradas"
+                            allowClear
+                            clearLabel="Marca"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -785,22 +755,18 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
                         <FormItem>
                           <FormLabel className="text-xs font-semibold">Modelo</FormLabel>
                           <FormControl>
-                            <Select value={field.value || ""} onValueChange={(v) => field.onChange(v ?? "")}>
-                              <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                                <SelectValue placeholder="Modelo">
-                                  {formData.models.find((m) => m.id === field.value)?.name ??
-                                    (field.value === "" || field.value === undefined ? "Sin modelo" : null)}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent searchable>
-                                <SelectItem value="">Sin modelo</SelectItem>
-                                {filteredModels.map((m) => (
-                                  <SelectItem key={m.id} value={m.id}>
-                                    {m.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                              items={filteredModels}
+                              value={field.value ?? ""}
+                              onValueChange={(v) => field.onChange(v)}
+                              getValue={(m) => m.id}
+                              getLabel={(m) => m.name}
+                              placeholder="Modelo"
+                              searchPlaceholder="Buscar modelo..."
+                              emptyText="No hay modelos para esa marca"
+                              allowClear
+                              clearLabel="Sin modelo"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { type Client, type CostCenter, type Ubigeo } from "@/db";
 import { createCostCenter, updateCostCenter, deleteCostCenter } from "../actions";
 import { costCenterFormSchema, type CostCenterFormValues } from "../schema";
-import { UbigeoSelector } from "./ubigeo-selector";
+import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
 
 import { Button } from "@/components/ui/button";

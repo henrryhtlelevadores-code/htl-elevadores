@@ -6,7 +6,7 @@ import { type Client, type CostCenter, type CostCenterContact, type Ubigeo } fro
 import { updateCostCenter } from "../actions";
 import { CredentialsManager } from "./credentials-manager";
 import { ContactsTable } from "./contacts-table";
-import { UbigeoSelector } from "./ubigeo-selector";
+import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

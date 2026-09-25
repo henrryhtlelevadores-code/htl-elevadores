@@ -12,7 +12,13 @@ import {
 } from "../schema";
 import { createQuotation, updateQuotation } from "../actions";
 import type { QuotationDetail, QuotationFormOptions } from "../actions";
-import { calculateQuotationLine, calculateQuotationHeader } from "../calc";
+import {
+  calculateQuotationLine,
+  calculateQuotationHeader,
+  LINE_MODES,
+  DISCOUNT_MODES,
+  type LineMode,
+} from "../calc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,6 +60,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface QuotationCreateDialogProps {
   open: boolean;
@@ -124,6 +131,10 @@ const makeDefaultLine = (hourlyCost: number) => ({
   description: "",
   totalHours: "0",
   hourlyCost: String(hourlyCost || 0),
+  lineMode: "CALCULATED" as LineMode,
+  lineModeReason: "",
+  lineOverridePrice: "",
+  lineOverrideReason: "",
   products: [emptyProduct()],
 });
 
@@ -135,7 +146,11 @@ function defaultValues(hourlyCost: number): QuotationFormValues {
     issueDate: todayInput(),
     validUntil: plusDays(30),
     status: "DRAFT",
+    discountMode: "PERCENT",
     discountRate: "0",
+    discountAmount: "0",
+    targetTotal: "",
+    targetTotalIncludesIgv: true,
     notes: "",
     terms: "",
     lines: [makeDefaultLine(hourlyCost)],
@@ -153,7 +168,11 @@ function detailToValues(
     issueDate: tsToInput(detail.issueDate),
     validUntil: tsToInput(detail.validUntil),
     status: detail.status ?? "DRAFT",
-    discountRate: String((detail.discountRate ?? 0) * 100),
+    discountMode: (detail.discountMode ?? "PERCENT") as QuotationFormValues["discountMode"],
+    discountRate: String(detail.discountRate ?? 0),
+    discountAmount: String(detail.discountAmount ?? 0),
+    targetTotal: detail.targetTotal != null ? String(detail.targetTotal) : "",
+    targetTotalIncludesIgv: detail.targetTotalIncludesIgv ?? true,
     notes: detail.notes ?? "",
     terms: detail.terms ?? "",
     lines:
@@ -163,6 +182,11 @@ function detailToValues(
             description: l.description ?? "",
             totalHours: String(l.totalHours ?? 0),
             hourlyCost: String(l.hourlyCost ?? hourlyCost),
+            lineMode: (l.lineMode ?? "CALCULATED") as LineMode,
+            lineModeReason: l.lineModeReason ?? "",
+            lineOverridePrice:
+              l.lineOverridePrice != null ? String(l.lineOverridePrice) : "",
+            lineOverrideReason: l.lineOverrideReason ?? "",
             products:
               l.products.length > 0
                 ? l.products.map((p) => ({
@@ -181,7 +205,9 @@ function LineProductsField({
   control,
   lineIndex,
 }: {
-  control: ReturnType<typeof useForm<QuotationFormValues>>["control"];
+  control: ReturnType<
+    typeof useForm<z.input<typeof quotationFormSchema>, unknown, z.output<typeof quotationFormSchema>>
+  >["control"];
   lineIndex: number;
 }) {
   const { fields, append, remove } = useFieldArray({
@@ -318,7 +344,19 @@ export function QuotationCreateDialog({
 
   const clientId = useWatch({ control: form.control, name: "clientId" });
   const currentLines = useWatch({ control: form.control, name: "lines" });
+  const discountMode = useWatch({ control: form.control, name: "discountMode" });
   const discountRate = useWatch({ control: form.control, name: "discountRate" });
+  const discountAmount = useWatch({ control: form.control, name: "discountAmount" });
+  const targetTotal = useWatch({ control: form.control, name: "targetTotal" });
+  const targetTotalIncludesIgv = useWatch({
+    control: form.control,
+    name: "targetTotalIncludesIgv",
+  });
+
+  const lineModes = useMemo(
+    () => (currentLines ?? []).map((l) => (l.lineMode ?? "CALCULATED") as LineMode),
+    [currentLines]
+  );
 
   const filteredCostCenters = useMemo(
     () =>
@@ -344,18 +382,36 @@ export function QuotationCreateDialog({
             totalHours: Number(l.totalHours) || 0,
             hourlyCost,
             products,
+            lineMode: (l.lineMode ?? "CALCULATED") as LineMode,
+            lineOverridePrice: Number(l.lineOverridePrice) || null,
           },
-          hourlyCost
+          hourlyCost,
+          options.pricing
         ),
       };
     });
     const byLine = new Map(lines.map((l) => [l.i, l.calc]));
     const header = calculateQuotationHeader(
       lines.map((l) => ({ clientValue: l.calc.clientValue })),
-      (Number(discountRate) || 0) / 100
+      {
+        discountMode: (discountMode ?? "PERCENT") as QuotationFormValues["discountMode"],
+        discountRate: Number(discountRate) || 0,
+        discountAmount: Number(discountAmount) || 0,
+        targetTotal: Number(targetTotal) || null,
+        targetTotalIncludesIgv: targetTotalIncludesIgv ?? true,
+      },
+      options.pricing
     );
     return { byLine, header };
-  }, [currentLines, discountRate]);
+  }, [
+    currentLines,
+    discountMode,
+    discountRate,
+    discountAmount,
+    targetTotal,
+    targetTotalIncludesIgv,
+    options.pricing,
+  ]);
 
   useEffect(() => {
     if (open) {
@@ -421,8 +477,11 @@ export function QuotationCreateDialog({
             {editingDetail ? `Editar cotización ${editingDetail.quotationNumber}` : "Nueva cotización"}
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Precio de venta calculado con: materiales + mano de obra + gastos generales (20%) +
-            comisión (4%) + margen (60%), más IGV (18%).
+            Precio de venta calculado con: materiales + mano de obra + gastos generales (
+            {Math.round(options.pricing.overheadRateQuote * 100)}%) + comisión (
+            {Math.round(options.pricing.commissionRate * 100)}%) + margen (
+            {Math.round(options.pricing.profitRate * 100)}%), más IGV (
+            {Math.round(options.pricing.igvRate * 100)}%).
           </DialogDescription>
         </DialogHeader>
 
@@ -483,24 +542,20 @@ export function QuotationCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Cliente</FormLabel>
                       <FormControl>
-                        <Select
-                          value={field.value}
+                        <SearchableSelect
+                          items={options.clients}
+                          value={field.value ?? ""}
                           onValueChange={(v) => {
                             field.onChange(v);
                             form.setValue("costCenterId", "");
                           }}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs">
-                            <SelectValue placeholder="Selecciona un cliente" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {options.clients.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.legalName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          getValue={(c) => c.id}
+                          getLabel={(c) => c.legalName ?? "Sin nombre"}
+                          getKeywords={(c) => c.taxId}
+                          placeholder="Selecciona un cliente"
+                          searchPlaceholder="Buscar cliente..."
+                          emptyText="No hay clientes registrados"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -513,27 +568,20 @@ export function QuotationCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Sede</FormLabel>
                       <FormControl>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
+                        <SearchableSelect
+                          items={filteredCostCenters}
+                          value={field.value ?? ""}
+                          onValueChange={(v) => field.onChange(v)}
+                          getValue={(cc) => cc.id}
+                          getLabel={(cc) => cc.name ?? "Sin nombre"}
+                          getKeywords={(cc) => cc.address}
+                          placeholder={
+                            clientId ? "Selecciona una sede" : "Elige un cliente primero"
+                          }
+                          searchPlaceholder="Buscar sede..."
+                          emptyText="Este cliente no tiene sedes"
                           disabled={!clientId}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs">
-                            <SelectValue placeholder="Selecciona una sede" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {filteredCostCenters.map((cc) => (
-                              <SelectItem key={cc.id} value={cc.id}>
-                                {cc.name}
-                              </SelectItem>
-                            ))}
-                            {filteredCostCenters.length === 0 && (
-                              <SelectItem value="__none__" disabled>
-                                Sin sedes para este cliente
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -746,6 +794,112 @@ export function QuotationCreateDialog({
                       )}
                     />
 
+                    <div className="grid grid-cols-12 gap-2 items-start rounded-md border border-border/70 bg-background/60 p-2.5">
+                      <FormField
+                        control={form.control}
+                        name={`lines.${index}.lineMode`}
+                        render={({ field: f }) => (
+                          <FormItem className="col-span-12 sm:col-span-4">
+                            <FormLabel className="text-[10px] text-muted-foreground">
+                              Modo de cobro
+                            </FormLabel>
+                            <FormControl>
+                              <Select
+                                value={f.value}
+                                onValueChange={(v) => {
+                                  f.onChange(v);
+                                  form.setValue(`lines.${index}.lineOverridePrice`, "");
+                                  form.setValue(`lines.${index}.lineModeReason`, "");
+                                  form.setValue(`lines.${index}.lineOverrideReason`, "");
+                                }}
+                              >
+                                <SelectTrigger className="w-full bg-background border-border text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {LINE_MODES.map((m) => (
+                                    <SelectItem key={m.value} value={m.value}>
+                                      {m.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {lineModes[index] === "FIXED_PRICE" && (
+                        <>
+                          <FormField
+                            control={form.control}
+                            name={`lines.${index}.lineOverridePrice`}
+                            render={({ field: f }) => (
+                              <FormItem className="col-span-6 sm:col-span-3">
+                                <FormLabel className="text-[10px] text-muted-foreground">
+                                  Precio final c/IGV (S/)
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    {...f}
+                                    className="bg-background border-border text-xs"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`lines.${index}.lineOverrideReason`}
+                            render={({ field: f }) => (
+                              <FormItem className="col-span-6 sm:col-span-5">
+                                <FormLabel className="text-[10px] text-muted-foreground">
+                                  Motivo del precio
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="Ej: precio pactado con el cliente"
+                                    {...f}
+                                    className="bg-background border-border text-xs"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </>
+                      )}
+                      {lineModes[index] === "PASSTHROUGH" && (
+                        <FormField
+                          control={form.control}
+                          name={`lines.${index}.lineModeReason`}
+                          render={({ field: f }) => (
+                            <FormItem className="col-span-12 sm:col-span-8">
+                              <FormLabel className="text-[10px] text-muted-foreground">
+                                Motivo (obligatorio)
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Ej: servicio lifto por proveedor externo"
+                                  {...f}
+                                  className="bg-background border-border text-xs"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                      {lineModes[index] === "CALCULATED" && (
+                        <p className="col-span-12 text-[10px] text-muted-foreground sm:col-span-8">
+                          Se aplica gastos generales, comisión y margen automáticamente.
+                        </p>
+                      )}
+                    </div>
+
                     <LineProductsField control={form.control} lineIndex={index} />
                   </div>
                 ))}
@@ -770,27 +924,120 @@ export function QuotationCreateDialog({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FormField
                   control={form.control}
-                  name="discountRate"
+                  name="discountMode"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs font-semibold">Descuento (%)</FormLabel>
+                      <FormLabel className="text-xs font-semibold">Tipo de descuento</FormLabel>
                       <FormControl>
-                        <Input
-                          inputMode="decimal"
-                          placeholder="0"
-                          {...field}
-                          className="bg-background border-border text-xs"
-                        />
+                        <Select
+                          value={field.value}
+                          onValueChange={(v) => {
+                            field.onChange(v);
+                            form.setValue("discountRate", "0");
+                            form.setValue("discountAmount", "0");
+                            form.setValue("targetTotal", "");
+                          }}
+                        >
+                          <SelectTrigger className="w-full bg-background border-border text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DISCOUNT_MODES.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>
+                                {m.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                {discountMode === "PERCENT" && (
+                  <FormField
+                    control={form.control}
+                    name="discountRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">Descuento (%)</FormLabel>
+                        <FormControl>
+                          <Input
+                            inputMode="decimal"
+                            placeholder="0"
+                            {...field}
+                            className="bg-background border-border text-xs"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {discountMode === "AMOUNT" && (
+                  <FormField
+                    control={form.control}
+                    name="discountAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-semibold">
+                          Monto del descuento (S/)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            {...field}
+                            className="bg-background border-border text-xs"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {discountMode === "FINAL" && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="targetTotal"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-semibold">
+                            Precio final (S/)
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              {...field}
+                              className="bg-background border-border text-xs"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="sm:col-span-2 sm:pt-6">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={targetTotalIncludesIgv ?? true}
+                          onChange={(e) =>
+                            form.setValue("targetTotalIncludesIgv", e.target.checked)
+                          }
+                          className="size-4 accent-[#0066CC]"
+                        />
+                        El precio final ya incluye IGV
+                      </label>
+                    </div>
+                  </>
+                )}
                 <FormField
                   control={form.control}
                   name="notes"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className={discountMode === "FINAL" ? "" : "sm:col-span-3"}>
                       <FormLabel className="text-xs font-semibold">Notas</FormLabel>
                       <FormControl>
                         <Textarea
@@ -808,7 +1055,7 @@ export function QuotationCreateDialog({
                   control={form.control}
                   name="terms"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className={discountMode === "FINAL" ? "" : "sm:col-span-3"}>
                       <FormLabel className="text-xs font-semibold">Condiciones</FormLabel>
                       <FormControl>
                         <Textarea
@@ -836,7 +1083,7 @@ export function QuotationCreateDialog({
                 <div>
                   <div className="text-[10px] text-muted-foreground">Descuento</div>
                   <div className="text-sm font-semibold">
-                    {Number(discountRate) > 0
+                    {summary.header.discountAmount > 0
                       ? `-${money(summary.header.discountAmount)}`
                       : money(0)}
                   </div>
@@ -846,7 +1093,9 @@ export function QuotationCreateDialog({
                   <div className="text-sm font-semibold">{money(summary.header.taxableBase)}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-muted-foreground">IGV 18%</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    IGV {Math.round(options.pricing.igvRate * 100)}%
+                  </div>
                   <div className="text-sm font-semibold">{money(summary.header.igv)}</div>
                 </div>
                 <div>

@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Plus,
   Pencil,
@@ -65,7 +66,27 @@ interface ContractsTableProps {
   costCenters: CostCenterOption[];
   serviceTypes: ServiceType[];
   initialContractElevators: ContractElevatorWithRelations[];
-  equipmentOptions: Array<{ id: string; internalCode: string; name: string }>;
+  equipmentOptions: Array<{
+    id: string;
+    costCenterId: string;
+    internalCode: string;
+    name: string;
+    manufacturerSerial: string | null;
+    brand_name: string | null;
+    model_name: string | null;
+    elevator_type_name: string | null;
+    cost_center_name: string | null;
+    client_name: string | null;
+    capacityPersons: number | null;
+    capacityKg: number | null;
+    speedMs: number | null;
+    stops: number | null;
+    floors: number | null;
+    tractionType: string | null;
+    yearOfFabrication: number | null;
+    status: string | null;
+    installationDate: number | null;
+  }>;
 }
 
 type ContractTab = "ACTIVE" | "DRAFT" | "HISTORY";
@@ -172,6 +193,11 @@ export function ContractsTable({
     resolver: zodResolver(contractFormSchema),
     defaultValues: createDefaultValues(),
   });
+
+  const filteredCostCenters = useMemo(
+    () => costCenters.filter((cc) => cc.clientId === selectedClientId),
+    [costCenters, selectedClientId]
+  );
 
   function handleOpenCreate() {
     createForm.reset(createDefaultValues());
@@ -437,26 +463,22 @@ export function ContractsTable({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Cliente</FormLabel>
                       <FormControl>
-                        <Select
+                        <SearchableSelect
+                          items={clients}
                           value={selectedClientId}
                           onValueChange={(v) => {
-                            setSelectedClientId(v ?? "");
+                            setSelectedClientId(v);
                             createForm.setValue("costCenterId", "");
                           }}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder="Selecciona el cliente">
-                              {clients.find((c) => c.id === selectedClientId)?.legalName ?? null}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clients.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.legalName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          getValue={(c) => c.id}
+                          getLabel={(c) => c.legalName}
+                          getKeywords={(c) => c.taxId}
+                          placeholder="Selecciona el cliente"
+                          searchPlaceholder="Buscar cliente..."
+                          emptyText="No hay clientes registrados"
+                          allowClear
+                          clearLabel="Selecciona el cliente"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -469,29 +491,22 @@ export function ContractsTable({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Centro de Costo</FormLabel>
                       <FormControl>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
+                        <SearchableSelect
+                          items={filteredCostCenters}
+                          value={field.value ?? ""}
+                          onValueChange={(v) => field.onChange(v)}
+                          getValue={(cc) => cc.id}
+                          getLabel={(cc) => cc.name}
+                          getKeywords={(cc) => cc.address}
+                          placeholder={
+                            selectedClientId
+                              ? "Selecciona el centro de costo"
+                              : "Primero elige el cliente"
+                          }
+                          searchPlaceholder="Buscar centro de costo..."
+                          emptyText="Este cliente no tiene centros de costo"
                           disabled={!selectedClientId}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder={selectedClientId ? "Selecciona el centro de costo" : "Primero elige el cliente"}>
-                              {(() => {
-                                const cc = costCenters.find((c) => c.id === field.value);
-                                return cc ? cc.name : null;
-                              })()}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {costCenters
-                              .filter((cc) => cc.clientId === selectedClientId)
-                              .map((cc) => (
-                                <SelectItem key={cc.id} value={cc.id}>
-                                  {cc.name}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -802,6 +817,7 @@ export function ContractsTable({
           </DialogHeader>
 
           <ContractElevatorsTable
+            key={viewingContract?.id ?? "none"}
             contract={viewingContract}
             contractElevators={viewingContractElevators}
             equipmentOptions={equipmentOptions}
