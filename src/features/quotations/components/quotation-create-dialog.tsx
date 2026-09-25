@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface QuotationCreateDialogProps {
   open: boolean;
@@ -620,7 +621,11 @@ export function QuotationCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Fecha de emisión</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} className="bg-background border-border text-xs" />
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -633,7 +638,11 @@ export function QuotationCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Válida hasta</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} className="bg-background border-border text-xs" />
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

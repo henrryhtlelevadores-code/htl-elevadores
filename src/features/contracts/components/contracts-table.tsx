@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Plus,
   Pencil,
@@ -287,9 +288,9 @@ export function ContractsTable({
         accessorKey: "cost_center_name",
         header: "Centro de Costo",
         cell: ({ row }) => (
-          <div className="flex items-center gap-2 text-foreground">
-            <MapPin className="size-3.5 text-[#0066CC] shrink-0" />
-            <span className="font-semibold">{row.getValue("cost_center_name")}</span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground max-w-[200px]">
+            <MapPin className="size-3 shrink-0" />
+            <span className="truncate">{row.getValue("cost_center_name")}</span>
           </div>
         ),
       },
@@ -553,7 +554,11 @@ export function ContractsTable({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Fecha Inicio</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]" />
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -566,7 +571,11 @@ export function ContractsTable({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Fecha Fin</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]" />
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -798,7 +807,7 @@ export function ContractsTable({
 
       {/* Modal: Ver Equipos del Contrato */}
       <Dialog open={!!viewingContract} onOpenChange={(open) => !open && setViewingContract(null)}>
-        <DialogContent showCloseButton={false} className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent showCloseButton={false} className="!max-w-[1280px] w-full bg-card border-border text-foreground shadow-lg max-h-[94vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <FileSignature className="size-4 text-[#0066CC]" />

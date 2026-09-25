@@ -401,25 +401,6 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
         },
       },
       {
-        accessorKey: "internalCode",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2 text-xs font-semibold hover:bg-muted/60"
-          >
-            Código
-            <ArrowUpDown className="ml-1.5 size-3 text-muted-foreground" />
-          </Button>
-        ),
-        cell: ({ row }) => (
-          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
-            {row.getValue("internalCode")}
-          </span>
-        ),
-      },
-      {
         accessorKey: "cost_center_name",
         header: "Centro de Costo",
         cell: ({ row }) => (
@@ -428,14 +409,6 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
             <span className="truncate">{row.getValue("cost_center_name")}</span>
           </div>
         ),
-      },
-      {
-        accessorKey: "capacityKg",
-        header: "Capacidad",
-        cell: ({ row }) => {
-          const kg = row.getValue<number | null>("capacityKg");
-          return <span className="text-xs font-mono text-muted-foreground">{kg ? `${kg} kg` : "—"}</span>;
-        },
       },
       {
         accessorKey: "status",
@@ -458,6 +431,25 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
             </Select>
           );
         },
+      },
+      {
+        accessorKey: "internalCode",
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-8 px-2 text-xs font-semibold hover:bg-muted/60"
+          >
+            Código
+            <ArrowUpDown className="ml-1.5 size-3 text-muted-foreground" />
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
+            {row.getValue("internalCode")}
+          </span>
+        ),
       },
       {
         id: "actions",

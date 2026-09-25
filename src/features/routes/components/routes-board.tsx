@@ -71,6 +71,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { TimePicker } from "@/components/ui/time-picker";
 
 interface RoutesBoardProps {
   technicians: TechnicianOption[];
@@ -567,10 +568,10 @@ export function RoutesBoard({
                       Hora Planificada
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        type="time"
-                        {...field}
-                        className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                      <TimePicker
+                        value={field.value ?? ""}
+                        onChange={(v) => field.onChange(v)}
+                        className="text-xs"
                       />
                     </FormControl>
                     <FormMessage />
@@ -618,11 +619,10 @@ export function RoutesBoard({
               Actualiza la hora planificada para {editGroup?.costCenterName}.
             </DialogDescription>
           </DialogHeader>
-          <Input
-            type="time"
+          <TimePicker
             value={timeInput}
-            onChange={(e) => setTimeInput(e.target.value)}
-            className="bg-background border-border text-xs font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+            onChange={(v) => setTimeInput(v)}
+            className="text-xs"
           />
           <DialogFooter className="pt-3 gap-2">
             <Button

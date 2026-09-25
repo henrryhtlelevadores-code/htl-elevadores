@@ -67,6 +67,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   Select,
   SelectContent,
@@ -696,11 +698,10 @@ export function WorkOrdersCalendar({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Fecha Programada</FormLabel>
                       <FormControl>
-                        <Input
-                          type="date"
-                          value={field.value}
-                          onChange={(e) => handleDateChange(e.target.value)}
-                          className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => handleDateChange(v)}
+                          className="text-xs"
                         />
                       </FormControl>
                       <FormMessage />
@@ -714,11 +715,10 @@ export function WorkOrdersCalendar({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Hora Programada</FormLabel>
                       <FormControl>
-                        <Input
-                          type="time"
-                          value={field.value}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        <TimePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
                         />
                       </FormControl>
                       <FormMessage />

@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "cn";
 import {
   AlertTriangle,
@@ -521,10 +522,10 @@ export function InvoiceCreateDialog({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Fecha de emisión</FormLabel>
                       <FormControl>
-                        <Input
-                          type="date"
-                          {...field}
-                          className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        <DatePicker
+                          value={field.value ?? ""}
+                          onChange={(v) => field.onChange(v)}
+                          className="text-xs"
                         />
                       </FormControl>
                       <FormMessage />

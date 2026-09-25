@@ -13,6 +13,7 @@ import { buildContractTemplateData } from "../template";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   ArrowLeft,
   Loader2,
@@ -260,12 +261,11 @@ export function ContractDetailView({ contract }: ContractDetailViewProps) {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Fecha de Firma</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={signatureDateStr}
-                onChange={(e) => setSignatureDateStr(e.target.value)}
+                onChange={(v) => setSignatureDateStr(v)}
                 disabled={isLocked}
-                className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                className="text-xs"
               />
             </div>
           </div>
