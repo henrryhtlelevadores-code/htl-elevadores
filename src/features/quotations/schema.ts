@@ -75,8 +75,7 @@ export const quotationFormSchema = z
     discountAmount: nonNegativeNumber("El monto del descuento"),
     targetTotal: nonNegativeNumber("El precio final"),
     targetTotalIncludesIgv: z.boolean().default(true),
-    notes: z.string().optional().or(z.literal("")),
-    terms: z.string().optional().or(z.literal("")),
+    showTaxBreakdown: z.boolean().default(true),
     lines: z.array(quotationLineSchema).min(1, "Agrega al menos un equipo o servicio"),
   })
   .superRefine((data, ctx) => {

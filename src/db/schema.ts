@@ -480,13 +480,35 @@ export const quotations = sqliteTable("quotations", {
   taxableBase: real("taxable_base").default(0),
   igv: real("igv").default(0),
   total: real("total").default(0),
-  notes: text("notes"),
-  terms: text("terms"),
+  welcomeMessage: text("welcome_message"),
+  paymentTerms: text("payment_terms"),
+  executionTime: text("execution_time"),
+  workingHours: text("working_hours"),
+  validityDays: integer("validity_days").default(15),
+  showTaxBreakdown: integer("show_tax_breakdown", { mode: "boolean" }).default(true),
   configSnapshot: text("config_snapshot"),
   pdfUrl: text("pdf_url"),
   pdfGeneratedAt: integer("pdf_generated_at"),
   createdAt: integer("created_at").default(unixNow()),
 });
+
+export const quotationImages = sqliteTable(
+  "quotation_images",
+  {
+    id: text("id").primaryKey(),
+    quotationId: text("quotation_id")
+      .notNull()
+      .references(() => quotations.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    caption: text("caption"),
+    orderIndex: integer("order_index").default(0),
+    isReferenceOnly: integer("is_reference_only", { mode: "boolean" }).default(false),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (table) => ({
+    quotationIdx: index("idx_quotation_images_quotation_id").on(table.quotationId),
+  })
+);
 
 export const quotationLines = sqliteTable("quotation_lines", {
   id: text("id").primaryKey(),

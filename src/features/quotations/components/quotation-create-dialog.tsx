@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -164,8 +165,7 @@ function defaultValues(
     discountAmount: "0",
     targetTotal: "",
     targetTotalIncludesIgv: true,
-    notes: "",
-    terms: DEFAULT_QUOTATION_TERMS,
+    showTaxBreakdown: true,
     lines: [makeDefaultLine(hourlyCost)],
   };
 }
@@ -186,8 +186,7 @@ function detailToValues(
     discountAmount: String(detail.discountAmount ?? 0),
     targetTotal: detail.targetTotal != null ? String(detail.targetTotal) : "",
     targetTotalIncludesIgv: detail.targetTotalIncludesIgv ?? true,
-    notes: detail.notes ?? "",
-    terms: detail.terms ?? "",
+    showTaxBreakdown: detail.showTaxBreakdown ?? true,
     lines:
       detail.lines.length > 0
         ? detail.lines.map((l) => ({
@@ -372,6 +371,7 @@ export function QuotationCreateDialog({
 }: QuotationCreateDialogProps) {
   const currentUserId = currentUser?.id ?? null;
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
   const [step, setStep] = useState(0);
 
   type FormInput = z.input<typeof quotationFormSchema>;
@@ -397,6 +397,10 @@ export function QuotationCreateDialog({
   const targetTotalIncludesIgv = useWatch({
     control: form.control,
     name: "targetTotalIncludesIgv",
+  });
+  const showTaxBreakdown = useWatch({
+    control: form.control,
+    name: "showTaxBreakdown",
   });
 
   const lineModes = useMemo(
@@ -591,6 +595,7 @@ export function QuotationCreateDialog({
         form.reset();
         onOpenChange(false);
         onSaved?.();
+        if (!editingDetail && res.id) router.push(`/quotations/${res.id}`);
       } else {
         toast.error("Error al guardar", { description: res.error });
       }
@@ -1391,42 +1396,6 @@ export function QuotationCreateDialog({
                     </div>
                   </>
                 )}
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem className={discountMode === "FINAL" ? "" : "sm:col-span-3"}>
-                      <FormLabel className="text-xs font-semibold">Notas</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Comentarios generales..."
-                          rows={2}
-                          {...field}
-                          className="bg-background border-border text-xs resize-none"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="terms"
-                  render={({ field }) => (
-                    <FormItem className={discountMode === "FINAL" ? "" : "sm:col-span-3"}>
-                      <FormLabel className="text-xs font-semibold">Condiciones</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Plazos, garantías, forma de pago..."
-                          rows={2}
-                          {...field}
-                          className="bg-background border-border text-xs resize-none"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
             </div>
             <div className="rounded-lg border border-border bg-muted/20 p-4">
@@ -1463,6 +1432,15 @@ export function QuotationCreateDialog({
                   </div>
                 </div>
               </div>
+              <label className="mt-4 flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  checked={showTaxBreakdown ?? true}
+                  onChange={(e) => form.setValue("showTaxBreakdown", e.target.checked)}
+                  className="size-4 accent-[#0066CC]"
+                />
+                <span>Mostrar desglose (Subtotal, Base, IGV) en el PDF</span>
+              </label>
             </div>
             </>
             )}

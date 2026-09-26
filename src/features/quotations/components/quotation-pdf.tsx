@@ -1,5 +1,6 @@
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image does not support HTML alt attributes */
 import React from "react";
+import { marked } from "marked";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -12,17 +13,27 @@ import {
   Font,
 } from "@react-pdf/renderer";
 
+
 const FONT_DIR = path.join(process.cwd(), "public", "fonts");
 const MONTSERRAT_REGULAR = path.join(FONT_DIR, "Montserrat-Regular.ttf");
 const MONTSERRAT_BOLD = path.join(FONT_DIR, "Montserrat-Bold.ttf");
+const MONTSERRAT_ITALIC = path.join(FONT_DIR, "Montserrat-Italic.ttf");
+const MONTSERRAT_BOLD_ITALIC = path.join(FONT_DIR, "Montserrat-BoldItalic.ttf");
 let PDF_FONT = "Helvetica";
 
-if (fs.existsSync(MONTSERRAT_REGULAR) && fs.existsSync(MONTSERRAT_BOLD)) {
+if (
+  fs.existsSync(MONTSERRAT_REGULAR) &&
+  fs.existsSync(MONTSERRAT_BOLD) &&
+  fs.existsSync(MONTSERRAT_ITALIC) &&
+  fs.existsSync(MONTSERRAT_BOLD_ITALIC)
+) {
   Font.register({
     family: "Montserrat",
     fonts: [
       { src: MONTSERRAT_REGULAR },
       { src: MONTSERRAT_BOLD, fontWeight: 700 },
+      { src: MONTSERRAT_ITALIC, fontStyle: "italic" },
+      { src: MONTSERRAT_BOLD_ITALIC, fontWeight: 700, fontStyle: "italic" },
     ],
   });
   PDF_FONT = "Montserrat";
@@ -48,6 +59,12 @@ export interface QuotationPdfProduct {
   unit: string | null;
   unitCost: number;
   totalCost: number;
+}
+
+export interface QuotationPdfImage {
+  url: string;
+  caption: string | null;
+  isReferenceOnly?: boolean | null;
 }
 
 export interface QuotationPdfLine {
@@ -81,6 +98,7 @@ export interface QuotationPdfLine {
 
 export interface QuotationPdfData {
   logoUrl: string;
+  signatureUrl: string;
   quotationNumber: string;
   clientName: string;
   clientTaxId: string | null;
@@ -92,14 +110,19 @@ export interface QuotationPdfData {
   issueDate: string;
   validUntil: string;
   discountMode: string;
+  showTaxBreakdown: boolean;
   discountRate: number;
   subtotal: number;
   discountAmount: number;
   taxableBase: number;
   igv: number;
   total: number;
-  notes: string | null;
-  terms: string | null;
+  welcomeMessage: string | null;
+  paymentTerms: string | null;
+  executionTime: string | null;
+  workingHours: string | null;
+  validityDays: number;
+  images: QuotationPdfImage[];
   lines: QuotationPdfLine[];
 }
 
@@ -117,9 +140,9 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: DARK,
     backgroundColor: "#FFFFFF",
-    paddingTop: 28,
-    paddingBottom: 56,
-    paddingHorizontal: 36,
+    paddingTop: 35,
+    paddingBottom: 60,
+    paddingHorizontal: 35,
     lineHeight: 1.35,
   },
   header: {
@@ -136,7 +159,7 @@ const styles = StyleSheet.create({
     objectFit: "contain",
   },
   brandTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: PDF_FONT,
     color: BRAND,
     letterSpacing: 1.2,
@@ -159,7 +182,7 @@ const styles = StyleSheet.create({
     maxWidth: "55%",
   },
   companyLine: {
-    fontSize: 8,
+    fontSize: 9,
     color: DARK,
     marginBottom: 1.5,
   },
@@ -188,11 +211,11 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   sectionTitle: {
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: PDF_FONT,
     color: BRAND,
     marginTop: 12,
-    marginBottom: 6,
+    marginBottom: 14,
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
@@ -249,7 +272,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 6,
     fontFamily: PDF_FONT,
-    fontSize: 7.5,
+    fontSize: 9,
   },
   tableRow: {
     flexDirection: "row",
@@ -257,7 +280,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderBottomWidth: 0.5,
     borderBottomColor: BORDER,
-    fontSize: 8,
+    fontSize: 9,
   },
   tableRowAlt: {
     backgroundColor: ALT_ROW,
@@ -299,7 +322,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 3,
-    fontSize: 9,
+    fontSize: 10,
   },
   totalLabel: {
     color: MUTED,
@@ -313,7 +336,7 @@ const styles = StyleSheet.create({
     borderTopColor: BRAND,
     fontFamily: PDF_FONT,
     color: BRAND,
-    fontSize: 12,
+    fontSize: 13,
   },
   termsBlock: {
     backgroundColor: SOFT_BG,
@@ -323,7 +346,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   termsLine: {
-    fontSize: 8,
+    fontSize: 9.5,
     color: DARK,
     marginBottom: 1.5,
   },
@@ -335,22 +358,69 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: DARK,
   },
+  markdownParagraph: {
+    fontSize: 9.5,
+    color: DARK,
+    lineHeight: 1.4,
+    marginBottom: 10,
+  },
+  markdownHeading: {
+    fontSize: 12,
+    color: DARK,
+    fontFamily: PDF_FONT,
+    fontWeight: "bold",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  markdownList: {
+    marginBottom: 10,
+  },
+  markdownListItem: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  markdownBullet: {
+    width: 16,
+    fontSize: 10,
+    color: DARK,
+  },
+  markdownListContent: {
+    flex: 1,
+    fontSize: 9.5,
+    color: DARK,
+    lineHeight: 1.4,
+  },
   footer: {
     position: "absolute",
-    bottom: 24,
-    left: 36,
-    right: 36,
+    bottom: 20,
+    left: 35,
+    right: 35,
     borderTopWidth: 1.5,
     borderTopColor: BRAND,
     paddingTop: 6,
     textAlign: "center",
-    fontSize: 7.5,
+    fontSize: 8,
     color: MUTED,
   },
   footerBold: {
     fontFamily: PDF_FONT,
     color: DARK,
   },
+  closing: {
+    marginTop: 30,
+    color: DARK,
+  },
+  closingText: { fontSize: 10, marginBottom: 2 },
+  closingCompany: { fontSize: 12, fontFamily: PDF_FONT, fontWeight: "bold", marginTop: 6, marginBottom: 10 },
+  signature: { width: 150, height: 54, objectFit: "contain", objectPosition: "left center", marginBottom: 6 },
+  signerName: { fontSize: 10, fontFamily: PDF_FONT, fontWeight: "bold" },
+  signerRole: { fontSize: 9, color: "#4B5563" },
+  bankPage: { fontFamily: PDF_FONT, color: DARK, fontSize: 10, lineHeight: 1.5 },
+  bankTitle: { fontSize: 18, fontFamily: PDF_FONT, fontWeight: "bold", color: BRAND, borderBottomWidth: 3, borderBottomColor: BRAND, paddingBottom: 8, marginBottom: 20 },
+  bankIntro: { fontSize: 10, marginBottom: 10 },
+  bankSection: { fontSize: 12, fontFamily: PDF_FONT, fontWeight: "bold", color: BRAND, marginTop: 18, marginBottom: 8 },
+  bankCard: { backgroundColor: SOFT_BG, borderLeftWidth: 4, borderLeftColor: BRAND, padding: 12, borderRadius: 4, marginBottom: 10 },
+  bankName: { fontFamily: PDF_FONT, fontWeight: "bold", marginBottom: 6 },
 });
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -446,6 +516,19 @@ function ManualLine({ line }: { line: QuotationPdfLine }) {
 }
 
 function Totals({ data }: { data: QuotationPdfData }) {
+  if (!data.showTaxBreakdown) {
+    return (
+      <View style={styles.totalsOuter} wrap={false}>
+        <View style={styles.totalsBox}>
+          <View style={styles.grandRow}>
+            <Text>TOTAL</Text>
+            <Text>{money(data.total)}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const hasDiscount = data.discountAmount > 0;
   return (
     <View style={styles.totalsOuter} wrap={false}>
@@ -483,16 +566,25 @@ function Totals({ data }: { data: QuotationPdfData }) {
   );
 }
 
-function TermsBlock({ terms }: { terms: string | null }) {
-  if (!terms) return null;
-  const lines = terms.split(/\r?\n/).filter((l) => l.trim().length > 0);
+function MarkdownBlock({ value }: { value: string | null }) {
+  if (!value) return null;
+  const inline = (text: string, keyPrefix: string) => text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <Text key={`${keyPrefix}-${index}`} style={{ fontFamily: PDF_FONT, fontWeight: "bold" }}>{part.slice(2, -2)}</Text>;
+    if (part.startsWith("*") && part.endsWith("*")) return <Text key={`${keyPrefix}-${index}`} style={{ fontFamily: PDF_FONT, fontStyle: "italic" }}>{part.slice(1, -1)}</Text>;
+    return part;
+  });
+  const tokens = marked.lexer(value);
   return (
-    <View style={styles.termsBlock}>
-      {lines.map((line, i) => (
-        <Text key={i} style={styles.termsLine}>
-          {line}
-        </Text>
-      ))}
+    <View style={styles.notesBlock}>
+      {tokens.map((token, index) => {
+        if (token.type === "list") {
+          return <View key={index} style={styles.markdownList}>{token.items.map((item: { text: string }, itemIndex: number) => <View key={itemIndex} style={styles.markdownListItem}><Text style={styles.markdownBullet}>{token.ordered ? `${itemIndex + 1}.` : "•"}</Text><Text style={styles.markdownListContent}>{inline(item.text, `${index}-${itemIndex}`)}</Text></View>)}</View>;
+        }
+        if (token.type === "space") return null;
+        const text = "text" in token ? token.text : "";
+        if (token.type === "heading") return <Text key={index} style={styles.markdownHeading}>{inline(text, String(index))}</Text>;
+        return <Text key={index} style={styles.markdownParagraph}>{inline(text, String(index))}</Text>;
+      })}
     </View>
   );
 }
@@ -548,6 +640,14 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
           ) : null}
         </View>
 
+        {data.welcomeMessage ? (
+          <View wrap={false} style={styles.notesBlock}>
+            <Text style={styles.sectionTitle}>Bienvenida</Text>
+            <MarkdownBlock value={data.welcomeMessage} />
+          </View>
+        ) : null}
+
+        <View wrap={false}>
         <Text style={styles.sectionTitle}>Detalle de Cotización</Text>
         {data.lines.map((line, index) => {
           const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";
@@ -563,24 +663,42 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
             </View>
           );
         })}
+        </View>
 
-        <Totals data={data} />
+        <View wrap={false}><Totals data={data} /></View>
 
-        {data.terms ? (
+        {data.paymentTerms || data.executionTime || data.workingHours ? (
           <View wrap={false}>
             <Text style={styles.sectionTitle}>Términos y Condiciones</Text>
-            <TermsBlock terms={data.terms} />
+            {data.paymentTerms ? <Text style={styles.termsLine}>Forma de Pago: {data.paymentTerms}</Text> : null}
+            {data.executionTime ? <Text style={styles.termsLine}>Ejecución: {data.executionTime}</Text> : null}
+            {data.workingHours ? <Text style={styles.termsLine}>Horario: {data.workingHours}</Text> : null}
+            <Text style={styles.termsLine}>Validez de la Oferta: {data.validityDays} días</Text>
           </View>
         ) : null}
 
-        {data.notes ? (
+        {data.images.length > 0 ? (
           <View wrap={false}>
-            <Text style={styles.sectionTitle}>Notas</Text>
-            <View style={styles.notesBlock}>
-              <Text style={styles.notesText}>{data.notes}</Text>
+            <Text style={styles.sectionTitle}>Imágenes referenciales</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: data.images.length === 1 ? "center" : "flex-start", gap: 8 }}>
+              {data.images.map((image, index) => (
+                <View key={index} style={{ width: data.images.length === 1 ? 240 : "48%", alignItems: "center" }}>
+                  <Image src={image.url} style={{ width: "100%", height: 160, objectFit: "contain", backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: BORDER, borderRadius: 6, padding: 4 }} />
+                  {image.caption ? <Text style={styles.termsLine}>{image.caption}</Text> : null}
+                  {image.isReferenceOnly ? <Text style={[styles.termsLine, { color: "#9CA3AF", fontStyle: "italic" }]}>Imagen referencial</Text> : null}
+                </View>
+              ))}
             </View>
           </View>
         ) : null}
+
+        <View style={styles.closing} wrap={false}>
+          <Text style={styles.closingText}>Atentamente,</Text>
+          <Text style={styles.closingCompany}>HTL ELEVADORES S.A.C.</Text>
+          <Image src={data.signatureUrl} style={styles.signature} />
+          <Text style={styles.signerName}>Henrry Abner Diaz Cueva</Text>
+          <Text style={styles.signerRole}>División Comercial</Text>
+        </View>
 
         <View style={styles.footer} fixed>
           <Text>
@@ -589,6 +707,29 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
           <Text>comercial@htl-elevadores.com</Text>
           <Text style={styles.footerBold}>¡Gracias por trabajar con nosotros!</Text>
         </View>
+      </Page>
+      <Page size="A4" style={[styles.page, styles.bankPage]}>
+        <Image src={data.logoUrl} style={{ width: 120, height: 38, objectFit: "contain", marginBottom: 28 }} />
+        <Text style={styles.bankTitle}>CUENTAS BANCARIAS</Text>
+        <Text style={styles.bankIntro}>El presente documento tiene como objetivo centralizar y detallar la información de las cuentas bancarias oficiales de HTL ELEVADORES S.A.C.</Text>
+        <Text style={styles.bankIntro}>Está dirigido a clientes, proveedores e inversionistas que requieran realizar pagos o validaciones financieras de forma rápida y segura.</Text>
+        <Text style={styles.bankIntro}>De esta manera, se asegura transparencia en las operaciones, evitando confusiones o el uso de cuentas no autorizadas.</Text>
+        <Text style={styles.bankSection}>DATOS DE LA EMPRESA</Text>
+        <Text>Razón Social: HTL ELEVADORES S.A.C.</Text>
+        <Text>RUC: 20614626241</Text>
+        <Text style={styles.bankSection}>CUENTAS BANCARIAS</Text>
+        <View style={styles.bankCard}><Text style={styles.bankName}>Banco Scotiabank — Soles</Text><Text>Cuenta Corriente: 00004711247</Text><Text>Cuenta Interbancaria (CCI): 009230000000471124749</Text></View>
+        <View style={styles.bankCard}><Text style={styles.bankName}>Banco de la Nación — Detracciones</Text><Text>Cuenta Detracción: 00058555770</Text></View>
+        <Text style={styles.bankSection}>USO Y ALCANCE</Text>
+        <Text>Las cuentas listadas son de uso exclusivo para:</Text>
+        <Text>• Pagos por servicios de mantenimiento y proyectos de ascensores.</Text>
+        <Text>• Depósitos de detracciones según normativa vigente.</Text>
+        <Text>• Operaciones seguras y verificables, asociadas únicamente al RUC 20614626241.</Text>
+        <Text style={styles.bankSection}>RECOMENDACIONES DE USO</Text>
+        <Text>• Antes de transferir, verifique que el titular sea HTL ELEVADORES S.A.C.</Text>
+        <Text>• Remita el voucher a comercial@htl-elevadores.com indicando número de factura.</Text>
+        <Text>• No se aceptan pagos en cuentas distintas a las indicadas.</Text>
+        <View style={styles.footer} fixed><Text><Text style={styles.footerBold}>Henrry Abner Diaz Cueva</Text> · +51 963 207 058</Text><Text>comercial@htl-elevadores.com</Text><Text style={styles.footerBold}>¡Gracias por trabajar con nosotros!</Text></View>
       </Page>
     </Document>
   );

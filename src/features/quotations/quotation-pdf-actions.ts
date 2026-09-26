@@ -7,7 +7,7 @@ import { db, quotations } from "@/db/index";
 import { eq } from "drizzle-orm";
 import { getErrorMessage } from "@/lib/errors";
 import { uploadPdfToR2, buildQuotationPdfKey } from "@/lib/r2";
-import { getQuotationById } from "./actions";
+import { getQuotationById, getQuotationImages } from "./actions";
 import {
   QuotationPDF,
   dateEs,
@@ -22,6 +22,11 @@ function resolveLogoUrl(): string {
     process.env.R2_LOGO_URL ||
     `${r2Url}/empresa/logohtlrojo.png`
   );
+}
+
+function resolveSignatureUrl(): string {
+  const r2Url = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? process.env.R2_PUBLIC_URL ?? "";
+  return process.env.NEXT_PUBLIC_R2_FIRM_URL || process.env.R2_FIRM_URL || `${r2Url}/empresa/firma.PNG`;
 }
 
 function isR2Configured(): boolean {
@@ -41,9 +46,11 @@ async function buildQuotationPdfData(
   if (!quotation) {
     throw new Error("Cotización no encontrada");
   }
+  const images = await getQuotationImages(quotationId);
 
   return {
     logoUrl: resolveLogoUrl(),
+    signatureUrl: resolveSignatureUrl(),
     quotationNumber: quotation.quotationNumber,
     clientName: quotation.client_name ?? "—",
     clientTaxId: quotation.client_tax_id,
@@ -55,14 +62,19 @@ async function buildQuotationPdfData(
     issueDate: dateEs(quotation.issueDate),
     validUntil: dateEs(quotation.validUntil),
     discountMode: (quotation.discountMode ?? "PERCENT") as string,
+    showTaxBreakdown: quotation.showTaxBreakdown ?? true,
     discountRate: quotation.discountRate ?? 0,
     subtotal: quotation.subtotal ?? 0,
     discountAmount: quotation.discountAmount ?? 0,
     taxableBase: quotation.taxableBase ?? 0,
     igv: quotation.igv ?? 0,
     total: quotation.total ?? 0,
-    notes: quotation.notes,
-    terms: quotation.terms,
+    welcomeMessage: quotation.welcomeMessage,
+    paymentTerms: quotation.paymentTerms,
+    executionTime: quotation.executionTime,
+    workingHours: quotation.workingHours,
+    validityDays: quotation.validityDays ?? 15,
+    images: images.map((image) => ({ url: image.url, caption: image.caption, isReferenceOnly: image.isReferenceOnly })),
     lines: quotation.lines.map((line) => ({
       equipment:
         line.elevator_internal_code || line.elevator_name

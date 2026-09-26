@@ -17,6 +17,14 @@ import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   AlertTriangle,
   Calculator,
   Download,
@@ -95,6 +103,7 @@ export function QuotationsTable({
   const [editingDetail, setEditingDetail] = useState<QuotationDetail | null>(null);
   const [viewingDetail, setViewingDetail] = useState<QuotationDetail | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<QuotationWithRelations | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [configSession, setConfigSession] = useState(0);
   const [hourlyCost, setHourlyCost] = useState(defaultHourlyCost);
@@ -107,9 +116,7 @@ export function QuotationsTable({
   const refresh = useCallback(() => router.refresh(), [router]);
 
   async function handleView(id: string) {
-    const detail = await getQuotationById(id);
-    setViewingDetail(detail);
-    setViewOpen(true);
+    router.push(`/quotations/${id}`);
   }
 
   async function handleEdit(id: string) {
@@ -123,14 +130,14 @@ export function QuotationsTable({
     setCreateOpen(true);
   }
 
-  async function handleDelete(row: QuotationWithRelations) {
-    if (
-      !window.confirm(
-        `¿Eliminar la cotización ${row.quotationNumber}? Esta acción no se puede deshacer.`
-      )
-    ) {
-      return;
-    }
+  function handleDelete(row: QuotationWithRelations) {
+    setDeleteTarget(row);
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const row = deleteTarget;
+    setDeleteTarget(null);
     startTransition(async () => {
       const res = await deleteQuotation(row.id);
       if (res.success) {
@@ -447,6 +454,27 @@ export function QuotationsTable({
         detail={viewingDetail}
         onStatusChange={handleStatusChange}
       />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar cotización</DialogTitle>
+            <DialogDescription>
+              ¿Deseas eliminar la cotización <strong>{deleteTarget?.quotationNumber}</strong>?
+              También se eliminará el PDF almacenado en Cloudflare. Esta acción no se puede
+              deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={isPending}>
+              {isPending ? "Eliminando..." : "Eliminar cotización"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PricingConfigDialog
         key={configSession}

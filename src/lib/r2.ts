@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const R2 = new S3Client({
   region: "auto",
@@ -38,6 +38,18 @@ export async function uploadPdfToR2(
   buffer: Buffer
 ): Promise<string> {
   return putR2(key, buffer, "application/pdf");
+}
+
+export async function deleteR2ObjectByUrl(url: string | null | undefined): Promise<void> {
+  if (!url || !process.env.R2_BUCKET_NAME) return;
+  const pathname = new URL(url).pathname.replace(/^\//, "");
+  if (!pathname) return;
+  await R2.send(
+    new DeleteObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: decodeURIComponent(pathname),
+    })
+  );
 }
 
 export function buildContractPdfKey(contractNumber: string): string {

@@ -345,22 +345,6 @@ export function QuotationDetailDialog({
               </div>
             </div>
 
-            {detail.notes ? (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
-                  Notas
-                </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detail.notes}</p>
-              </div>
-            ) : null}
-            {detail.terms ? (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
-                  Condiciones
-                </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{detail.terms}</p>
-              </div>
-            ) : null}
           </div>
         ) : (
           <div className="py-8 text-center text-sm text-muted-foreground">

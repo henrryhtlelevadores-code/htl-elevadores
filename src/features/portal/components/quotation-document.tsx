@@ -271,23 +271,6 @@ export function PortalQuotationDocument({
               </div>
             </div>
 
-            {/* Notes & Terms */}
-            {detail.notes ? (
-              <div className="mb-4">
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium mb-1">
-                  Notas
-                </div>
-                <p className="text-sm text-slate-600 whitespace-pre-wrap">{detail.notes}</p>
-              </div>
-            ) : null}
-            {detail.terms ? (
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium mb-1">
-                  Condiciones
-                </div>
-                <p className="text-sm text-slate-600 whitespace-pre-wrap">{detail.terms}</p>
-              </div>
-            ) : null}
           </div>
         </div>
 

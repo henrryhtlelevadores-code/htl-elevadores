@@ -2,6 +2,21 @@
 @import "tw-animate-css";
 @import "../../node_modules/shadcn/dist/tailwind.css";
 
+.welcome-message {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #1f2937;
+}
+
+.welcome-message p { margin: 0 0 12px; }
+.welcome-message p:last-child { margin-bottom: 0; }
+.welcome-message ul, .welcome-message ol { margin: 8px 0 12px; padding-left: 22px; list-style-position: outside; }
+.welcome-message ul { list-style-type: disc; }
+.welcome-message ol { list-style-type: decimal; }
+.welcome-message li { display: list-item; margin-bottom: 4px; }
+.welcome-message strong { font-weight: 700; }
+.welcome-message em { font-style: italic; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

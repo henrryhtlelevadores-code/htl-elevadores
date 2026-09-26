@@ -17,6 +17,7 @@ import {
   quotations,
   quotationLines,
   quotationLineProducts,
+  quotationImages,
   type Quotation,
   type QuotationLine,
   type QuotationLineProduct,
@@ -24,6 +25,7 @@ import {
 import { eq, isNull, desc, count, like, inArray, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
+import { deleteR2ObjectByUrl } from "@/lib/r2";
 import { quotationFormSchema, stripBlankProducts, type QuotationFormValues } from "./schema";
 import {
   calculateQuotationLine,
@@ -35,6 +37,7 @@ import {
 
 export interface ActionResult {
   success: boolean;
+  id?: string;
   message?: string;
   error?: string;
 }
@@ -210,8 +213,12 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         taxableBase: quotations.taxableBase,
         igv: quotations.igv,
         total: quotations.total,
-        notes: quotations.notes,
-        terms: quotations.terms,
+        welcomeMessage: quotations.welcomeMessage,
+        paymentTerms: quotations.paymentTerms,
+        executionTime: quotations.executionTime,
+        workingHours: quotations.workingHours,
+        validityDays: quotations.validityDays,
+        showTaxBreakdown: quotations.showTaxBreakdown,
         configSnapshot: quotations.configSnapshot,
         pdfUrl: quotations.pdfUrl,
         pdfGeneratedAt: quotations.pdfGeneratedAt,
@@ -319,8 +326,12 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         taxableBase: quotations.taxableBase,
         igv: quotations.igv,
         total: quotations.total,
-        notes: quotations.notes,
-        terms: quotations.terms,
+        welcomeMessage: quotations.welcomeMessage,
+        paymentTerms: quotations.paymentTerms,
+        executionTime: quotations.executionTime,
+        workingHours: quotations.workingHours,
+        validityDays: quotations.validityDays,
+        showTaxBreakdown: quotations.showTaxBreakdown,
         configSnapshot: quotations.configSnapshot,
         pdfUrl: quotations.pdfUrl,
         pdfGeneratedAt: quotations.pdfGeneratedAt,
@@ -607,8 +618,7 @@ async function buildQuotationData(validated: QuotationFormValues, hourlyCostOver
     taxableBase: header.taxableBase,
     igv: header.igv,
     total: header.total,
-    notes: validated.notes || null,
-    terms: validated.terms || null,
+    showTaxBreakdown: validated.showTaxBreakdown ?? true,
     configSnapshot: JSON.stringify({
       overheadRate: rules.overheadRateQuote,
       commissionRate: rules.commissionRate,
@@ -727,8 +737,7 @@ export async function createQuotation(
         taxableBase: payload.taxableBase,
         igv: payload.igv,
         total: payload.total,
-        notes: payload.notes,
-        terms: payload.terms,
+        showTaxBreakdown: payload.showTaxBreakdown,
         configSnapshot: payload.configSnapshot,
       }),
     ];
@@ -785,7 +794,7 @@ export async function createQuotation(
 
     await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
     revalidatePath("/quotations");
-    return { success: true, message: `Cotización ${quotationNumber} creada` };
+    return { success: true, id: quotationId, message: `Cotización ${quotationNumber} creada` };
   } catch (error) {
     console.error("Error al crear cotización:", error);
     return { success: false, error: getErrorMessage(error) };
@@ -812,7 +821,7 @@ export async function updateQuotation(
     if (discountError) return { success: false, error: discountError };
 
     const existing = await db
-      .select({ id: quotations.id })
+      .select({ id: quotations.id, pdfUrl: quotations.pdfUrl })
       .from(quotations)
       .where(eq(quotations.id, id))
       .limit(1);
@@ -838,8 +847,9 @@ export async function updateQuotation(
         taxableBase: payload.taxableBase,
         igv: payload.igv,
         total: payload.total,
-        notes: payload.notes,
-        terms: payload.terms,
+        showTaxBreakdown: payload.showTaxBreakdown,
+        pdfUrl: null,
+        pdfGeneratedAt: null,
       })
       .where(eq(quotations.id, id));
 
@@ -897,6 +907,13 @@ export async function updateQuotation(
     }
 
     await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
+    if (existing[0].pdfUrl) {
+      try {
+        await deleteR2ObjectByUrl(existing[0].pdfUrl);
+      } catch (error) {
+        console.warn("No se pudo eliminar el PDF anterior de R2:", error);
+      }
+    }
     revalidatePath("/quotations");
     return { success: true, message: "Cotización actualizada" };
   } catch (error) {
@@ -905,9 +922,82 @@ export async function updateQuotation(
   }
 }
 
+export async function updateQuotationDocument(
+  id: string,
+  input: {
+    welcomeMessage?: string;
+    paymentTerms?: string;
+    executionTime?: string;
+    workingHours?: string;
+    validityDays?: number;
+  }
+): Promise<ActionResult> {
+  try {
+    const validityDays = Math.max(1, Math.round(Number(input.validityDays) || 15));
+    await db
+      .update(quotations)
+      .set({
+        welcomeMessage: input.welcomeMessage?.trim() || null,
+        paymentTerms: input.paymentTerms?.trim() || null,
+        executionTime: input.executionTime?.trim() || null,
+        workingHours: input.workingHours?.trim() || null,
+        validityDays,
+        pdfUrl: null,
+        pdfGeneratedAt: null,
+      })
+      .where(eq(quotations.id, id));
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
+    return { success: true, message: "Documento actualizado" };
+  } catch (error) {
+    console.error("Error al actualizar documento de cotización:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function issueQuotation(id: string): Promise<ActionResult> {
+  try {
+    const quotation = await getQuotationById(id);
+    if (!quotation) return { success: false, error: "Cotización no encontrada." };
+    if (!quotation.clientId || !quotation.costCenterId || quotation.lines.length === 0) {
+      return { success: false, error: "La cotización debe tener cliente, sede y al menos una línea." };
+    }
+    await db.update(quotations).set({ status: "SENT", pdfUrl: null, pdfGeneratedAt: null }).where(eq(quotations.id, id));
+    const { generateAndStoreQuotationPdf } = await import("./quotation-pdf-actions");
+    const pdf = await generateAndStoreQuotationPdf(id);
+    if (!pdf.success) return { success: false, error: pdf.error };
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
+    return { success: true, message: "Cotización emitida y PDF generado" };
+  } catch (error) {
+    console.error("Error al emitir cotización:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function getQuotationImages(quotationId: string) {
+  return db
+    .select()
+    .from(quotationImages)
+    .where(eq(quotationImages.quotationId, quotationId))
+    .orderBy(asc(quotationImages.orderIndex));
+}
+
 export async function deleteQuotation(id: string): Promise<ActionResult> {
   try {
+    const [existing] = await db
+      .select({ pdfUrl: quotations.pdfUrl })
+      .from(quotations)
+      .where(eq(quotations.id, id))
+      .limit(1);
     await db.delete(quotations).where(eq(quotations.id, id));
+    if (existing?.pdfUrl) {
+      try {
+        await deleteR2ObjectByUrl(existing.pdfUrl);
+      } catch (error) {
+        console.warn("No se pudo eliminar el PDF de R2:", error);
+      }
+    }
     revalidatePath("/quotations");
     return { success: true, message: "Cotización eliminada" };
   } catch (error) {

@@ -134,6 +134,20 @@
       "when": 1790500000000,
       "tag": "0018_quotation_pdf_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1790501000000,
+      "tag": "0019_quotation_tax_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790502000000,
+      "tag": "0020_quotation_document_fields",
+      "breakpoints": true
     }
   ]
 }
