@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { QuotationDetail } from "../actions";
-import { getQuotationPdfDataUrl } from "../quotation-pdf-actions";
+import { generateAndStoreQuotationPdf } from "../quotation-pdf-actions";
 import { QUOTATION_STATUS } from "../schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,9 +63,11 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: "Rechazada",
 };
 
-function downloadDataUrl(dataUrl: string, filename: string) {
+function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = dataUrl;
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
   link.download = filename;
   document.body.appendChild(link);
   link.click();
@@ -106,14 +108,19 @@ export function QuotationDetailDialog({
     if (!detail) return;
     setDownloading(true);
     startTransition(async () => {
-      const res = await getQuotationPdfDataUrl(detail.id);
-      if ("dataUrl" in res && res.dataUrl) {
-        downloadDataUrl(res.dataUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
-        toast.success("PDF descargado");
+      const res = await generateAndStoreQuotationPdf(detail.id);
+      if (res.success) {
+        openPdf(res.pdfUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
+        toast.success(
+          res.reused ? "PDF descargado (almacenado)" : "PDF generado y descargado",
+          {
+            description: res.reused
+              ? "Se reutilizó el PDF persistido."
+              : "Se almacenó para futuras descargas.",
+          }
+        );
       } else {
-        toast.error("Error al generar el PDF", {
-          description: "error" in res ? res.error : undefined,
-        });
+        toast.error("Error al generar el PDF", { description: res.error });
       }
       setDownloading(false);
     });

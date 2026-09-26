@@ -1,5 +1,7 @@
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image does not support HTML alt attributes */
 import React from "react";
+import fs from "node:fs";
+import path from "node:path";
 import {
   Document,
   Page,
@@ -7,7 +9,24 @@ import {
   View,
   StyleSheet,
   Image,
+  Font,
 } from "@react-pdf/renderer";
+
+const FONT_DIR = path.join(process.cwd(), "public", "fonts");
+const MONTSERRAT_REGULAR = path.join(FONT_DIR, "Montserrat-Regular.ttf");
+const MONTSERRAT_BOLD = path.join(FONT_DIR, "Montserrat-Bold.ttf");
+let PDF_FONT = "Helvetica";
+
+if (fs.existsSync(MONTSERRAT_REGULAR) && fs.existsSync(MONTSERRAT_BOLD)) {
+  Font.register({
+    family: "Montserrat",
+    fonts: [
+      { src: MONTSERRAT_REGULAR },
+      { src: MONTSERRAT_BOLD, fontWeight: 700 },
+    ],
+  });
+  PDF_FONT = "Montserrat";
+}
 
 export const money = (value: number | null | undefined): string => {
   const n = Number(value ?? 0);
@@ -72,6 +91,7 @@ export interface QuotationPdfData {
   status: string;
   issueDate: string;
   validUntil: string;
+  discountMode: string;
   discountRate: number;
   subtotal: number;
   discountAmount: number;
@@ -83,212 +103,407 @@ export interface QuotationPdfData {
   lines: QuotationPdfLine[];
 }
 
-const BRAND = "#B91C1C";
+const BRAND = "#DC2626";
+const BRAND_SOFT = "#FEF2F2";
+const SOFT_BG = "#F3F4F6";
 const DARK = "#0F172A";
 const MUTED = "#64748B";
-const BORDER = "#E2E8F0";
+const BORDER = "#E5E7EB";
+const ALT_ROW = "#F9FAFB";
 
 const styles = StyleSheet.create({
   page: {
-    fontFamily: "Arial",
+    fontFamily: PDF_FONT,
     fontSize: 9,
     color: DARK,
     backgroundColor: "#FFFFFF",
-    paddingTop: 32,
-    paddingBottom: 36,
+    paddingTop: 28,
+    paddingBottom: 56,
     paddingHorizontal: 36,
     lineHeight: 1.35,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     borderBottomWidth: 2,
     borderBottomColor: BRAND,
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
   logo: {
-    width: 120,
-    height: 48,
+    width: 180,
+    height: 56,
     objectFit: "contain",
   },
-  companyText: {
+  brandTitle: {
+    fontSize: 18,
+    fontFamily: PDF_FONT,
+    color: BRAND,
+    letterSpacing: 1.2,
     textAlign: "right",
-    fontSize: 7.5,
+  },
+  brandNumber: {
+    fontSize: 11,
     color: MUTED,
+    marginTop: 8,
+    textAlign: "right",
   },
-  companyName: {
-    fontSize: 10,
-    fontWeight: "bold",
-    color: DARK,
-  },
-  titleRow: {
+  companyBlock: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 18,
+    marginTop: 14,
     marginBottom: 12,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: BRAND,
-    letterSpacing: 1,
+  companyCol: {
+    flexDirection: "column",
+    maxWidth: "55%",
   },
-  number: {
-    fontSize: 11,
-    fontWeight: "bold",
+  companyLine: {
+    fontSize: 8,
     color: DARK,
+    marginBottom: 1.5,
   },
-  metaBlock: {
+  metaBox: {
+    width: 220,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 4,
-    padding: 10,
-    marginBottom: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: SOFT_BG,
   },
   metaRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 3,
   },
   metaLabel: {
-    width: 92,
+    fontSize: 7.5,
     color: MUTED,
+    fontFamily: PDF_FONT,
+    letterSpacing: 0.4,
   },
   metaValue: {
-    flex: 1,
-  },
-  status: {
-    fontWeight: "bold",
-    textTransform: "uppercase",
+    fontSize: 8,
+    color: DARK,
   },
   sectionTitle: {
-    fontSize: 10,
-    fontWeight: "bold",
-    backgroundColor: BRAND,
-    color: "#FFFFFF",
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    marginTop: 6,
-    marginBottom: 8,
+    fontSize: 9,
+    fontFamily: PDF_FONT,
+    color: BRAND,
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  clientBlock: {
+    backgroundColor: BRAND_SOFT,
+    borderLeftWidth: 4,
+    borderLeftColor: BRAND,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  clientCenter: {
+    fontSize: 9.5,
+    fontFamily: PDF_FONT,
+    color: DARK,
+  },
+  clientMeta: {
+    fontSize: 8,
+    color: MUTED,
+    marginTop: 1,
   },
   lineBlock: {
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 4,
     marginBottom: 10,
-    overflow: "hidden",
   },
   lineHead: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    backgroundColor: "#F8FAFC",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
-  },
-  lineTitle: {
-    fontSize: 9.5,
-    fontWeight: "bold",
+    backgroundColor: SOFT_BG,
   },
   lineEquipment: {
+    fontSize: 9.5,
+    fontFamily: PDF_FONT,
+    color: DARK,
+  },
+  lineDescription: {
     fontSize: 8,
     color: MUTED,
+    marginTop: 2,
   },
   lineBody: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
-  table: {
-    width: "100%",
-    marginBottom: 4,
-  },
-  th: {
+  tableHeader: {
     flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    paddingVertical: 3,
+    backgroundColor: BRAND,
+    color: "#FFFFFF",
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    fontFamily: PDF_FONT,
     fontSize: 7.5,
-    color: MUTED,
-    fontWeight: "bold",
   },
-  td: {
+  tableRow: {
     flexDirection: "row",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
     borderBottomWidth: 0.5,
     borderBottomColor: BORDER,
-    paddingVertical: 3,
     fontSize: 8,
   },
-  colDesc: { width: "52%" },
-  colQty: { width: "10%", textAlign: "right" },
-  colUnit: { width: "10%", textAlign: "right" },
-  colCost: { width: "14%", textAlign: "right" },
-  colTotal: { width: "14%", textAlign: "right" },
-  calcGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 4,
+  tableRowAlt: {
+    backgroundColor: ALT_ROW,
   },
-  calcItem: {
-    width: "33.33%",
+  colDesc: { width: "55%" },
+  colHours: { width: "12%", textAlign: "right" },
+  colCost: { width: "16%", textAlign: "right" },
+  colTotal: { width: "17%", textAlign: "right" },
+  colQty: { width: "12%", textAlign: "right" },
+  colUnit: { width: "10%", textAlign: "right" },
+  colUnitCost: { width: "13%", textAlign: "right" },
+  subRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 1.5,
-    fontSize: 7.5,
+    paddingVertical: 3,
   },
-  calcLabel: { color: MUTED },
-  totalsBlock: {
+  subLabel: {
+    fontSize: 8,
+    color: MUTED,
+  },
+  subValue: {
+    fontSize: 8,
+    color: DARK,
+  },
+  totalsOuter: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 4,
+    marginTop: 8,
   },
-  totalsInner: {
-    width: 220,
+  totalsBox: {
+    width: 240,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    fontSize: 9,
   },
-  totalRowLabel: { color: MUTED },
-  grandTotal: {
+  totalLabel: {
+    color: MUTED,
+  },
+  grandRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 6,
-    backgroundColor: BRAND,
-    color: "#FFFFFF",
-    fontWeight: "bold",
+    marginTop: 4,
+    borderTopWidth: 1.5,
+    borderTopColor: BRAND,
+    fontFamily: PDF_FONT,
+    color: BRAND,
+    fontSize: 12,
   },
-  noteBlock: {
-    marginTop: 12,
+  termsBlock: {
+    backgroundColor: SOFT_BG,
+    borderRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 6,
   },
-  noteLabel: {
-    fontWeight: "bold",
-    fontSize: 8.5,
-    marginBottom: 3,
-  },
-  noteText: {
+  termsLine: {
     fontSize: 8,
-    color: MUTED,
+    color: DARK,
+    marginBottom: 1.5,
+  },
+  notesBlock: {
+    marginTop: 6,
+    paddingHorizontal: 2,
+  },
+  notesText: {
+    fontSize: 8,
+    color: DARK,
   },
   footer: {
     position: "absolute",
-    bottom: 16,
+    bottom: 24,
     left: 36,
     right: 36,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopWidth: 1.5,
+    borderTopColor: BRAND,
     paddingTop: 6,
     textAlign: "center",
-    fontSize: 7,
+    fontSize: 7.5,
     color: MUTED,
+  },
+  footerBold: {
+    fontFamily: PDF_FONT,
+    color: DARK,
   },
 });
 
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metaRow}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
+    </View>
+  );
+}
+
+function CalculatedLine({ line }: { line: QuotationPdfLine }) {
+  const isOverride = line.lineOverridePrice != null && Number(line.lineOverridePrice) > 0;
+  return (
+    <View style={styles.lineBody}>
+      {line.products.length > 0 ? (
+        <>
+          <Text style={[styles.subLabel, { marginBottom: 4, fontFamily: PDF_FONT }]}> 
+            Materiales
+          </Text>
+          <View style={styles.tableHeader} wrap={false}>
+            <Text style={styles.colDesc}>Descripción</Text>
+            <Text style={styles.colQty}>Cant.</Text>
+            <Text style={styles.colUnit}>Unidad</Text>
+            <Text style={styles.colUnitCost}>Costo unit.</Text>
+            <Text style={styles.colTotal}>Total</Text>
+          </View>
+          {line.products.map((p, i) => (
+            <View
+              key={i}
+              style={[styles.tableRow, i % 2 === 1 ? styles.tableRowAlt : {}]}
+            >
+              <Text style={styles.colDesc}>{p.description}</Text>
+              <Text style={styles.colQty}>{p.quantity}</Text>
+              <Text style={styles.colUnit}>{p.unit ?? "—"}</Text>
+              <Text style={styles.colUnitCost}>{money(p.unitCost)}</Text>
+              <Text style={styles.colTotal}>{money(p.totalCost)}</Text>
+            </View>
+          ))}
+        </>
+      ) : null}
+      {line.totalHours > 0 ? (
+        <>
+          <Text
+            style={[
+              styles.subLabel,
+              { marginTop: line.products.length > 0 ? 8 : 0, marginBottom: 4, fontFamily: PDF_FONT },
+            ]}
+          >
+            Mano de obra
+          </Text>
+          <View style={styles.tableHeader} wrap={false}>
+            <Text style={styles.colDesc}>Concepto</Text>
+            <Text style={styles.colHours}>Horas</Text>
+            <Text style={styles.colCost}>Costo/hora</Text>
+            <Text style={styles.colTotal}>Total</Text>
+          </View>
+          <View style={styles.tableRow}>
+            <Text style={styles.colDesc}>Servicio técnico</Text>
+            <Text style={styles.colHours}>{Number(line.totalHours).toFixed(2)}</Text>
+            <Text style={styles.colCost}>{money(line.hourlyCost)}</Text>
+            <Text style={styles.colTotal}>{money(line.laborCost)}</Text>
+          </View>
+        </>
+      ) : null}
+      <View style={{ marginTop: 6 }}>
+        <View style={styles.subRow}>
+          <Text style={styles.subLabel}>Subtotal línea</Text>
+          <Text style={styles.subValue}>{money(line.subtotal)}</Text>
+        </View>
+        <View style={styles.subRow}>
+          <Text style={styles.subLabel}>Precio de venta (c/IGV)</Text>
+          <Text           style={[styles.subValue, isOverride ? { fontFamily: PDF_FONT, color: BRAND } : {}]}>
+            {money(isOverride ? line.lineOverridePrice ?? 0 : line.clientPrice)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ManualLine({ line }: { line: QuotationPdfLine }) {
+  return (
+    <View style={styles.lineBody}>
+      <View style={[styles.subRow, { marginBottom: 4 }]}>
+        <Text style={styles.subLabel}>Precio de venta (c/IGV)</Text>
+        <Text style={[styles.subValue, { fontFamily: PDF_FONT, color: BRAND }]}> 
+          {money(line.manualPrice ?? line.clientPrice)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Totals({ data }: { data: QuotationPdfData }) {
+  const hasDiscount = data.discountAmount > 0;
+  return (
+    <View style={styles.totalsOuter} wrap={false}>
+      <View style={styles.totalsBox}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Subtotal</Text>
+          <Text>{money(data.subtotal)}</Text>
+        </View>
+        {hasDiscount ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>
+              {data.discountMode === "AMOUNT"
+                ? "Descuento (monto fijo)"
+                : data.discountMode === "FINAL"
+                ? "Descuento aplicado"
+                : `Descuento (${Math.round(data.discountRate)}%)`}
+            </Text>
+            <Text>-{money(data.discountAmount)}</Text>
+          </View>
+        ) : null}
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Base imponible</Text>
+          <Text>{money(data.taxableBase)}</Text>
+        </View>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>IGV 18%</Text>
+          <Text>{money(data.igv)}</Text>
+        </View>
+        <View style={styles.grandRow}>
+          <Text>TOTAL</Text>
+          <Text>{money(data.total)}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function TermsBlock({ terms }: { terms: string | null }) {
+  if (!terms) return null;
+  const lines = terms.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  return (
+    <View style={styles.termsBlock}>
+      {lines.map((line, i) => (
+        <Text key={i} style={styles.termsLine}>
+          {line}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 export function QuotationPDF({ data }: { data: QuotationPdfData }) {
+  const equipmentCodes = data.lines
+    .map((l) => l.equipment)
+    .filter((e): e is string => !!e);
+  const equipmentLabel =
+    equipmentCodes.length > 0 ? equipmentCodes.join(" / ") : "—";
+
   return (
     <Document
       title={`Cotización ${data.quotationNumber}`}
@@ -297,245 +512,86 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <Image src={data.logoUrl} style={styles.logo} fixed />
-          <View style={styles.companyText}>
-            <Text style={styles.companyName}>HTL ELEVADORES S.A.C.</Text>
-            <Text>Av. Los Constructores N° 123, Urb. Santa Patricia</Text>
-            <Text>La Molina – Lima – Perú</Text>
-            <Text>RUC: 20555678910</Text>
-            <Text>Tel: (01) 555-1234 | ventas@htlelevadores.pe</Text>
+          <View>
+            <Text style={styles.brandTitle}>COTIZACIÓN</Text>
+            <Text style={styles.brandNumber}>N° {data.quotationNumber}</Text>
           </View>
         </View>
 
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>COTIZACIÓN DE SERVICIOS</Text>
-          <Text style={styles.number}>{data.quotationNumber}</Text>
-        </View>
-
-        <View style={styles.metaBlock}>
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Cliente</Text>
-            <Text style={styles.metaValue}>
-              {data.clientName}
-              {data.clientTaxId ? `  (RUC: ${data.clientTaxId})` : ""}
+        <View style={styles.companyBlock}>
+          <View style={styles.companyCol}>
+            <Text style={styles.companyLine}>Cal. Laurel Rosa Mz. G1 Lote 14</Text>
+            <Text style={styles.companyLine}>www.htl-elevadores.com</Text>
+            <Text style={styles.companyLine}>Celular: +51 963 207 058</Text>
+            <Text style={styles.companyLine}>
+              Asesor de Servicio: {data.advisorName ?? "—"}
             </Text>
           </View>
+          <View style={styles.metaBox}>
+            <MetaRow label="FECHA" value={data.issueDate} />
+            <MetaRow label="COTIZACIÓN N°" value={data.quotationNumber} />
+            <MetaRow label="EQUIPO" value={equipmentLabel} />
+            <MetaRow label="VÁLIDO HASTA" value={data.validUntil} />
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Cliente</Text>
+        <View style={styles.clientBlock}>
           {data.costCenterName ? (
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Sede</Text>
-              <Text style={styles.metaValue}>
-                {data.costCenterName}
-                {data.costCenterAddress
-                  ? ` — ${data.costCenterAddress}${data.costCenterDistrict ? `, ${data.costCenterDistrict}` : ""}`
-                  : ""}
-              </Text>
-            </View>
+            <Text style={styles.clientCenter}>{data.costCenterName}</Text>
           ) : null}
-          {data.advisorName ? (
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Asesor</Text>
-              <Text style={styles.metaValue}>{data.advisorName}</Text>
-            </View>
+          {data.costCenterAddress ? (
+            <Text style={styles.clientMeta}>
+              {data.costCenterAddress}
+              {data.costCenterDistrict ? `, ${data.costCenterDistrict}` : ""}
+            </Text>
           ) : null}
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Fechas</Text>
-            <Text style={styles.metaValue}>
-              Emisión: {data.issueDate} — Válida hasta: {data.validUntil}
-            </Text>
-          </View>
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Estado</Text>
-            <Text style={styles.metaValue}>
-              <Text style={styles.status}>{data.status}</Text>
-            </Text>
-          </View>
         </View>
 
-        <Text style={styles.sectionTitle}>DETALLE</Text>
-
-        {data.lines.map((line, index) => (
-          <View style={styles.lineBlock} key={index} wrap={false}>
-            <View style={styles.lineHead}>
-              <View>
-                <Text style={styles.lineTitle}>
-                  {String(index + 1).padStart(2, "0")}. {line.description}
-                </Text>
+        <Text style={styles.sectionTitle}>Detalle de Cotización</Text>
+        {data.lines.map((line, index) => {
+          const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";
+          return (
+            <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
+              <View style={styles.lineHead} wrap={false}>
                 {line.equipment ? (
-                  <Text style={styles.lineEquipment}>
-                    Equipo: {line.equipment}
-                  </Text>
+                  <Text style={styles.lineEquipment}>Equipo: {line.equipment}</Text>
                 ) : null}
-                {line.lineMode === "MANUAL_PRICE" ? (
-                  <Text style={styles.lineEquipment}>
-                    Precio manual
-                    {line.supplierName
-                      ? ` — Proveedor: ${line.supplierName} (${money(line.supplierCost ?? 0)})`
-                      : ""}
-                    {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
-                  </Text>
-                ) : line.lineOverridePrice != null ? (
-                  <Text style={styles.lineEquipment}>
-                    Precio pactado c/IGV{line.lineOverrideReason
-                      ? ` — ${line.lineOverrideReason}`
-                      : ""}
-                  </Text>
-                ) : null}
+                <Text style={styles.lineDescription}>{line.description}</Text>
               </View>
-              <Text style={styles.lineTitle}>{money(line.clientPrice)}</Text>
+              {isManual ? <ManualLine line={line} /> : <CalculatedLine line={line} />}
             </View>
-            <View style={styles.lineBody}>
-              {line.products.length > 0 ? (
-                <View style={styles.table}>
-                  <View style={styles.th}>
-                    <Text style={styles.colDesc}>Descripción</Text>
-                    <Text style={styles.colQty}>Cant.</Text>
-                    <Text style={styles.colUnit}>Und.</Text>
-                    <Text style={styles.colCost}>C. Unit. (S/)</Text>
-                    <Text style={styles.colTotal}>Total</Text>
-                  </View>
-                  {line.products.map((p, i) => (
-                    <View style={styles.td} key={i}>
-                      <Text style={styles.colDesc}>{p.description}</Text>
-                      <Text style={styles.colQty}>{p.quantity}</Text>
-                      <Text style={styles.colUnit}>{p.unit ?? "—"}</Text>
-                      <Text style={styles.colCost}>{money(p.unitCost)}</Text>
-                      <Text style={styles.colTotal}>{money(p.totalCost)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              {line.lineMode === "MANUAL_PRICE" ? (
-                <View style={styles.calcGrid}>
-                  <View style={styles.calcItem}>
-                    <Text style={styles.calcLabel}>
-                      Precio final ({line.manualPriceIncludesIgv === false ? "sin IGV" : "c/IGV"})
-                    </Text>
-                    <Text>{money(line.manualPrice ?? line.clientPrice)}</Text>
-                  </View>
-                  <View style={styles.calcItem}>
-                    <Text style={styles.calcLabel}>
-                      {line.supplierName ? "Costo del proveedor" : "Modalidad"}
-                    </Text>
-                    <Text>
-                      {line.supplierName ? money(line.supplierCost ?? 0) : "Precio fijo"}
-                    </Text>
-                  </View>
-                  <View style={styles.calcItem}>
-                    <Text style={styles.calcLabel}>Valor neto</Text>
-                    <Text>{money(line.clientValue)}</Text>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.calcGrid}>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>Materiales</Text>
-                      <Text>{money(line.productCost)}</Text>
-                    </View>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>Mano de obra</Text>
-                      <Text>
-                        {line.totalHours} h × {money(line.hourlyCost)} ={" "}
-                        {money(line.laborCost)}
-                      </Text>
-                    </View>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>Subtotal</Text>
-                      <Text>{money(line.subtotal)}</Text>
-                    </View>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>
-                        Gastos generales ({Math.round(line.overheadRate * 100)}%)
-                      </Text>
-                      <Text>{money(line.overheadAmount)}</Text>
-                    </View>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>
-                        Comisión ({Math.round(line.commissionRate * 100)}%)
-                      </Text>
-                      <Text>{money(line.commissionAmount)}</Text>
-                    </View>
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>
-                        Margen ({Math.round(line.profitRate * 100)}%)
-                      </Text>
-                      <Text>{money(line.profitAmount)}</Text>
-                    </View>
-                  </View>
-                  {line.lineOverridePrice != null ? (
-                    <View style={styles.calcItem}>
-                      <Text style={styles.calcLabel}>Precio pactado (c/IGV)</Text>
-                      <Text>{money(line.lineOverridePrice)}</Text>
-                    </View>
-                  ) : null}
-                </>
-              )}
-            </View>
-          </View>
-        ))}
+          );
+        })}
 
-        <View style={styles.totalsBlock}>
-          <View style={styles.totalsInner}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalRowLabel}>Subtotal (sin IGV)</Text>
-              <Text>{money(data.subtotal)}</Text>
-            </View>
-            {data.discountRate > 0 ? (
-              <View style={styles.totalRow}>
-                <Text style={styles.totalRowLabel}>
-                  Descuento ({Math.round(data.discountRate)}%)
-                </Text>
-                <Text>-{money(data.discountAmount)}</Text>
-              </View>
-            ) : null}
-            <View style={styles.totalRow}>
-              <Text style={styles.totalRowLabel}>Base imponible</Text>
-              <Text>{money(data.taxableBase)}</Text>
-            </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalRowLabel}>IGV (18%)</Text>
-              <Text>{money(data.igv)}</Text>
-            </View>
-            <View style={styles.grandTotal}>
-              <Text>TOTAL</Text>
-              <Text>{money(data.total)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {data.notes ? (
-          <View style={styles.noteBlock}>
-            <Text style={styles.noteLabel}>Notas</Text>
-            <Text style={styles.noteText}>{data.notes}</Text>
-          </View>
-        ) : null}
+        <Totals data={data} />
 
         {data.terms ? (
-          <View style={styles.noteBlock}>
-            <Text style={styles.noteLabel}>Condiciones</Text>
-            <Text style={styles.noteText}>{data.terms}</Text>
+          <View wrap={false}>
+            <Text style={styles.sectionTitle}>Términos y Condiciones</Text>
+            <TermsBlock terms={data.terms} />
           </View>
         ) : null}
 
-        <Text
-          style={{
-            position: "absolute",
-            bottom: 40,
-            left: 36,
-            right: 36,
-            fontSize: 7.5,
-            color: DARK,
-          }}
-        >
-          Atentamente,
-        </Text>
+        {data.notes ? (
+          <View wrap={false}>
+            <Text style={styles.sectionTitle}>Notas</Text>
+            <View style={styles.notesBlock}>
+              <Text style={styles.notesText}>{data.notes}</Text>
+            </View>
+          </View>
+        ) : null}
 
-        <View style={styles.footer}>
+        <View style={styles.footer} fixed>
           <Text>
-            Documento de referencia, no constituye factura. HTL ELEVADORES S.A.C.
-            — {data.quotationNumber}
+            <Text style={styles.footerBold}>Henrry Abner Diaz Cueva</Text> · 963 207 058
           </Text>
+          <Text>comercial@htl-elevadores.com</Text>
+          <Text style={styles.footerBold}>¡Gracias por trabajar con nosotros!</Text>
         </View>
       </Page>
     </Document>
   );
 }
+
+export default QuotationPDF;

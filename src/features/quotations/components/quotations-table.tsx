@@ -10,7 +10,7 @@ import type {
   QuotationWithRelations,
 } from "../actions";
 import { getQuotationById, deleteQuotation, updateQuotationStatus } from "../actions";
-import { getQuotationPdfDataUrl } from "../quotation-pdf-actions";
+import { generateAndStoreQuotationPdf } from "../quotation-pdf-actions";
 import { DEFAULT_PRICING_RULES, type PricingRules } from "../calc";
 import type { LineModeSummary } from "../actions";
 import { DataTable } from "@/components/ui/data-table";
@@ -69,9 +69,11 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: "Rechazada",
 };
 
-function downloadDataUrl(dataUrl: string, filename: string) {
+function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = dataUrl;
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
   link.download = filename;
   document.body.appendChild(link);
   link.click();
@@ -102,7 +104,6 @@ export function QuotationsTable({
   const [lineModes, setLineModes] = useState<Record<string, LineModeSummary>>(
     initialLineModes ?? {}
   );
-
   const refresh = useCallback(() => router.refresh(), [router]);
 
   async function handleView(id: string) {
@@ -157,13 +158,14 @@ export function QuotationsTable({
 
   async function handleDownload(row: QuotationWithRelations) {
     startTransition(async () => {
-      const res = await getQuotationPdfDataUrl(row.id);
-      if ("dataUrl" in res && res.dataUrl) {
-        downloadDataUrl(res.dataUrl, `Cotizacion_${row.quotationNumber}.pdf`);
+      const res = await generateAndStoreQuotationPdf(row.id);
+      if (res.success) {
+        openPdf(res.pdfUrl, `Cotizacion_${row.quotationNumber}.pdf`);
+        toast.success(
+          res.reused ? "PDF descargado (almacenado)" : "PDF generado y descargado"
+        );
       } else {
-        toast.error("Error al generar el PDF", {
-          description: "error" in res ? res.error : undefined,
-        });
+        toast.error("Error al generar el PDF", { description: res.error });
       }
     });
   }

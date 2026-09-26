@@ -24,7 +24,7 @@ import {
 import { eq, isNull, desc, count, like, inArray, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
-import { quotationFormSchema, type QuotationFormValues } from "./schema";
+import { quotationFormSchema, stripBlankProducts, type QuotationFormValues } from "./schema";
 import {
   calculateQuotationLine,
   calculateQuotationHeader,
@@ -213,6 +213,8 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         notes: quotations.notes,
         terms: quotations.terms,
         configSnapshot: quotations.configSnapshot,
+        pdfUrl: quotations.pdfUrl,
+        pdfGeneratedAt: quotations.pdfGeneratedAt,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,
         cost_center_name: costCenters.name,
@@ -223,6 +225,7 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
       .innerJoin(clients, eq(quotations.clientId, clients.id))
       .leftJoin(costCenters, eq(quotations.costCenterId, costCenters.id))
       .leftJoin(users, eq(quotations.advisorId, users.id))
+      .leftJoin(quotationLines, eq(quotationLines.quotationId, quotations.id))
       .groupBy(quotations.id)
       .orderBy(desc(quotations.createdAt));
   } catch (error) {
@@ -319,6 +322,8 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         notes: quotations.notes,
         terms: quotations.terms,
         configSnapshot: quotations.configSnapshot,
+        pdfUrl: quotations.pdfUrl,
+        pdfGeneratedAt: quotations.pdfGeneratedAt,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,
         client_tax_id: clients.taxId,
@@ -686,7 +691,10 @@ export async function createQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
   try {
-    const parsed = quotationFormSchema.parse(data);
+    const parsed = quotationFormSchema.parse({
+      ...data,
+      lines: stripBlankProducts(data.lines),
+    });
     const validated = {
       ...parsed,
       advisorId: (await resolveAdvisorId(parsed.advisorId)) ?? undefined,
@@ -789,7 +797,10 @@ export async function updateQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
   try {
-    const parsed = quotationFormSchema.parse(data);
+    const parsed = quotationFormSchema.parse({
+      ...data,
+      lines: stripBlankProducts(data.lines),
+    });
     const validated = {
       ...parsed,
       advisorId: (await resolveAdvisorId(parsed.advisorId)) ?? undefined,

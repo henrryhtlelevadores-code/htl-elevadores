@@ -45,6 +45,27 @@ export function buildContractPdfKey(contractNumber: string): string {
   return `contracts/${year}/${contractNumber}.pdf`;
 }
 
+export function buildQuotationPdfKey(quotationNumber: string): string {
+  const year = new Date().getFullYear();
+  return `quotations/${year}/${quotationNumber}.pdf`;
+}
+
+/**
+ * @note Si en algún momento necesitas descargar el PDF con `fetch()` desde el
+ * navegador (por ejemplo para mostrarlo en un `<iframe>` o generar un thumbnail),
+ * configura CORS en el bucket R2 con:
+ *
+ *   {
+ *     "AllowedOrigins": ["https://htl-elevadores.vercel.app", "http://localhost:3000"],
+ *     "AllowedMethods": ["GET", "HEAD"],
+ *     "AllowedHeaders": ["*"],
+ *     "ExposeHeaders":  ["Content-Disposition"]
+ *   }
+ *
+ * Mientras CORS esté deshabilitado, el cliente descarga con `<a download>`,
+ * que no requiere CORS (la descarga se hace por navegación, no por fetch).
+ */
+
 export function buildEvidenceKey(
   workOrderId: string,
   elevatorId: string,

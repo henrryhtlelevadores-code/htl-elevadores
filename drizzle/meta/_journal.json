@@ -127,6 +127,13 @@
       "when": 1790401283197,
       "tag": "0017_wise_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1790500000000,
+      "tag": "0018_quotation_pdf_fields",
+      "breakpoints": true
     }
   ]
 }

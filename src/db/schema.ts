@@ -483,6 +483,8 @@ export const quotations = sqliteTable("quotations", {
   notes: text("notes"),
   terms: text("terms"),
   configSnapshot: text("config_snapshot"),
+  pdfUrl: text("pdf_url"),
+  pdfGeneratedAt: integer("pdf_generated_at"),
   createdAt: integer("created_at").default(unixNow()),
 });
 

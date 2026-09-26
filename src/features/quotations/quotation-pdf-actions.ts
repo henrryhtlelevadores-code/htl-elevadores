@@ -1,8 +1,12 @@
 "use server";
 
 import React from "react";
+import { revalidatePath } from "next/cache";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { db, quotations } from "@/db/index";
+import { eq } from "drizzle-orm";
 import { getErrorMessage } from "@/lib/errors";
+import { uploadPdfToR2, buildQuotationPdfKey } from "@/lib/r2";
 import { getQuotationById } from "./actions";
 import {
   QuotationPDF,
@@ -17,6 +21,16 @@ function resolveLogoUrl(): string {
     process.env.NEXT_PUBLIC_R2_LOGO_URL ||
     process.env.R2_LOGO_URL ||
     `${r2Url}/empresa/logohtlrojo.png`
+  );
+}
+
+function isR2Configured(): boolean {
+  return Boolean(
+    process.env.R2_S3_API &&
+      process.env.R2_ACCESS_KEY_ID &&
+      process.env.R2_SECRET_ACCESS_KEY &&
+      process.env.R2_BUCKET_NAME &&
+      process.env.R2_PUBLIC_URL
   );
 }
 
@@ -40,6 +54,7 @@ async function buildQuotationPdfData(
     status: quotation.status ?? "DRAFT",
     issueDate: dateEs(quotation.issueDate),
     validUntil: dateEs(quotation.validUntil),
+    discountMode: (quotation.discountMode ?? "PERCENT") as string,
     discountRate: quotation.discountRate ?? 0,
     subtotal: quotation.subtotal ?? 0,
     discountAmount: quotation.discountAmount ?? 0,
@@ -90,21 +105,91 @@ async function buildQuotationPdfData(
   };
 }
 
+async function renderQuotationPdf(quotationId: string): Promise<Buffer> {
+  const data = await buildQuotationPdfData(quotationId);
+  return renderToBuffer(
+    React.createElement(QuotationPDF, { data }) as unknown as Parameters<
+      typeof renderToBuffer
+    >[0]
+  );
+}
+
+/**
+ * Devuelve un data URL para previsualizar o descargar el PDF. Reutiliza el
+ * PDF persistido en BD (R2) si existe y la cotización no cambió. Si R2 no
+ * está configurado, siempre genera el PDF en memoria.
+ */
 export async function getQuotationPdfDataUrl(
   quotationId: string
-): Promise<{ dataUrl: string } | { error: string }> {
+): Promise<{ dataUrl: string; reused: boolean } | { error: string }> {
   try {
-    const data = await buildQuotationPdfData(quotationId);
-    const buffer = await renderToBuffer(
-      React.createElement(QuotationPDF, { data }) as unknown as Parameters<
-        typeof renderToBuffer
-      >[0]
-    );
+    const quotation = await getQuotationById(quotationId);
+    if (!quotation) {
+      return { error: "Cotización no encontrada" };
+    }
+
+    if (
+      isR2Configured() &&
+      quotation.pdfUrl &&
+      quotation.pdfGeneratedAt &&
+      quotation.pdfGeneratedAt >= (quotation.createdAt ?? 0)
+    ) {
+      const dataUrl = `${quotation.pdfUrl}#toolbar=0`;
+      return { dataUrl, reused: true };
+    }
+
+    const buffer = await renderQuotationPdf(quotationId);
     return {
       dataUrl: `data:application/pdf;base64,${buffer.toString("base64")}`,
+      reused: false,
     };
   } catch (error) {
     console.error("Error al generar PDF de cotización:", error);
     return { error: getErrorMessage(error) };
+  }
+}
+
+/**
+ * Genera el PDF, lo sube a R2 (si está configurado), y persiste la URL y la
+ * marca de tiempo en la cotización. Devuelve el objeto con la URL final.
+ */
+export async function generateAndStoreQuotationPdf(quotationId: string): Promise<
+  | { success: true; pdfUrl: string; generatedAt: number; reused: boolean }
+  | { success: false; error: string }
+> {
+  try {
+    const quotation = await getQuotationById(quotationId);
+    if (!quotation) {
+      return { success: false, error: "Cotización no encontrada" };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const buffer = await renderQuotationPdf(quotationId);
+    const key = buildQuotationPdfKey(quotation.quotationNumber);
+    const hostedUrl = isR2Configured()
+      ? await uploadPdfToR2(key, buffer)
+      : `data:application/pdf;base64,${buffer.toString("base64")}`;
+    const pdfUrl = hostedUrl.startsWith("http")
+      ? `${hostedUrl}?v=${now}`
+      : hostedUrl;
+    await db
+      .update(quotations)
+      .set({ pdfUrl, pdfGeneratedAt: now })
+      .where(eq(quotations.id, quotationId));
+
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${quotationId}`);
+
+    return { success: true, pdfUrl, generatedAt: now, reused: false };
+  } catch (error) {
+    console.error("Error al generar y almacenar PDF de cotización:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error:
+        message && message !== "[object Object]"
+          ? `No se pudo generar el PDF: ${message}`
+          : getErrorMessage(error),
+    };
   }
 }

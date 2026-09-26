@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { QuotationDetail } from "@/features/quotations/actions";
-import { getQuotationPdfDataUrl } from "@/features/quotations/quotation-pdf-actions";
+import { generateAndStoreQuotationPdf } from "@/features/quotations/quotation-pdf-actions";
 import {
   ArrowLeft,
   Building2,
@@ -43,9 +43,11 @@ const STATUS_CLASSES: Record<string, string> = {
   REJECTED: "bg-red-50 text-red-700 border border-red-100",
 };
 
-function downloadDataUrl(dataUrl: string, filename: string) {
+function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = dataUrl;
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
   link.download = filename;
   document.body.appendChild(link);
   link.click();
@@ -65,14 +67,14 @@ export function PortalQuotationDocument({
   function handleDownload() {
     setDownloading(true);
     startTransition(async () => {
-      const res = await getQuotationPdfDataUrl(detail.id);
-      if ("dataUrl" in res && res.dataUrl) {
-        downloadDataUrl(res.dataUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
-        toast.success("PDF descargado");
+      const res = await generateAndStoreQuotationPdf(detail.id);
+      if (res.success) {
+        openPdf(res.pdfUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
+        toast.success(
+          res.reused ? "PDF descargado (almacenado)" : "PDF generado y descargado"
+        );
       } else {
-        toast.error("Error al generar el PDF", {
-          description: "error" in res ? res.error : undefined,
-        });
+        toast.error("Error al generar el PDF", { description: res.error });
       }
       setDownloading(false);
     });

@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import type { z } from "zod";
 import {
   quotationFormSchema,
+  stripBlankProducts,
   QUOTATION_STATUS,
+  DEFAULT_QUOTATION_TERMS,
   type QuotationFormValues,
 } from "../schema";
 import { createQuotation, updateQuotation } from "../actions";
@@ -163,7 +165,7 @@ function defaultValues(
     targetTotal: "",
     targetTotalIncludesIgv: true,
     notes: "",
-    terms: "",
+    terms: DEFAULT_QUOTATION_TERMS,
     lines: [makeDefaultLine(hourlyCost)],
   };
 }
@@ -545,12 +547,31 @@ export function QuotationCreateDialog({
 
   async function handleNext() {
     let ok = true;
+    if (step === 1) {
+      const currentLines = form.getValues("lines") ?? [];
+      const cleaned = stripBlankProducts(currentLines as Parameters<typeof stripBlankProducts>[0]);
+      if (cleaned.some((line, i) => line !== currentLines[i])) {
+        form.setValue("lines", cleaned as never, { shouldDirty: true, shouldValidate: false });
+      }
+    }
     if (step === 0) {
       ok = await form.trigger(["clientId", "issueDate", "validUntil"]);
     } else if (step === 1) {
       ok = await form.trigger("lines");
     }
-    if (ok) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    if (ok) {
+      setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    } else if (step === 1) {
+      const firstLineError = form.formState.errors.lines?.[0] as
+        | Record<string, { message?: string } | undefined>
+        | undefined;
+      const firstMessage = firstLineError
+        ? Object.values(firstLineError).find((v) => v?.message)?.message
+        : undefined;
+      toast.error("No se puede avanzar", {
+        description: firstMessage ?? "Revisa los datos de las líneas antes de continuar.",
+      });
+    }
   }
 
   function handleBack() {

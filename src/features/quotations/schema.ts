@@ -20,6 +20,25 @@ const quotationProductSchema = z.object({
   unitCost: positiveNumber("El costo unitario"),
 });
 
+/**
+ * La UI deja una fila de material vacía en cada línea y, en modo MANUAL_PRICE, esa
+ * fila no se puede llenar ni borrar porque el editor no se renderiza. Como el schema
+ * es estricto, esa fila vacía bloqueaba el paso a la siguiente etapa en silencio.
+ * Se filtran antes de validar. Una fila con descripción pero sin costo NO se
+ * descarta: así el usuario sigue viendo el error real.
+ */
+export const isBlankProduct = (row: { description?: unknown; unitCost?: unknown }): boolean =>
+  String(row?.description ?? "").trim() === "" && !(Number(row?.unitCost) > 0);
+
+/** Devuelve las líneas sin las filas de material vacías. */
+export function stripBlankProducts<T extends { products?: unknown[] }>(lines: T[]): T[] {
+  return lines.map((line) => {
+    const products = Array.isArray(line.products) ? line.products : [];
+    const kept = products.filter((row) => !isBlankProduct(row as { description?: unknown }));
+    return kept.length === products.length ? line : { ...line, products: kept };
+  });
+}
+
 const quotationLineSchema = z.object({
   elevatorUnityId: z.string().optional().or(z.literal("")),
   description: z
@@ -139,3 +158,11 @@ export const QUOTATION_STATUS = [
   { value: "ACCEPTED", label: "Aceptada" },
   { value: "REJECTED", label: "Rechazada" },
 ] as const;
+
+export const DEFAULT_QUOTATION_TERMS = [
+  "1. Incluye servicio de instalación y configuración en caso se requiera.",
+  "2. Validez de la garantía por 12 meses únicamente si el cliente realiza los mantenimientos preventivos mensualmente con HTL Elevadores.",
+  "3. Forma de Pago: Contado",
+  "4. Validez de la Oferta: 15 días",
+  "5. Garantía por falla de fábrica (aplica en repuesto): 12 meses",
+].join("\n");
