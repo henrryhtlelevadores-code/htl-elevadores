@@ -8,8 +8,7 @@ export const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 export const LINE_MODES = [
   { value: "CALCULATED", label: "Calculado" },
-  { value: "FIXED_PRICE", label: "Precio fijo" },
-  { value: "PASSTHROUGH", label: "Passthrough" },
+  { value: "MANUAL_PRICE", label: "Precio manual" },
 ] as const;
 
 export const DISCOUNT_MODES = [
@@ -46,7 +45,15 @@ export interface QuotationLineCalcInput {
   hourlyCost: number;
   products: Array<{ quantity: number | null; unitCost: number }>;
   lineMode?: LineMode;
-  /** Precio final con IGV digitado por el administrador. Si viene, pisa el cálculo. */
+  /** Precio final digitado por el administrador (solo MANUAL_PRICE). */
+  manualPrice?: number | null;
+  /** Si el precio final manual ya incluye IGV (solo MANUAL_PRICE). */
+  manualPriceIncludesIgv?: boolean;
+  /** Costo del proveedor (solo MANUAL_PRICE con proveedor). */
+  supplierCost?: number | null;
+  /** Nombre del proveedor (solo MANUAL_PRICE). */
+  supplierName?: string | null;
+  /** Override del precio final con IGV sobre una línea CALCULATED. */
   lineOverridePrice?: number | null;
   overheadRate?: number;
   commissionRate?: number;
@@ -55,6 +62,11 @@ export interface QuotationLineCalcInput {
 
 export interface QuotationLineCalcResult {
   lineMode: LineMode;
+  /** MANUAL_PRICE con proveedor: el precio es el del proveedor (pass-through). */
+  isPassthrough: boolean;
+  manualPrice: number | null;
+  manualPriceIncludesIgv: boolean;
+  supplierCost: number;
   productCost: number;
   laborCost: number;
   subtotal: number;
@@ -72,10 +84,22 @@ export interface QuotationLineCalcResult {
   hasOverride: boolean;
 }
 
+/** Derivación interna: MANUAL_PRICE con proveedor es un pass-through. */
+export const isManualPassthrough = (
+  lineMode: string | null | undefined,
+  supplierName: string | null | undefined,
+  supplierCost: number | null | undefined
+): boolean =>
+  (lineMode ?? "CALCULATED") === "MANUAL_PRICE" &&
+  !!supplierName &&
+  supplierCost != null &&
+  Number(supplierCost) > 0;
+
 /**
- * CALCULATED  → aplica overhead, comisión y utilidad.
- * FIXED_PRICE → el admin pone el precio final directo (lineOverridePrice, con IGV).
- * PASSTHROUGH → costo del proveedor tal cual, sin margen ni gastos.
+ * CALCULATED   → aplica overhead, comisión y utilidad; el override opcional
+ *                (lineOverridePrice) pisa el resultado con el precio final.
+ * MANUAL_PRICE → el administrador define el precio final; el proveedor es
+ *                opcional y solo clasifica la línea como pass-through.
  */
 export function calculateQuotationLine(
   line: QuotationLineCalcInput,
@@ -83,15 +107,51 @@ export function calculateQuotationLine(
   rules: PricingRules = DEFAULT_PRICING_RULES
 ): QuotationLineCalcResult {
   const lineMode: LineMode = line.lineMode ?? "CALCULATED";
+  const igvRate = rules.igvRate;
+
+  const manualPrice =
+    lineMode === "MANUAL_PRICE" && line.manualPrice != null && Number(line.manualPrice) > 0
+      ? round2(Number(line.manualPrice))
+      : null;
+  const manualPriceIncludesIgv = line.manualPriceIncludesIgv ?? true;
+  const supplierCost = round2(Number(line.supplierCost) || 0);
+  const isPassthrough = isManualPassthrough(lineMode, line.supplierName, supplierCost);
   const override =
-    line.lineOverridePrice != null && Number(line.lineOverridePrice) > 0
+    lineMode === "CALCULATED" && line.lineOverridePrice != null && Number(line.lineOverridePrice) > 0
       ? round2(Number(line.lineOverridePrice))
       : null;
+
+  if (lineMode === "MANUAL_PRICE") {
+    const base = manualPrice ?? 0;
+    const clientValue = manualPriceIncludesIgv ? round2(base / (1 + igvRate)) : round2(base);
+    const igv = round2(clientValue * igvRate);
+    return {
+      lineMode,
+      isPassthrough,
+      manualPrice,
+      manualPriceIncludesIgv,
+      supplierCost,
+      productCost: 0,
+      laborCost: 0,
+      subtotal: 0,
+      overheadRate: 0,
+      overheadAmount: 0,
+      totalCost: 0,
+      commissionRate: 0,
+      commissionAmount: 0,
+      profitRate: 0,
+      profitAmount: 0,
+      clientValue,
+      igv,
+      clientPrice: round2(clientValue + igv),
+      hourlyCostUsed: 0,
+      hasOverride: false,
+    };
+  }
 
   const overheadRate = line.overheadRate ?? rules.overheadRateQuote;
   const commissionRate = line.commissionRate ?? rules.commissionRate;
   const profitRate = line.profitRate ?? rules.profitRate;
-  const igvRate = rules.igvRate;
 
   const productCost = round2(
     line.products.reduce((sum, p) => sum + (p.quantity ?? 0) * p.unitCost, 0)
@@ -101,21 +161,15 @@ export function calculateQuotationLine(
 
   const subtotal = round2(productCost + laborCost);
 
-  const isPassthrough = lineMode === "PASSTHROUGH";
-
-  const appliedOverheadRate = isPassthrough ? 0 : overheadRate;
-  const appliedCommissionRate = isPassthrough ? 0 : commissionRate;
-  const appliedProfitRate = isPassthrough ? 0 : profitRate;
-
-  const overheadAmount = round2(subtotal * appliedOverheadRate);
+  const overheadAmount = round2(subtotal * overheadRate);
   const totalCost = round2(subtotal + overheadAmount);
 
   const commissionAmount = override
     ? 0
-    : round2(totalCost * appliedCommissionRate);
+    : round2(totalCost * commissionRate);
   const profitAmount = override
     ? 0
-    : round2(totalCost * appliedProfitRate);
+    : round2(totalCost * profitRate);
 
   let clientValue: number;
   let igv: number;
@@ -134,15 +188,19 @@ export function calculateQuotationLine(
 
   return {
     lineMode,
+    isPassthrough: false,
+    manualPrice: null,
+    manualPriceIncludesIgv: true,
+    supplierCost: 0,
     productCost,
     laborCost,
     subtotal,
-    overheadRate: appliedOverheadRate,
+    overheadRate,
     overheadAmount,
     totalCost,
-    commissionRate: appliedCommissionRate,
+    commissionRate,
     commissionAmount,
-    profitRate: appliedProfitRate,
+    profitRate,
     profitAmount,
     clientValue,
     igv,

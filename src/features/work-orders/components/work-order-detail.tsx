@@ -60,6 +60,31 @@ function formatDate(date: string | null, time?: string | null): string {
   return time ? `${base} · ${time}` : base;
 }
 
+function toMillis(value: number): number {
+  // Tolera timestamps en segundos y en milisegundos.
+  return value < 1e11 ? value * 1000 : value;
+}
+
+function formatDateTime(unixSeconds: number): string {
+  return new Date(toMillis(unixSeconds)).toLocaleString("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const totalMinutes = Math.round(seconds / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
+}
+
 export function WorkOrderDetail({
   workOrder,
   workOrderElevators,
@@ -180,6 +205,34 @@ export function WorkOrderDetail({
                       {(elevator.status || "PENDING").replace("_", " ")}
                     </span>
                   </div>
+
+                  {/* Tiempos reales de ejecución por equipo */}
+                  {(elevator.startedAt || elevator.completedAt) && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                      <span>
+                        Inicio real:{" "}
+                        <span className="font-medium text-foreground">
+                          {elevator.startedAt ? formatDateTime(elevator.startedAt) : "—"}
+                        </span>
+                      </span>
+                      <span>
+                        Fin real:{" "}
+                        <span className="font-medium text-foreground">
+                          {elevator.completedAt ? formatDateTime(elevator.completedAt) : "—"}
+                        </span>
+                      </span>
+                      <span>
+                        Duración:{" "}
+                        <span className="font-medium text-foreground">
+                          {elevator.startedAt && elevator.completedAt
+                            ? formatDuration(
+                                (toMillis(elevator.completedAt) - toMillis(elevator.startedAt)) / 1000
+                              )
+                            : "—"}
+                        </span>
+                      </span>
+                    </div>
+                  )}
 
                   {/* Hallazgos (solo lectura) */}
                   {elevator.finding ? (

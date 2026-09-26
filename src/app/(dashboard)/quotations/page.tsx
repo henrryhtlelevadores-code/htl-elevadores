@@ -1,15 +1,20 @@
-import { getQuotations, getQuotationFormData, getLaborConfig } from "@/features/quotations/actions";
+import { getQuotations, getQuotationFormData, getLaborConfig, getPricingConfig, getQuotationLineModeSummary } from "@/features/quotations/actions";
+import { getSessionUser } from "@/features/auth/server";
 import { QuotationsTable } from "@/features/quotations/components/quotations-table";
 import { FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function QuotationsPage() {
-  const [quotations, options, hourlyCost] = await Promise.all([
-    getQuotations(),
-    getQuotationFormData(),
-    getLaborConfig(),
-  ]);
+  const [quotations, options, hourlyCost, pricingRules, lineModes, currentUser] =
+    await Promise.all([
+      getQuotations(),
+      getQuotationFormData(),
+      getLaborConfig(),
+      getPricingConfig(),
+      getQuotationLineModeSummary(),
+      getSessionUser(),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -30,6 +35,9 @@ export default async function QuotationsPage() {
         initialQuotations={quotations}
         options={options}
         defaultHourlyCost={hourlyCost}
+        pricingRules={pricingRules}
+        lineModes={lineModes}
+        currentUser={currentUser ? { id: currentUser.id, fullName: currentUser.fullName } : null}
       />
     </div>
   );

@@ -86,17 +86,16 @@ export function Calendar({
     () => initialMonth ?? selected ?? today
   );
 
-  React.useEffect(() => {
-    if (selected && !isSameDay(selected, cursor) && view === "days") {
-      // sync only when the visible month is wrong.
-      if (
-        selected.getFullYear() !== cursor.getFullYear() ||
-        selected.getMonth() !== cursor.getMonth()
-      ) {
-        setCursor(startOfMonth(selected.getFullYear(), selected.getMonth()));
-      }
-    }
-  }, [selected, cursor, view]);
+  // Sync the visible month when the selected date lives outside it.
+  if (
+    view === "days" &&
+    selected &&
+    !isSameDay(selected, cursor) &&
+    (selected.getFullYear() !== cursor.getFullYear() ||
+      selected.getMonth() !== cursor.getMonth())
+  ) {
+    setCursor(startOfMonth(selected.getFullYear(), selected.getMonth()));
+  }
 
   const daysRef = useFocusManagement(view === "days");
 

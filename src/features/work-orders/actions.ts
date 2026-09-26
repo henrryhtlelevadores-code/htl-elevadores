@@ -355,6 +355,7 @@ export async function getWorkOrderElevators(
         status: workOrderElevators.status,
         finding: workOrderElevators.finding,
         finalStatus: workOrderElevators.finalStatus,
+        startedAt: workOrderElevators.startedAt,
         completedAt: workOrderElevators.completedAt,
         evidencePhotoUrls: workOrderElevators.evidencePhotoUrls,
         internal_code: elevatorUnities.internalCode,
@@ -404,8 +405,10 @@ export async function createWorkOrderElevator(data: WorkOrderElevatorFormValues)
 
 export async function updateWorkOrderElevatorStatus(id: string, status: string) {
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const updateData: { status: string; completedAt?: number } = { status };
+    // Los tiempos reales por equipo se registran en milisegundos (app del técnico).
+    const now = Date.now();
+    const updateData: { status: string; startedAt?: number; completedAt?: number } = { status };
+    if (status === "IN_PROGRESS") updateData.startedAt = now;
     if (status === "COMPLETED") updateData.completedAt = now;
 
     await db.update(workOrderElevators).set(updateData).where(eq(workOrderElevators.id, id));

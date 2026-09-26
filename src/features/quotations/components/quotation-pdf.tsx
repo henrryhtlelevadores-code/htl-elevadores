@@ -36,6 +36,11 @@ export interface QuotationPdfLine {
   description: string;
   lineMode?: string | null;
   lineModeReason?: string | null;
+  manualPrice?: number | null;
+  manualPriceIncludesIgv?: boolean | null;
+  supplierName?: string | null;
+  supplierCost?: number | null;
+  lineOverridePrice?: number | null;
   lineOverrideReason?: string | null;
   totalHours: number;
   hourlyCost: number;
@@ -359,13 +364,19 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                     Equipo: {line.equipment}
                   </Text>
                 ) : null}
-                {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                {line.lineMode === "MANUAL_PRICE" ? (
                   <Text style={styles.lineEquipment}>
-                    {line.lineMode === "FIXED_PRICE"
-                      ? "Precio fijo"
-                      : "Passthrough (costo del proveedor)"}
+                    Precio manual
+                    {line.supplierName
+                      ? ` — Proveedor: ${line.supplierName} (${money(line.supplierCost ?? 0)})`
+                      : ""}
                     {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
-                    {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
+                  </Text>
+                ) : line.lineOverridePrice != null ? (
+                  <Text style={styles.lineEquipment}>
+                    Precio pactado c/IGV{line.lineOverrideReason
+                      ? ` — ${line.lineOverrideReason}`
+                      : ""}
                   </Text>
                 ) : null}
               </View>
@@ -377,8 +388,8 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                   <View style={styles.th}>
                     <Text style={styles.colDesc}>Descripción</Text>
                     <Text style={styles.colQty}>Cant.</Text>
-                    <Text style={styles.colUnit}>Und</Text>
-                    <Text style={styles.colCost}>C. Unit.</Text>
+                    <Text style={styles.colUnit}>Und.</Text>
+                    <Text style={styles.colCost}>C. Unit. (S/)</Text>
                     <Text style={styles.colTotal}>Total</Text>
                   </View>
                   {line.products.map((p, i) => (
@@ -392,45 +403,72 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                   ))}
                 </View>
               ) : null}
-              <View style={styles.calcGrid}>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>Materiales</Text>
-                  <Text>{money(line.productCost)}</Text>
+              {line.lineMode === "MANUAL_PRICE" ? (
+                <View style={styles.calcGrid}>
+                  <View style={styles.calcItem}>
+                    <Text style={styles.calcLabel}>
+                      Precio final ({line.manualPriceIncludesIgv === false ? "sin IGV" : "c/IGV"})
+                    </Text>
+                    <Text>{money(line.manualPrice ?? line.clientPrice)}</Text>
+                  </View>
+                  <View style={styles.calcItem}>
+                    <Text style={styles.calcLabel}>
+                      {line.supplierName ? "Costo del proveedor" : "Modalidad"}
+                    </Text>
+                    <Text>
+                      {line.supplierName ? money(line.supplierCost ?? 0) : "Precio fijo"}
+                    </Text>
+                  </View>
+                  <View style={styles.calcItem}>
+                    <Text style={styles.calcLabel}>Valor neto</Text>
+                    <Text>{money(line.clientValue)}</Text>
+                  </View>
                 </View>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>Mano de obra</Text>
-                  <Text>
-                    {line.totalHours} h × {money(line.hourlyCost)} ={" "}
-                    {money(line.laborCost)}
-                  </Text>
-                </View>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>Subtotal</Text>
-                  <Text>{money(line.subtotal)}</Text>
-                </View>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>
-                    Gastos generales ({Math.round(line.overheadRate * 100)}%)
-                  </Text>
-                  <Text>{money(line.overheadAmount)}</Text>
-                </View>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>
-                    Comisión ({Math.round(line.commissionRate * 100)}%)
-                  </Text>
-                  <Text>{money(line.commissionAmount)}</Text>
-                </View>
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>Margen ({Math.round(line.profitRate * 100)}%)</Text>
-                  <Text>{money(line.profitAmount)}</Text>
-                </View>
-              </View>
-              {line.lineMode === "FIXED_PRICE" ? (
-                <View style={styles.calcItem}>
-                  <Text style={styles.calcLabel}>Precio final pactado (c/IGV)</Text>
-                  <Text>{money(line.clientPrice)}</Text>
-                </View>
-              ) : null}
+              ) : (
+                <>
+                  <View style={styles.calcGrid}>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>Materiales</Text>
+                      <Text>{money(line.productCost)}</Text>
+                    </View>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>Mano de obra</Text>
+                      <Text>
+                        {line.totalHours} h × {money(line.hourlyCost)} ={" "}
+                        {money(line.laborCost)}
+                      </Text>
+                    </View>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>Subtotal</Text>
+                      <Text>{money(line.subtotal)}</Text>
+                    </View>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>
+                        Gastos generales ({Math.round(line.overheadRate * 100)}%)
+                      </Text>
+                      <Text>{money(line.overheadAmount)}</Text>
+                    </View>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>
+                        Comisión ({Math.round(line.commissionRate * 100)}%)
+                      </Text>
+                      <Text>{money(line.commissionAmount)}</Text>
+                    </View>
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>
+                        Margen ({Math.round(line.profitRate * 100)}%)
+                      </Text>
+                      <Text>{money(line.profitAmount)}</Text>
+                    </View>
+                  </View>
+                  {line.lineOverridePrice != null ? (
+                    <View style={styles.calcItem}>
+                      <Text style={styles.calcLabel}>Precio pactado (c/IGV)</Text>
+                      <Text>{money(line.lineOverridePrice)}</Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
             </View>
           </View>
         ))}

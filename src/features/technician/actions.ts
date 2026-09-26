@@ -246,16 +246,19 @@ export async function startWorkOrder(workOrderId: string): Promise<ActionState> 
       // Idempotente: también cubre órdenes iniciadas antes de esta funcionalidad.
       await ensureSafetyRecords(workOrderId, session.technicianId);
       await setEquipmentInMaintenance(workOrderId);
+      await markEquipmentStarted(workOrderId, current.startedAt ?? Date.now());
       return { success: true, message: "La orden ya estaba en curso." };
     }
 
+    const now = Date.now();
     await db
       .update(workOrders)
-      .set({ status: "IN_PROGRESS", startedAt: Date.now() })
+      .set({ status: "IN_PROGRESS", startedAt: now })
       .where(eq(workOrders.id, workOrderId));
 
     await ensureSafetyRecords(workOrderId, session.technicianId);
     await setEquipmentInMaintenance(workOrderId);
+    await markEquipmentStarted(workOrderId, now);
 
     revalidateTechnicianUrls();
     return { success: true, message: "Orden iniciada. ¡A trabajar!" };
@@ -266,6 +269,19 @@ export async function startWorkOrder(workOrderId: string): Promise<ActionState> 
       message: error instanceof Error ? error.message : "Error al iniciar la orden.",
     };
   }
+}
+
+/** Registra el inicio real de los equipos que aún no tienen timestamp. */
+async function markEquipmentStarted(workOrderId: string, startedAt: number): Promise<void> {
+  await db
+    .update(workOrderElevators)
+    .set({ startedAt })
+    .where(
+      and(
+        eq(workOrderElevators.workOrderId, workOrderId),
+        isNull(workOrderElevators.startedAt)
+      )
+    );
 }
 
 export async function saveElevatorFindings(

@@ -189,10 +189,20 @@ export function QuotationDetailDialog({
                           Equipo: {[line.elevator_internal_code, line.elevator_name].filter(Boolean).join(" — ")}
                         </div>
                       ) : null}
-                      {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                      {line.lineMode === "MANUAL_PRICE" ? (
                         <div className="text-xs text-amber-700">
-                          {line.lineMode === "FIXED_PRICE" ? "Precio fijo" : "Passthrough"}
+                          Precio manual
                           {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
+                          {line.manualPrice != null
+                            ? ` — S/ ${money(line.manualPrice)}${line.manualPriceIncludesIgv === false ? " sin IGV" : " c/IGV"}`
+                            : ""}
+                          {line.supplierName
+                            ? ` — Proveedor: ${line.supplierName}${line.supplierCost != null ? ` (S/ ${money(line.supplierCost)})` : ""}`
+                            : ""}
+                        </div>
+                      ) : line.lineOverridePrice != null ? (
+                        <div className="text-xs text-amber-700">
+                          Precio pactado — S/ {money(line.lineOverridePrice)} c/IGV
                           {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
                         </div>
                       ) : null}
@@ -210,7 +220,8 @@ export function QuotationDetailDialog({
                           <tr className="text-left text-muted-foreground border-b border-border">
                             <th className="py-1 font-medium">Descripción</th>
                             <th className="py-1 font-medium text-right">Cant.</th>
-                            <th className="py-1 font-medium text-right">C. Unit.</th>
+                            <th className="py-1 font-medium text-right">Und.</th>
+                            <th className="py-1 font-medium text-right">C. Unit. (S/)</th>
                             <th className="py-1 font-medium text-right">Total</th>
                           </tr>
                         </thead>
@@ -219,6 +230,9 @@ export function QuotationDetailDialog({
                             <tr key={i} className="border-b border-border/60">
                               <td className="py-1">{p.description}</td>
                               <td className="py-1 text-right">{p.quantity}</td>
+                              <td className="py-1 text-right text-muted-foreground">
+                                {p.unit ?? "—"}
+                              </td>
                               <td className="py-1 text-right">{money(p.unitCost)}</td>
                               <td className="py-1 text-right">{money(p.totalCost)}</td>
                             </tr>
@@ -228,40 +242,66 @@ export function QuotationDetailDialog({
                     </div>
                   ) : null}
 
-                  <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Materiales</span>
-                      <span className="font-medium">{money(line.productCost)}</span>
+                  {line.lineMode === "MANUAL_PRICE" ? (
+                    <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Precio final</span>
+                        <span className="font-medium">
+                          {money(line.manualPrice ?? line.clientPrice)}{" "}
+                          {line.manualPriceIncludesIgv === false ? "sin IGV" : "c/IGV"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {line.supplierName ? "Costo del proveedor" : "Tipo"}
+                        </span>
+                        <span className="font-medium">
+                          {line.supplierName
+                            ? money(line.supplierCost ?? 0)
+                            : "Precio fijo"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Valor neto</span>
+                        <span className="font-medium">{money(line.clientValue)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Mano de obra</span>
-                      <span className="font-medium">
-                        {money(line.laborCost)} ({line.totalHours ?? 0}h × {money(line.hourlyCost)})
-                      </span>
+                  ) : (
+                    <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Materiales</span>
+                        <span className="font-medium">{money(line.productCost)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Mano de obra</span>
+                        <span className="font-medium">
+                          {money(line.laborCost)} ({line.totalHours ?? 0}h × {money(line.hourlyCost)})
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Gastos generales</span>
+                        <span className="font-medium">
+                          {money(line.overheadAmount)} ({(line.overheadRate ?? 0) * 100}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Comisión</span>
+                        <span className="font-medium">
+                          {money(line.commissionAmount)} ({(line.commissionRate ?? 0) * 100}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Margen</span>
+                        <span className="font-medium">
+                          {money(line.profitAmount)} ({(line.profitRate ?? 0) * 100}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Valor neto</span>
+                        <span className="font-medium">{money(line.clientValue)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gastos generales</span>
-                      <span className="font-medium">
-                        {money(line.overheadAmount)} ({(line.overheadRate ?? 0) * 100}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Comisión</span>
-                      <span className="font-medium">
-                        {money(line.commissionAmount)} ({(line.commissionRate ?? 0) * 100}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Margen</span>
-                      <span className="font-medium">
-                        {money(line.profitAmount)} ({(line.profitRate ?? 0) * 100}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Valor neto</span>
-                      <span className="font-medium">{money(line.clientValue)}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>

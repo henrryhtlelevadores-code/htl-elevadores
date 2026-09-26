@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
-import { ChevronDownIcon, SearchIcon, XIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
 import {
   Combobox,
   ComboboxContent,
@@ -116,23 +116,23 @@ export function SearchableSelect<Item>({
       disabled={disabled}
       onValueChange={(val) => onValueChange((val as string | null) ?? "")}
     >
-      <div className="relative w-full">
+      <div className="relative w-full min-w-0">
         <ComboboxValueTrigger
           id={id}
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
           className={
-            "w-full bg-background border-border text-xs pr-8 focus-visible:ring-1 focus-visible:ring-[#0066CC] aria-invalid:border-destructive" +
+            "w-full min-w-0 overflow-hidden bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC] aria-invalid:border-destructive" +
+            (allowClear && value ? " pr-14" : " pr-8") +
             (className ? ` ${className}` : "")
           }
         >
           <span
-            className={triggerLabel ? "truncate" : "truncate text-muted-foreground"}
+            className={triggerLabel ? "min-w-0 truncate" : "min-w-0 truncate text-muted-foreground"}
             title={triggerLabel ?? undefined}
           >
             {triggerLabel ?? placeholder}
           </span>
-          <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
         </ComboboxValueTrigger>
         {allowClear && value ? (
           <button
@@ -165,7 +165,7 @@ export function SearchableSelect<Item>({
         <ComboboxList>
           {(item: Item) => (
             <ComboboxItem key={getValue(item)} value={getValue(item)} className="text-xs py-1.5">
-              {renderItem ? renderItem(item) : getLabel(item)}
+              <span className="min-w-0 truncate">{renderItem ? renderItem(item) : getLabel(item)}</span>
             </ComboboxItem>
           )}
         </ComboboxList>

@@ -11,6 +11,8 @@ import type {
 } from "../actions";
 import { getQuotationById, deleteQuotation, updateQuotationStatus } from "../actions";
 import { getQuotationPdfDataUrl } from "../quotation-pdf-actions";
+import { DEFAULT_PRICING_RULES, type PricingRules } from "../calc";
+import type { LineModeSummary } from "../actions";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,17 +23,20 @@ import {
   Eye,
   Pencil,
   Plus,
-  Timer,
+  Settings2,
   Trash2,
 } from "lucide-react";
 import { QuotationCreateDialog } from "./quotation-create-dialog";
 import { QuotationDetailDialog } from "./quotation-detail-dialog";
-import { LaborConfigDialog } from "./labor-config-dialog";
+import { PricingConfigDialog } from "./pricing-config-dialog";
 
 interface QuotationsTableProps {
   initialQuotations: QuotationWithRelations[];
   options: QuotationFormOptions;
   defaultHourlyCost: number;
+  pricingRules: PricingRules;
+  lineModes: Record<string, LineModeSummary>;
+  currentUser: { id: string; fullName: string | null } | null;
 }
 
 const money = (value: number | null | undefined) =>
@@ -77,6 +82,9 @@ export function QuotationsTable({
   initialQuotations,
   options,
   defaultHourlyCost,
+  pricingRules: initialRules,
+  lineModes: initialLineModes,
+  currentUser,
 }: QuotationsTableProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -88,6 +96,12 @@ export function QuotationsTable({
   const [configOpen, setConfigOpen] = useState(false);
   const [configSession, setConfigSession] = useState(0);
   const [hourlyCost, setHourlyCost] = useState(defaultHourlyCost);
+  const [pricingRules, setPricingRules] = useState<PricingRules>(
+    initialRules ?? DEFAULT_PRICING_RULES
+  );
+  const [lineModes, setLineModes] = useState<Record<string, LineModeSummary>>(
+    initialLineModes ?? {}
+  );
 
   const refresh = useCallback(() => router.refresh(), [router]);
 
@@ -206,6 +220,55 @@ export function QuotationsTable({
         ),
       },
       {
+        id: "discountBadge",
+        header: "Tipo desc.",
+        cell: ({ row }) => {
+          const q = row.original;
+          const mode = q.discountMode ?? "PERCENT";
+          if (mode === "PERCENT") {
+            const pct = q.discountRate ?? 0;
+            if (pct <= 0) {
+              return <span className="text-xs text-muted-foreground">—</span>;
+            }
+            return (
+              <Badge
+                variant="outline"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold"
+              >
+                −{Math.round(pct)}%
+              </Badge>
+            );
+          }
+          if (mode === "AMOUNT") {
+            const amount = q.discountAmount ?? 0;
+            if (amount <= 0) {
+              return <span className="text-xs text-muted-foreground">—</span>;
+            }
+            return (
+              <Badge
+                variant="outline"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold"
+              >
+                −S/ {amount.toFixed(2)}
+              </Badge>
+            );
+          }
+          // FINAL
+          const target = q.targetTotal ?? 0;
+          if (target <= 0) {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          return (
+            <Badge
+              variant="outline"
+              className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400 text-[10px] font-bold"
+            >
+              Final S/ {target.toFixed(2)}
+            </Badge>
+          );
+        },
+      },
+      {
         accessorKey: "total",
         header: "Total",
         cell: ({ row }) => (
@@ -218,6 +281,44 @@ export function QuotationsTable({
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">{row.original.lineCount}</span>
         ),
+      },
+      {
+        id: "lineModes",
+        header: "Modos",
+        cell: ({ row }) => {
+          const summary = lineModes[row.original.id];
+          if (!summary || summary === "ALL_CALCULATED") {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          if (summary === "MANUAL_PRICE") {
+            return (
+              <Badge
+                variant="outline"
+                className="border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-400 text-[10px] font-bold"
+              >
+                Precio manual
+              </Badge>
+            );
+          }
+          if (summary === "PASSTHROUGH") {
+            return (
+              <Badge
+                variant="outline"
+                className="border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-400 text-[10px] font-bold"
+              >
+                Proveedor externo
+              </Badge>
+            );
+          }
+          return (
+            <Badge
+              variant="outline"
+              className="border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-400 text-[10px] font-bold"
+            >
+              Mixto
+            </Badge>
+          );
+        },
       },
       {
         id: "actions",
@@ -292,9 +393,12 @@ export function QuotationsTable({
                 setConfigSession((s) => s + 1);
                 setConfigOpen(true);
               }}
+              title={`Configuración completa: gasto estructural ${Math.round(pricingRules.overheadRateQuote * 100)}%, gastos administrativos ${Math.round(pricingRules.overheadRateLabor * 100)}%, utilidad ${Math.round(pricingRules.profitRate * 100)}%, IGV ${Math.round(pricingRules.igvRate * 100)}%.`}
             >
-              <Timer className="size-3.5" />
-              Costo/hora: S/ {Number(hourlyCost || 0).toFixed(2)}
+              <Settings2 className="size-3.5" />
+              Costo/hora: S/ {Number(hourlyCost || 0).toFixed(2)}{" "}
+              <span className="text-muted-foreground">·</span>{" "}
+              Comisión {Math.round(pricingRules.commissionRate * 100)}%
             </Button>
             <Button size="sm" className="text-xs gap-1.5" onClick={handleNew}>
               <Plus className="size-3.5" />
@@ -306,8 +410,23 @@ export function QuotationsTable({
 
       <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <AlertTriangle className="size-3.5 text-amber-500" />
-        El precio de venta se calcula automáticamente (materiales + mano de obra + 20% gastos
-        generales + 4% comisión + 60% margen + 18% IGV).
+        <span>
+          El precio de venta se calcula automáticamente (materiales + mano de obra +{" "}
+          {Math.round(pricingRules.overheadRateQuote * 100)}% gastos generales +{" "}
+          {Math.round(pricingRules.commissionRate * 100)}% comisión +{" "}
+          {Math.round(pricingRules.profitRate * 100)}% margen +{" "}
+          {Math.round(pricingRules.igvRate * 100)}% IGV).
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setConfigSession((s) => s + 1);
+            setConfigOpen(true);
+          }}
+          className="text-[11px] font-semibold text-[#0066CC] hover:underline"
+        >
+          Ajustar configuración
+        </button>
       </div>
 
       <QuotationCreateDialog
@@ -317,6 +436,7 @@ export function QuotationsTable({
         editingDetail={editingDetail}
         options={options}
         defaultHourlyCost={hourlyCost}
+        currentUser={currentUser}
       />
 
       <QuotationDetailDialog
@@ -326,13 +446,15 @@ export function QuotationsTable({
         onStatusChange={handleStatusChange}
       />
 
-      <LaborConfigDialog
+      <PricingConfigDialog
         key={configSession}
         open={configOpen}
         onOpenChange={setConfigOpen}
-        currentValue={hourlyCost}
-        onSaved={(v) => {
-          setHourlyCost(v);
+        currentRules={pricingRules}
+        hourlyCost={hourlyCost}
+        onSaved={(next, nextHourly) => {
+          setPricingRules(next);
+          setHourlyCost(nextHourly);
           refresh();
         }}
       />

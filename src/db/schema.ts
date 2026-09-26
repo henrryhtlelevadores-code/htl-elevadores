@@ -283,6 +283,7 @@ export const workOrderElevators = sqliteTable("work_order_elevators", {
   finding: text("finding"),
   evidencePhotoUrls: text("evidence_photo_urls", { mode: "json" }),
   finalStatus: text("final_equipment_status"),
+  startedAt: integer("started_at"),
   completedAt: integer("completed_at"),
 });
 
@@ -328,18 +329,44 @@ export const preventiveRoutes = sqliteTable(
   (t) => [unique().on(t.technicianId, t.businessDayNumber)]
 );
 
-export const preventiveRouteStops = sqliteTable("preventive_route_stops", {
-  id: text("id").primaryKey(),
-  routeId: text("route_id")
-    .notNull()
-    .references(() => preventiveRoutes.id, { onDelete: "cascade" }),
-  contractElevatorId: text("contract_elevator_id")
-    .notNull()
-    .references(() => contractElevators.id),
-  plannedTime: text("planned_time").notNull(),
-  orderIndex: integer("order_index").default(0),
-  createdAt: integer("created_at").default(unixNow()),
+export const preventiveRouteConfig = sqliteTable("preventive_route_config", {
+  technicianId: text("technician_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  totalDays: integer("total_days").default(10),
+  maxDays: integer("max_days").default(15),
+  includeSaturdays: integer("include_saturdays", { mode: "boolean" }).default(true),
+  saturdayMaxHours: integer("saturday_max_hours").default(4),
+  defaultStopDurationMins: integer("default_stop_duration_mins").default(120),
+  updatedAt: integer("updated_at").default(unixNow()),
 });
+
+export const preventiveRouteStops = sqliteTable(
+  "preventive_route_stops",
+  {
+    id: text("id").primaryKey(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => preventiveRoutes.id, { onDelete: "cascade" }),
+    contractElevatorId: text("contract_elevator_id")
+      .notNull()
+      .references(() => contractElevators.id),
+    plannedTime: text("planned_time").notNull(),
+    orderIndex: integer("order_index").default(0),
+    visitGroupId: text("visit_group_id"),
+    estimatedDurationMins: integer("estimated_duration_mins").default(120),
+    generatedWorkOrderId: text("generated_work_order_id").references(() => workOrders.id, {
+      onDelete: "set null",
+    }),
+    generatedMonth: text("generated_month"),
+    generatedAt: integer("generated_at"),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [
+    index("idx_prs_generated_month").on(t.generatedMonth),
+    index("idx_prs_visit_group").on(t.visitGroupId),
+  ]
+);
 
 export const invoices = sqliteTable(
   "invoices",
@@ -455,6 +482,7 @@ export const quotations = sqliteTable("quotations", {
   total: real("total").default(0),
   notes: text("notes"),
   terms: text("terms"),
+  configSnapshot: text("config_snapshot"),
   createdAt: integer("created_at").default(unixNow()),
 });
 
@@ -469,6 +497,10 @@ export const quotationLines = sqliteTable("quotation_lines", {
   orderIndex: integer("order_index").default(0),
   lineMode: text("line_mode").default("CALCULATED"),
   lineModeReason: text("line_mode_reason"),
+  manualPrice: real("manual_price"),
+  manualPriceIncludesIgv: integer("manual_price_includes_igv", { mode: "boolean" }).default(true),
+  supplierName: text("supplier_name"),
+  supplierCost: real("supplier_cost"),
   lineOverridePrice: real("line_override_price"),
   lineOverrideReason: text("line_override_reason"),
 

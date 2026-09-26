@@ -192,10 +192,17 @@ export function PortalQuotationDocument({
                             .join(" — ")}
                         </p>
                       ) : null}
-                      {line.lineMode && line.lineMode !== "CALCULATED" ? (
+                      {line.lineMode === "MANUAL_PRICE" ? (
                         <p className="text-xs text-amber-700 mt-0.5">
-                          {line.lineMode === "FIXED_PRICE" ? "Precio fijo" : "Passthrough"}
+                          Precio manual
                           {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
+                          {line.supplierName
+                            ? ` — Proveedor: ${line.supplierName}${line.supplierCost != null ? ` (S/ ${money(line.supplierCost)})` : ""}`
+                            : ""}
+                        </p>
+                      ) : line.lineOverridePrice != null ? (
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Precio pactado — S/ {money(line.lineOverridePrice)} c/IGV
                           {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
                         </p>
                       ) : null}

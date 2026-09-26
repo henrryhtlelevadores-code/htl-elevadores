@@ -57,10 +57,12 @@ export function TimePicker({
   const display = safeFormatHour(value);
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [inputValue, setInputValue] = React.useState(display);
+  const [syncedDisplay, setSyncedDisplay] = React.useState(display);
 
-  React.useEffect(() => {
+  if (display !== syncedDisplay) {
+    setSyncedDisplay(display);
     setInputValue(display);
-  }, [display]);
+  }
 
   function commitInput(raw: string) {
     const parsed = parseHourInput(raw);

@@ -26,16 +26,22 @@ const quotationLineSchema = z.object({
     .string()
     .min(2, "La descripción es obligatoria")
     .max(300, "Máximo 300 caracteres"),
-  totalHours: z.string().refine((v) => v !== "" && Number(v) > 0, {
-    message: "Las horas deben ser mayores a 0",
-  }),
+  totalHours: nonNegativeNumber("Las horas"),
   hourlyCost: nonNegativeNumber("El costo/hora"),
-  lineMode: z.enum(["CALCULATED", "FIXED_PRICE", "PASSTHROUGH"]).default("CALCULATED"),
+  lineMode: z.enum(["CALCULATED", "MANUAL_PRICE"]).default("CALCULATED"),
   lineModeReason: z.string().max(200, "Máximo 200 caracteres").optional().or(z.literal("")),
+  manualPrice: nonNegativeNumber("El precio final"),
+  manualPriceIncludesIgv: z.boolean().default(true),
+  supplierName: z.string().max(200, "Máximo 200 caracteres").optional().or(z.literal("")),
+  supplierCost: nonNegativeNumber("El costo del proveedor"),
+  overridePrice: z.boolean().default(false),
   lineOverridePrice: nonNegativeNumber("El precio final"),
   lineOverrideReason: z.string().max(200, "Máximo 200 caracteres").optional().or(z.literal("")),
   products: z.array(quotationProductSchema),
 });
+
+const hasMeaningfulProducts = (line: { products: z.infer<typeof quotationProductSchema>[] }) =>
+  line.products.some((p) => p.description.trim() !== "" && Number(p.unitCost) > 0);
 
 export const quotationFormSchema = z
   .object({
@@ -62,20 +68,64 @@ export const quotationFormSchema = z
         message: "El precio final es obligatorio",
       });
     }
+    if (data.discountMode === "PERCENT" && Number(data.discountRate) > 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountRate"],
+        message: "El descuento debe estar entre 0% y 100%",
+      });
+    }
 
     data.lines.forEach((line, index) => {
-      if (line.lineMode === "FIXED_PRICE" && !(Number(line.lineOverridePrice) > 0)) {
+      const linePath = (field: string) => ["lines", index, field];
+
+      if (line.lineMode === "MANUAL_PRICE") {
+        if (!(Number(line.manualPrice) > 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: linePath("manualPrice"),
+            message: "Ingresa el precio final de la línea",
+          });
+        }
+        if (!line.lineModeReason?.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: linePath("lineModeReason"),
+            message: "Indica el motivo del precio manual",
+          });
+        }
+        const hasSupplierName = !!line.supplierName?.trim();
+        const hasSupplierCost = Number(line.supplierCost) > 0;
+        if (hasSupplierName && !hasSupplierCost) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: linePath("supplierCost"),
+            message: "Ingresa el costo del proveedor",
+          });
+        }
+        if (hasSupplierCost && !hasSupplierName) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: linePath("supplierName"),
+            message: "Indica el nombre del proveedor",
+          });
+        }
+        return;
+      }
+
+      if (!(Number(line.totalHours) > 0) && !hasMeaningfulProducts(line)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["lines", index, "lineOverridePrice"],
-          message: "Ingresa el precio final de la línea",
+          path: linePath("totalHours"),
+          message: "La línea no tiene horas ni materiales",
         });
       }
-      if (line.lineMode === "PASSTHROUGH" && !line.lineModeReason?.trim()) {
+
+      if (line.overridePrice && !(Number(line.lineOverridePrice) > 0)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["lines", index, "lineModeReason"],
-          message: "Indica el motivo (ej: Proveedor externo)",
+          path: linePath("lineOverridePrice"),
+          message: "Ingresa el precio final de la línea",
         });
       }
     });

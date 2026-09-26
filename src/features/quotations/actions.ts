@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { type BatchItem } from "drizzle-orm/batch";
 
 type SqliteBatchItem = BatchItem<"sqlite">;
+import { getSessionUserId } from "@/features/auth/server";
 import {
   db,
   clients,
@@ -20,13 +21,14 @@ import {
   type QuotationLine,
   type QuotationLineProduct,
 } from "@/db/index";
-import { eq, isNull, desc, count, like, inArray, asc } from "drizzle-orm";
+import { eq, isNull, desc, count, like, inArray, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
 import { quotationFormSchema, type QuotationFormValues } from "./schema";
 import {
   calculateQuotationLine,
   calculateQuotationHeader,
+  isManualPassthrough,
   DEFAULT_PRICING_RULES,
   type PricingRules,
 } from "./calc";
@@ -210,6 +212,7 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         total: quotations.total,
         notes: quotations.notes,
         terms: quotations.terms,
+        configSnapshot: quotations.configSnapshot,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,
         cost_center_name: costCenters.name,
@@ -225,6 +228,54 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
   } catch (error) {
     console.error("Error al obtener cotizaciones:", error);
     return [];
+  }
+}
+
+export type LineModeSummary =
+  | "ALL_CALCULATED"
+  | "MANUAL_PRICE"
+  | "PASSTHROUGH"
+  | "MIXED";
+
+/**
+ * Devuelve, para cada cotización, un resumen de los modos de línea que usan sus
+ * items. MANUAL_PRICE con proveedor y costo se clasifica como PASSTHROUGH.
+ */
+export async function getQuotationLineModeSummary(): Promise<Record<string, LineModeSummary>> {
+  try {
+    const rows = await db
+      .select({
+        quotationId: quotationLines.quotationId,
+        lineMode: quotationLines.lineMode,
+        supplierName: quotationLines.supplierName,
+        supplierCost: quotationLines.supplierCost,
+      })
+      .from(quotationLines);
+
+    const sets = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const mode =
+        isManualPassthrough(row.lineMode, row.supplierName, row.supplierCost)
+          ? "PASSTHROUGH"
+          : (row.lineMode ?? "CALCULATED");
+      const set = sets.get(row.quotationId) ?? new Set<string>();
+      set.add(mode);
+      sets.set(row.quotationId, set);
+    }
+
+    const summary: Record<string, LineModeSummary> = {};
+    for (const [quotationId, set] of sets) {
+      if (set.size === 1) {
+        const only = [...set][0];
+        summary[quotationId] = only === "CALCULATED" ? "ALL_CALCULATED" : (only as LineModeSummary);
+      } else {
+        summary[quotationId] = "MIXED";
+      }
+    }
+    return summary;
+  } catch (error) {
+    console.error("Error al obtener resumen de modos de línea:", error);
+    return {};
   }
 }
 
@@ -267,6 +318,7 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         total: quotations.total,
         notes: quotations.notes,
         terms: quotations.terms,
+        configSnapshot: quotations.configSnapshot,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,
         client_tax_id: clients.taxId,
@@ -295,6 +347,10 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         orderIndex: quotationLines.orderIndex,
         lineMode: quotationLines.lineMode,
         lineModeReason: quotationLines.lineModeReason,
+        manualPrice: quotationLines.manualPrice,
+        manualPriceIncludesIgv: quotationLines.manualPriceIncludesIgv,
+        supplierName: quotationLines.supplierName,
+        supplierCost: quotationLines.supplierCost,
         lineOverridePrice: quotationLines.lineOverridePrice,
         lineOverrideReason: quotationLines.lineOverrideReason,
         totalHours: quotationLines.totalHours,
@@ -369,7 +425,12 @@ export interface QuotationFormOptions {
     address: string | null;
   }>;
   advisors: Array<{ id: string; fullName: string | null }>;
-  equipment: Array<{ id: string; internalCode: string | null; name: string | null }>;
+  equipment: Array<{
+    id: string;
+    costCenterId: string;
+    internalCode: string | null;
+    name: string | null;
+  }>;
   pricing: PricingRules;
 }
 
@@ -378,7 +439,7 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
     db
       .select({ id: clients.id, legalName: clients.legalName, taxId: clients.taxId })
       .from(clients)
-      .where(eq(clients.status, "ACTIVE"))
+      .where(and(eq(clients.status, "ACTIVE"), isNull(clients.deletedAt)))
       .orderBy(asc(clients.legalName)),
     db
       .select({
@@ -390,7 +451,7 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
       })
       .from(costCenters)
       .innerJoin(clients, eq(costCenters.clientId, clients.id))
-      .where(isNull(costCenters.deletedAt))
+      .where(and(isNull(costCenters.deletedAt), isNull(clients.deletedAt)))
       .orderBy(asc(costCenters.name)),
     db
       .select({ id: users.id, fullName: users.fullName })
@@ -400,6 +461,7 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
     db
       .select({
         id: elevatorUnities.id,
+        costCenterId: elevatorUnities.costCenterId,
         internalCode: elevatorUnities.internalCode,
         name: elevatorUnities.name,
       })
@@ -427,23 +489,39 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
 // CREAR / ACTUALIZAR / ELIMINAR
 // ==========================================
 
-async function buildQuotationData(validated: QuotationFormValues) {
+async function resolveAdvisorId(value: string | null | undefined): Promise<string | null> {
+  const trimmed = (value ?? "").trim();
+  if (trimmed) return trimmed;
+  try {
+    return await getSessionUserId();
+  } catch {
+    return null;
+  }
+}
+
+async function buildQuotationData(validated: QuotationFormValues, hourlyCostOverride?: number) {
   const rules = await getPricingConfig();
+  const hourlyCost =
+    typeof hourlyCostOverride === "number" ? hourlyCostOverride : await getLaborConfig();
 
   const lines = validated.lines.map((l, i) => {
-    const hourlyCost = Number(l.hourlyCost) || 0;
+    const lineHourlyCost = Number(l.hourlyCost) || 0;
     const calc = calculateQuotationLine(
       {
         totalHours: Number(l.totalHours),
-        hourlyCost,
+        hourlyCost: lineHourlyCost,
         lineMode: l.lineMode,
-        lineOverridePrice: Number(l.lineOverridePrice) || null,
+        manualPrice: Number(l.manualPrice) || null,
+        manualPriceIncludesIgv: l.manualPriceIncludesIgv ?? true,
+        supplierName: l.supplierName || null,
+        supplierCost: Number(l.supplierCost) || null,
+        lineOverridePrice: l.overridePrice ? Number(l.lineOverridePrice) || null : null,
         products: l.products.map((p) => ({
           quantity: Number(p.quantity),
           unitCost: Number(p.unitCost),
         })),
       },
-      hourlyCost,
+      lineHourlyCost,
       rules
     );
 
@@ -452,10 +530,16 @@ async function buildQuotationData(validated: QuotationFormValues) {
       description: l.description,
       orderIndex: i,
       lineMode: calc.lineMode,
+      isPassthrough: calc.isPassthrough,
       lineModeReason: l.lineModeReason?.trim() || null,
-      lineOverridePrice: l.lineOverridePrice && Number(l.lineOverridePrice) > 0
-        ? round2(Number(l.lineOverridePrice))
-        : null,
+      manualPrice: calc.manualPrice,
+      manualPriceIncludesIgv: calc.manualPriceIncludesIgv,
+      supplierName: l.supplierName?.trim() || null,
+      supplierCost: calc.supplierCost || null,
+      lineOverridePrice:
+        l.overridePrice && Number(l.lineOverridePrice) > 0
+          ? round2(Number(l.lineOverridePrice))
+          : null,
       lineOverrideReason: l.lineOverrideReason?.trim() || null,
       totalHours: Number(l.totalHours),
       hourlyCost: calc.hourlyCostUsed,
@@ -472,14 +556,17 @@ async function buildQuotationData(validated: QuotationFormValues) {
       clientValue: calc.clientValue,
       igv: calc.igv,
       clientPrice: calc.clientPrice,
-      products: l.products.map((p, j) => ({
-        description: p.description,
-        quantity: Number(p.quantity),
-        unit: p.unit || null,
-        unitCost: Number(p.unitCost),
-        totalCost: round2(Number(p.quantity) * Number(p.unitCost)),
-        orderIndex: j,
-      })),
+      products:
+        l.lineMode === "MANUAL_PRICE"
+          ? []
+          : l.products.map((p, j) => ({
+              description: p.description,
+              quantity: Number(p.quantity),
+              unit: p.unit || null,
+              unitCost: Number(p.unitCost),
+              totalCost: round2(Number(p.quantity) * Number(p.unitCost)),
+              orderIndex: j,
+            })),
     };
   });
 
@@ -499,7 +586,7 @@ async function buildQuotationData(validated: QuotationFormValues) {
   return {
     clientId: validated.clientId,
     costCenterId: validated.costCenterId || null,
-    advisorId: validated.advisorId || null,
+    advisorId: validated.advisorId || undefined,
     issueDate: toTimestamp(validated.issueDate),
     validUntil: toTimestamp(validated.validUntil),
     status: validated.status || "DRAFT",
@@ -517,16 +604,99 @@ async function buildQuotationData(validated: QuotationFormValues) {
     total: header.total,
     notes: validated.notes || null,
     terms: validated.terms || null,
+    configSnapshot: JSON.stringify({
+      overheadRate: rules.overheadRateQuote,
+      commissionRate: rules.commissionRate,
+      profitRate: rules.profitRate,
+      igvRate: rules.igvRate,
+      hourlyCost,
+      capturedAt: Math.floor(Date.now() / 1000),
+    }),
     lines,
   };
+}
+
+/**
+ * Validaciones de línea en el servidor. El formulario ya las aplica con Zod,
+ * pero se repiten aquí porque la cotización se recalcula y persiste en el
+ * backend: nunca se confía en lo que envía el cliente.
+ */
+function validateLineRules(validated: QuotationFormValues): string | null {
+  for (const [index, line] of validated.lines.entries()) {
+    const n = index + 1;
+
+    if (line.lineMode === "MANUAL_PRICE") {
+      if (!(Number(line.manualPrice) > 0)) {
+        return `Línea ${n}: falta el precio final.`;
+      }
+      const hasSupplierName = !!line.supplierName?.trim();
+      const hasSupplierCost = Number(line.supplierCost) > 0;
+      if (hasSupplierName || hasSupplierCost) {
+        if (!hasSupplierName) return `Línea ${n}: falta el nombre del proveedor.`;
+        if (!hasSupplierCost) return `Línea ${n}: falta el costo del proveedor.`;
+      }
+      continue;
+    }
+
+    const hasProducts = line.products.some(
+      (p) => p.description.trim() !== "" && Number(p.unitCost) > 0
+    );
+    if (!(Number(line.totalHours) > 0) && !hasProducts) {
+      return `Línea ${n}: la línea no tiene horas ni materiales.`;
+    }
+    if (line.overridePrice && !(Number(line.lineOverridePrice) > 0)) {
+      return `Línea ${n}: falta el precio final del override.`;
+    }
+  }
+  return null;
+}
+
+function validateDiscountRules(
+  validated: QuotationFormValues,
+  payload: Awaited<ReturnType<typeof buildQuotationData>>
+): string | null {
+  const subtotal = round2(payload.lines.reduce((sum, line) => sum + line.clientValue, 0));
+  const snapshot = payload.configSnapshot
+    ? (JSON.parse(payload.configSnapshot) as { igvRate?: number })
+    : {};
+  const igvRate = snapshot.igvRate ?? DEFAULT_PRICING_RULES.igvRate;
+  const discountMode = validated.discountMode ?? "PERCENT";
+  if (discountMode === "PERCENT") {
+    const rate = Number(validated.discountRate) || 0;
+    if (rate < 0 || rate > 100) return "El descuento debe estar entre 0% y 100%.";
+  }
+  if (discountMode === "AMOUNT") {
+    const amount = Number(validated.discountAmount) || 0;
+    if (amount > subtotal) return "El descuento no puede ser mayor al subtotal.";
+  }
+  if (discountMode === "FINAL") {
+    const target = Number(validated.targetTotal) || 0;
+    if (target <= 0) return "Ingresa el precio final.";
+    const comparableTarget = validated.targetTotalIncludesIgv
+      ? target
+      : round2(target * (1 + igvRate));
+    if (comparableTarget > round2(subtotal * (1 + igvRate))) {
+      return "El precio final no puede ser mayor al subtotal con IGV.";
+    }
+  }
+  return null;
 }
 
 export async function createQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
   try {
-    const validated = quotationFormSchema.parse(data);
+    const parsed = quotationFormSchema.parse(data);
+    const validated = {
+      ...parsed,
+      advisorId: (await resolveAdvisorId(parsed.advisorId)) ?? undefined,
+      status: "DRAFT",
+    } as QuotationFormValues;
+    const lineError = validateLineRules(validated);
+    if (lineError) return { success: false, error: lineError };
     const payload = await buildQuotationData(validated);
+    const discountError = validateDiscountRules(validated, payload);
+    if (discountError) return { success: false, error: discountError };
     const quotationId = generateUuid();
     const quotationNumber = await nextQuotationNumber();
 
@@ -551,6 +721,7 @@ export async function createQuotation(
         total: payload.total,
         notes: payload.notes,
         terms: payload.terms,
+        configSnapshot: payload.configSnapshot,
       }),
     ];
 
@@ -565,6 +736,10 @@ export async function createQuotation(
           orderIndex: line.orderIndex,
           lineMode: line.lineMode,
           lineModeReason: line.lineModeReason,
+          manualPrice: line.manualPrice,
+          manualPriceIncludesIgv: line.manualPriceIncludesIgv,
+          supplierName: line.supplierName,
+          supplierCost: line.supplierCost,
           lineOverridePrice: line.lineOverridePrice,
           lineOverrideReason: line.lineOverrideReason,
           totalHours: line.totalHours,
@@ -614,8 +789,16 @@ export async function updateQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
   try {
-    const validated = quotationFormSchema.parse(data);
+    const parsed = quotationFormSchema.parse(data);
+    const validated = {
+      ...parsed,
+      advisorId: (await resolveAdvisorId(parsed.advisorId)) ?? undefined,
+    } as QuotationFormValues;
+    const lineError = validateLineRules(validated);
+    if (lineError) return { success: false, error: lineError };
     const payload = await buildQuotationData(validated);
+    const discountError = validateDiscountRules(validated, payload);
+    if (discountError) return { success: false, error: discountError };
 
     const existing = await db
       .select({ id: quotations.id })
@@ -663,6 +846,10 @@ export async function updateQuotation(
           orderIndex: line.orderIndex,
           lineMode: line.lineMode,
           lineModeReason: line.lineModeReason,
+          manualPrice: line.manualPrice,
+          manualPriceIncludesIgv: line.manualPriceIncludesIgv,
+          supplierName: line.supplierName,
+          supplierCost: line.supplierCost,
           lineOverridePrice: line.lineOverridePrice,
           lineOverrideReason: line.lineOverrideReason,
           totalHours: line.totalHours,
