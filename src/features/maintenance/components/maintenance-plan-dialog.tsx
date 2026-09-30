@@ -6,12 +6,7 @@ import {
   getModuleExecutionHistory,
   type ContractElevatorModuleRow,
 } from "../actions";
-import {
-  ALWAYS_ROTATION_GROUP,
-  buildAnnualPlanCalendar,
-  maintenanceFrequencyLabel,
-  MONTH_LABELS,
-} from "../constants";
+import { buildAnnualPlanCalendar, MONTH_LABELS } from "../constants";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -88,7 +83,6 @@ export function MaintenancePlanDialog({
     const first = plan[0];
     return {
       startDate: first ? new Date(first.contractStartDate * 1000) : new Date(),
-      frequencyMonths: first?.contractFrequencyMonths ?? 12,
     };
   }, [plan]);
 
@@ -102,19 +96,14 @@ export function MaintenancePlanDialog({
         assigned: plan.map((row) => ({
           id: row.moduleId,
           code: row.moduleCode,
-          rotationGroup: row.moduleRotationGroup,
+          monthsOfYear: row.monthsOfYear,
           isActive: true,
         })),
         startDate: contractTiming.startDate,
-        frequencyMonths: contractTiming.frequencyMonths,
       }),
     [plan, contractTiming]
   );
 
-  const isRotatingPlan = useMemo(
-    () => plan.some((row) => (row.moduleRotationGroup ?? 1) > 1),
-    [plan]
-  );
 
   return (
     <>
@@ -144,9 +133,7 @@ export function MaintenancePlanDialog({
               <h3 className="text-xs font-bold uppercase tracking-wide text-foreground/80 flex items-center gap-2">
                 Calendario real
                 <span className="font-normal normal-case tracking-normal text-muted-foreground">
-                  {isRotatingPlan
-                    ? `Rotativo · ${maintenanceFrequencyLabel(contractTiming.frequencyMonths)}`
-                    : "Todos los módulos en R1"}
+                  Calendario fijo por módulo
                 </span>
               </h3>
 
@@ -220,10 +207,10 @@ export function MaintenancePlanDialog({
                       </div>
 
                       <span className="basis-full text-[10px] text-muted-foreground">
-                        {(row.moduleRotationGroup ?? ALWAYS_ROTATION_GROUP) ===
-                        ALWAYS_ROTATION_GROUP
-                          ? "R1 · va en todas las visitas"
-                          : `R${row.moduleRotationGroup} · rota entre visitas`}
+                        {row.monthsOfYear
+                          .split(",")
+                          .map((month) => MONTH_LABELS[Number(month) - 1])
+                          .join(", ")}
                       </span>
 
                       <Button

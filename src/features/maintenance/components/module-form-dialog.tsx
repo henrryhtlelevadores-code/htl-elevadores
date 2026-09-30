@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -13,11 +13,7 @@ import {
   maintenanceModuleFormSchema,
   type MaintenanceModuleFormValues,
 } from "../schema";
-import {
-  ALWAYS_ROTATION_GROUP,
-  MAX_ROTATION_GROUP,
-  rotationGroupOf,
-} from "../constants";
+import { MONTH_LABELS } from "../constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -68,14 +64,12 @@ export function ModuleFormDialog({
       code: "",
       name: "",
       description: "",
-      frequencyPerYear: 12,
-      rotationGroup: ALWAYS_ROTATION_GROUP,
+      monthsOfYear: Array.from({ length: 12 }, (_, index) => index + 1),
       elevatorTypeId: elevatorTypes[0]?.id ?? "",
       isActive: true,
     },
   });
 
-  const rotationGroup = form.watch("rotationGroup");
   // Con tareas cargadas el tipo de equipo queda fijo: cambiarlo rompería el catálogo.
   const typeLocked = isEditing && (module?.taskCount ?? 0) > 0;
 
@@ -87,8 +81,7 @@ export function ModuleFormDialog({
             code: module.code,
             name: module.name,
             description: module.description ?? "",
-            frequencyPerYear: module.frequencyPerYear,
-            rotationGroup: rotationGroupOf(module.rotationGroup),
+             monthsOfYear: (module.monthsOfYear ?? "").split(",").filter(Boolean).map(Number),
             elevatorTypeId: module.elevatorTypeId ?? elevatorTypes[0]?.id ?? "",
             isActive: module.isActive ?? true,
           }
@@ -96,8 +89,7 @@ export function ModuleFormDialog({
             code: "",
             name: "",
             description: "",
-            frequencyPerYear: 12,
-            rotationGroup: ALWAYS_ROTATION_GROUP,
+             monthsOfYear: Array.from({ length: 12 }, (_, index) => index + 1),
             elevatorTypeId: elevatorTypes[0]?.id ?? "",
             isActive: true,
           }
@@ -212,45 +204,29 @@ export function ModuleFormDialog({
               </FormItem>
             )} />
 
-            <FormField
-              control={form.control}
-              name="rotationGroup"
-              render={({ field }) => (
-                <FormItem className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-                  <FormLabel className="text-xs font-semibold">
-                    Grupo de rotación *
-                  </FormLabel>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={String(rotationGroupOf(field.value))}
-                      onChange={(event) => field.onChange(Number(event.target.value))}
-                      className="h-8 rounded-md border border-border bg-background px-2 text-[11px]"
-                    >
-                      {Array.from(
-                        { length: MAX_ROTATION_GROUP },
-                        (_, index) => index + 1
-                      ).map((group) => (
-                        <option key={group} value={group}>
-                          R{group}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-[10px] text-muted-foreground">
-                      {rotationGroupOf(field.value) === ALWAYS_ROTATION_GROUP
-                        ? "R1 = va siempre en cada visita preventiva."
-                        : `R${rotationGroupOf(field.value)} = rota entre visitas: en cada visita entra un solo grupo rotativo, empezando en R2.`}
-                    </span>
-                  </div>
-                  <FormDescription className="text-[10px]">
-                    R1 se ejecuta siempre. Los demás grupos se reparten uno por
-                    visita. Si un ascensor tiene todos sus módulos en R1, se
-                    ejecutan todos en cada visita.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+             <FormField
+               control={form.control}
+               name="monthsOfYear"
+               render={({ field }) => (
+                 <FormItem className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                   <FormLabel className="text-xs font-semibold">Meses del año *</FormLabel>
+                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                     {MONTH_LABELS.map((label, index) => {
+                       const month = index + 1;
+                       const selected = field.value.includes(month);
+                       return (
+                         <label key={month} className="flex cursor-pointer items-center gap-1.5 text-[11px]">
+                           <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(checked ? [...field.value, month] : field.value.filter((value) => value !== month))} />
+                           {label}
+                         </label>
+                       );
+                     })}
+                   </div>
+                   <FormDescription className="text-[10px]">Selecciona los meses en los que se ejecutará este módulo.</FormDescription>
+                   <FormMessage />
+                 </FormItem>
+               )}
+             />
 
             <FormField
               control={form.control}

@@ -14,7 +14,6 @@ import {
   FileText,
   Wrench,
   FileSignature,
-  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -133,88 +132,6 @@ export default async function DashboardHomePage() {
             <p className="text-[10px] text-muted-foreground">{metric.desc}</p>
           </div>
         ))}
-      </div>
-
-      {/* Modules Overview */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
-          Módulos del Sistema
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link
-            href="/clients"
-            className="group rounded-xl border border-border bg-card p-5 space-y-3 hover:border-[#0066CC]/50 transition-all shadow-xs"
-          >
-            <div className="size-9 rounded-lg bg-[#0066CC] text-white flex items-center justify-center shadow-xs">
-              <Building2 className="size-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground group-hover:text-[#0066CC] dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
-                Clientes y Sedes
-                <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Directorio comercial y vista detallada de centros de costo asociados.
-              </p>
-            </div>
-          </Link>
-
-          <Link
-            href="/equipment"
-            className="group rounded-xl border border-border bg-card p-5 space-y-3 hover:border-[#0066CC]/50 transition-all shadow-xs"
-          >
-            <div className="size-9 rounded-lg bg-[#0066CC] text-white flex items-center justify-center shadow-xs">
-              <Cpu className="size-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground group-hover:text-[#0066CC] dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
-                Equipos de Elevación
-                <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Inventario de transporte vertical con especificaciones y sedes.
-              </p>
-            </div>
-          </Link>
-
-          <Link
-            href="/work-orders"
-            className="group rounded-xl border border-border bg-card p-5 space-y-3 hover:border-[#0066CC]/50 transition-all shadow-xs"
-          >
-            <div className="size-9 rounded-lg bg-[#0066CC] text-white flex items-center justify-center shadow-xs">
-              <Activity className="size-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground group-hover:text-[#0066CC] dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
-                Órdenes de Trabajo
-                <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Programación de mantenimientos y checklists de campo por equipo.
-              </p>
-            </div>
-          </Link>
-
-          <Link
-            href="/reports"
-            className="group rounded-xl border border-border bg-card p-5 space-y-3 hover:border-[#0066CC]/50 transition-all shadow-xs md:col-start-3"
-          >
-            <div className="size-9 rounded-lg bg-[#0066CC] text-white flex items-center justify-center shadow-xs">
-              <FileText className="size-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground group-hover:text-[#0066CC] dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
-                Informes
-                <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Revisión de órdenes completadas: información, evidencias y
-                observaciones.
-              </p>
-            </div>
-          </Link>
-        </div>
       </div>
 
       {/* Secondary strip */}

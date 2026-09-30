@@ -7,8 +7,9 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { type ElevatorType } from "@/db";
 import { toggleMaintenanceModule, type MaintenanceModuleWithCount } from "../actions";
-import { ALWAYS_ROTATION_GROUP } from "../constants";
+import { MONTH_LABELS } from "../constants";
 import { ModuleFormDialog } from "./module-form-dialog";
+import { MaintenancePlanPreviewDialog } from "./maintenance-plan-preview-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,9 +34,17 @@ type StatusFilter = "all" | "active" | "inactive";
 export function MaintenanceModulesTable({
   initialModules,
   elevatorTypes,
+  clients,
+  costCenters,
+  contracts,
+  elevators,
 }: {
   initialModules: MaintenanceModuleWithCount[];
   elevatorTypes: ElevatorType[];
+  clients: Array<{ id: string; legalName: string }>;
+  costCenters: Array<{ id: string; clientId: string; name: string }>;
+  contracts: Array<{ id: string; costCenterId: string; contractNumber: string }>;
+  elevators: Array<{ id: string; contractId: string; elevatorUnityId: string; internal_code?: string | null; elevator_name?: string | null }>;
 }) {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -90,13 +99,16 @@ export function MaintenanceModulesTable({
       {
         accessorKey: "name",
         header: "Nombre",
+        size: 280,
+        minSize: 220,
+        maxSize: 360,
         cell: ({ row }) => (
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground truncate">
+          <div className="w-[220px] max-w-[360px] whitespace-normal break-words sm:w-[280px]">
+            <p className="font-semibold leading-snug text-foreground">
               {row.original.name}
             </p>
             {row.original.description && (
-              <p className="text-[10px] text-muted-foreground truncate">
+              <p className="mt-1 whitespace-normal break-words text-[10px] leading-snug text-muted-foreground">
                 {row.original.description}
               </p>
             )}
@@ -104,16 +116,13 @@ export function MaintenanceModulesTable({
         ),
       },
       {
-        id: "rotation",
-        header: "Rotación",
+        id: "months",
+        header: "Meses",
         cell: ({ row }) => {
-          const group = row.original.rotationGroup ?? ALWAYS_ROTATION_GROUP;
+          const months = (row.original.monthsOfYear ?? "").split(",").filter(Boolean).map(Number);
           return (
-            <span className="font-mono text-[11px] text-muted-foreground">
-              R{group}
-              <span className="ml-1 text-[10px]">
-                {group === ALWAYS_ROTATION_GROUP ? "(siempre)" : "(rota)"}
-              </span>
+            <span className="text-[11px] text-muted-foreground">
+              {months.map((month) => MONTH_LABELS[month - 1]).filter(Boolean).join(", ") || "—"}
             </span>
           );
         },
@@ -211,6 +220,7 @@ export function MaintenanceModulesTable({
           className="bg-card border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC] sm:max-w-sm"
         />
         <div className="flex items-center gap-2">
+          <MaintenancePlanPreviewDialog clients={clients} costCenters={costCenters} contracts={contracts} elevators={elevators} />
           <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? "all")}>
             <SelectTrigger className="h-9 w-[180px] bg-card border-border text-xs"><SelectValue placeholder="Tipo de equipo" /></SelectTrigger>
             <SelectContent><SelectItem value="all">Todos los tipos</SelectItem>{elevatorTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent>

@@ -72,7 +72,6 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
         includesIgv: contracts.includesIgv,
         paymentTermsDays: contracts.paymentTermsDays,
         inflationAdjustment: contracts.inflationAdjustment,
-        maintenanceFrequencyMonths: contracts.maintenanceFrequencyMonths,
         slaEntrapmentMins: contracts.slaEntrapmentMins,
         slaMechanicalFailureMins: contracts.slaMechanicalFailureMins,
         clientSignerName: contracts.clientSignerName,
@@ -116,7 +115,6 @@ export async function createContract(data: ContractFormValues) {
       includesIgv: validated.includesIgv,
       paymentTermsDays: validated.paymentTermsDays ?? 5,
       inflationAdjustment: validated.inflationAdjustment,
-      maintenanceFrequencyMonths: validated.maintenanceFrequencyMonths ?? 1,
       slaEntrapmentMins: validated.slaEntrapmentMins ?? 45,
       slaMechanicalFailureMins: validated.slaMechanicalFailureMins ?? 180,
     });
@@ -144,7 +142,6 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
       includesIgv?: boolean;
       paymentTermsDays?: number;
       inflationAdjustment?: boolean;
-      maintenanceFrequencyMonths?: number;
       slaEntrapmentMins?: number;
       slaMechanicalFailureMins?: number;
     } = {};
@@ -161,8 +158,6 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
     if (data.paymentTermsDays !== undefined) updateData.paymentTermsDays = data.paymentTermsDays;
     if (data.inflationAdjustment !== undefined)
       updateData.inflationAdjustment = data.inflationAdjustment;
-    if (data.maintenanceFrequencyMonths !== undefined)
-      updateData.maintenanceFrequencyMonths = data.maintenanceFrequencyMonths;
     if (data.slaEntrapmentMins !== undefined) updateData.slaEntrapmentMins = data.slaEntrapmentMins;
     if (data.slaMechanicalFailureMins !== undefined)
       updateData.slaMechanicalFailureMins = data.slaMechanicalFailureMins;
@@ -286,7 +281,7 @@ export async function getContractsWithRotatingModules(): Promise<
       .where(
         and(
           eq(maintenanceModules.isActive, true),
-          isNotNull(maintenanceModules.rotationGroup)
+          isNotNull(maintenanceModules.monthsOfYear)
         )
       );
 
@@ -324,7 +319,7 @@ export async function contractHasRotatingModules(
         and(
           eq(contractElevators.contractId, contractId),
           eq(maintenanceModules.isActive, true),
-          isNotNull(maintenanceModules.rotationGroup)
+          isNotNull(maintenanceModules.monthsOfYear)
         )
       )
       .limit(1);
@@ -515,7 +510,6 @@ export async function getContractById(id: string): Promise<ContractDetail | null
         includesIgv: contracts.includesIgv,
         paymentTermsDays: contracts.paymentTermsDays,
         inflationAdjustment: contracts.inflationAdjustment,
-        maintenanceFrequencyMonths: contracts.maintenanceFrequencyMonths,
         slaEntrapmentMins: contracts.slaEntrapmentMins,
         slaMechanicalFailureMins: contracts.slaMechanicalFailureMins,
         clientSignerName: contracts.clientSignerName,

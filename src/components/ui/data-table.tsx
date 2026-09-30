@@ -138,6 +138,7 @@ export function DataTable<TData, TValue>({
                     <TableHead
                       key={header.id}
                       className="text-xs font-semibold text-muted-foreground select-none py-3"
+                      style={{ width: header.column.getSize() }}
                     >
                       {header.isPlaceholder
                         ? null
@@ -160,7 +161,11 @@ export function DataTable<TData, TValue>({
                   className="border-border hover:bg-muted/40 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2.5 text-xs">
+                    <TableCell
+                      key={cell.id}
+                      className="py-2.5 text-xs"
+                      style={{ width: cell.column.getSize() }}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

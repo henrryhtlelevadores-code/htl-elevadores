@@ -1,14 +1,9 @@
 import { z } from "zod";
 
-/**
- * Grupo de rotación. Es el único calendario del módulo:
- * 1 = va siempre en cada visita, 2..12 = se turna entre visitas.
- */
-const rotationGroupSchema = z.coerce
-  .number({ message: "Selecciona el grupo de rotación" })
-  .int("El grupo de rotación debe ser un número entero")
-  .min(1, "El grupo de rotación mínimo es 1")
-  .max(12, "El grupo de rotación máximo es 12");
+const monthsOfYearSchema = z
+  .array(z.number().int().min(1).max(12))
+  .min(1, "Selecciona al menos un mes")
+  .transform((months) => [...new Set(months)].sort((a, b) => a - b));
 
 const maintenanceModuleBaseSchema = z.object({
   code: z
@@ -18,14 +13,7 @@ const maintenanceModuleBaseSchema = z.object({
     .regex(/^[A-Za-z0-9_-]+$/, "Solo letras, números, guion y guion bajo"),
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres").max(120),
   description: z.string().max(500).optional().or(z.literal("")),
-  /** Informativo: la generación usa el grupo de rotación y la frecuencia
-   *  del contrato, no este campo. */
-  frequencyPerYear: z.coerce
-    .number({ message: "Ingresa una frecuencia válida" })
-    .int("La frecuencia debe ser un número entero")
-    .min(1, "Mínimo 1 vez por año")
-    .max(52, "Máximo 52 veces por año"),
-  rotationGroup: rotationGroupSchema,
+  monthsOfYear: monthsOfYearSchema,
   elevatorTypeId: z.string().min(1, "Selecciona el tipo de equipo"),
   isActive: z.boolean(),
 });

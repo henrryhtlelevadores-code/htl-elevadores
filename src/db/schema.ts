@@ -203,11 +203,8 @@ export const contracts = sqliteTable("contracts", {
   paymentTermsDays: integer("payment_terms_days").default(5),
   inflationAdjustment: integer("inflation_adjustment", { mode: "boolean" }).default(true),
   /**
-   * Frecuencia del mantenimiento en meses: 1 mensual, 2 bimestral,
-   * 3 trimestral, 6 semestral, 12 anual. Solo aplica si el contrato tiene
-   * módulos rotativos.
+   * Los módulos del contrato determinan los meses fijos de ejecución.
    */
-  maintenanceFrequencyMonths: integer("maintenance_frequency_months").default(1),
   slaEntrapmentMins: integer("sla_entrapment_mins").default(45),
   slaMechanicalFailureMins: integer("sla_mechanical_failure_mins").default(180),
   clientSignerName: text("client_signer_name"),
@@ -651,18 +648,7 @@ export const maintenanceModules = sqliteTable("maintenance_modules", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   description: text("description"),
-  /** Informativo: 12 = mensual, 4 = trimestral, etc. La generación usa el
-   *  grupo de rotación y la frecuencia del contrato. */
-  frequencyPerYear: integer("frequency_per_year").notNull(),
-  /**
-   * Único calendario del módulo:
-   *  - 1: va siempre en cada visita preventiva.
-   *  - 2, 3, 4...: se turna, uno por visita, junto a los demás grupos.
-   *
-   * Las columnas físicas `months_of_year` y `relative_offsets` quedaron
-   * obsoletas: se vacían en la migración 0031 y ya no se mapean aquí.
-   */
-  rotationGroup: integer("rotation_group").notNull().default(1),
+  monthsOfYear: text("months_of_year").notNull(),
   elevatorTypeId: text("elevator_type_id").references(() => elevatorTypes.id),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
 }, (t) => [unique("maintenance_modules_type_code_unique").on(t.elevatorTypeId, t.code)]);

@@ -14,10 +14,6 @@ import {
   cancelContract,
 } from "../actions";
 import { contractFormSchema, type ContractFormValues } from "../schema";
-import {
-  MAINTENANCE_FREQUENCY_OPTIONS,
-  maintenanceFrequencyLabel,
-} from "@/features/maintenance/constants";
 import { DataTable } from "@/components/ui/data-table";
 import { ContractElevatorsTable } from "./contract-elevators-table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -72,7 +68,6 @@ interface ContractsTableProps {
   serviceTypes: ServiceType[];
   initialContractElevators: ContractElevatorWithRelations[];
   /** contrato -> tiene módulos rotativos; si es falso, la frecuencia se oculta. */
-  rotatingByContract: Record<string, boolean>;
   equipmentOptions: Array<{
     id: string;
     costCenterId: string;
@@ -138,7 +133,6 @@ const createDefaultValues = (): ContractFormValues => ({
   includesIgv: true,
   paymentTermsDays: 5,
   inflationAdjustment: true,
-  maintenanceFrequencyMonths: 1,
   slaEntrapmentMins: 45,
   slaMechanicalFailureMins: 180,
 });
@@ -150,7 +144,6 @@ export function ContractsTable({
   serviceTypes,
   initialContractElevators,
   equipmentOptions,
-  rotatingByContract,
 }: ContractsTableProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -235,7 +228,6 @@ export function ContractsTable({
       includesIgv: contract.includesIgv ?? true,
       paymentTermsDays: contract.paymentTermsDays ?? 5,
       inflationAdjustment: contract.inflationAdjustment ?? true,
-      maintenanceFrequencyMonths: contract.maintenanceFrequencyMonths ?? 1,
       slaEntrapmentMins: contract.slaEntrapmentMins ?? 45,
       slaMechanicalFailureMins: contract.slaMechanicalFailureMins ?? 180,
     });
@@ -765,43 +757,6 @@ export function ContractsTable({
                 />
               </div>
 
-              {/* La frecuencia de mantenimiento solo aplica a módulos rotativos.
-                  En un contrato nuevo aún no hay módulos, así que se muestra. */}
-              {(!editingContract || rotatingByContract[editingContract.id]) && (
-                <FormField
-                  control={createForm.control}
-                  name="maintenanceFrequencyMonths"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-semibold">
-                        Frecuencia de Mantenimiento
-                      </FormLabel>
-                      <FormControl>
-                        <Select
-                          value={String(field.value ?? 1)}
-                          onValueChange={(v) => field.onChange(Number(v))}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder="Selecciona la frecuencia" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MAINTENANCE_FREQUENCY_OPTIONS.map((months) => (
-                              <SelectItem key={months} value={String(months)}>
-                                {maintenanceFrequencyLabel(months)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <p className="text-[10px] text-muted-foreground">
-                        Define cada cuántas visitas se ejecutan los módulos rotativos
-                        de este contrato. Los módulos fijos por mes no lo usan.
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField

@@ -102,6 +102,8 @@ export type RouteStopWithRelations = {
   contractNumber: string;
   contractStatus: string | null;
   contractDeletedAt: number | null;
+  frequencyMonths: number;
+  contractStartDate: number;
 };
 
 export type PreventiveRouteWithStops = {
@@ -148,7 +150,9 @@ export async function getPreventiveRoutes(
           contractId: contracts.id,
           contractNumber: contracts.contractNumber,
           contractStatus: contracts.status,
-          contractDeletedAt: contracts.deletedAt,
+           contractDeletedAt: contracts.deletedAt,
+           frequencyMonths: contractElevators.frequencyMonths,
+           contractStartDate: contracts.startDate,
         })
         .from(preventiveRouteStops)
         .innerJoin(preventiveRoutes, eq(preventiveRouteStops.routeId, preventiveRoutes.id))
@@ -184,7 +188,9 @@ export async function getPreventiveRoutes(
         contractId: s.contractId,
         contractNumber: s.contractNumber,
         contractStatus: s.contractStatus,
-        contractDeletedAt: s.contractDeletedAt,
+         contractDeletedAt: s.contractDeletedAt,
+         frequencyMonths: s.frequencyMonths ?? 1,
+         contractStartDate: s.contractStartDate,
       });
       stopsByRoute.set(s.routeId, list);
     }
@@ -764,6 +770,21 @@ export type GenerationResult = {
   error?: string;
 };
 
+function isContractFrequencyDue(
+  contractStartDate: number,
+  frequencyMonths: number,
+  scheduledDate: string
+): boolean {
+  const [year, month, day] = scheduledDate.split("-").map(Number);
+  const start = new Date(contractStartDate * 1000);
+  const target = new Date(Date.UTC(year, month - 1, day || 1));
+  const monthsSinceStart =
+    (target.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    target.getUTCMonth() - start.getUTCMonth();
+  const frequency = Math.max(1, frequencyMonths || 1);
+  return monthsSinceStart >= 0 && monthsSinceStart % frequency === 0;
+}
+
 export async function generateMonth(
   technicianId: string,
   month: string = nextMonthLabel()
@@ -832,8 +853,16 @@ export async function generateMonth(
           continue;
         }
 
+        const dueStops = group.filter((stop) =>
+          isContractFrequencyDue(stop.contractStartDate, stop.frequencyMonths, date)
+        );
+        if (dueStops.length === 0) {
+          skipped += group.length;
+          continue;
+        }
+
         // Cualquier equipo con contrato caído invalida la visita completa.
-        const inactive = group.filter((s) => isContractInactive(s));
+        const inactive = dueStops.filter((s) => isContractInactive(s));
         if (inactive.length > 0) {
           errors.push({
             stopId: first.id,
@@ -849,7 +878,7 @@ export async function generateMonth(
         }
 
         // Todos los equipos de una visita comparten la misma hora programada.
-        const times = new Set(group.map((s) => s.plannedTime));
+        const times = new Set(dueStops.map((s) => s.plannedTime));
         if (times.size > 1) {
           errors.push({
             stopId: first.id,
@@ -862,7 +891,7 @@ export async function generateMonth(
           continue;
         }
 
-        pendingGroups.push({ key, stops: group, day: route.businessDayNumber, date });
+        pendingGroups.push({ key, stops: dueStops, day: route.businessDayNumber, date });
       }
     }
 

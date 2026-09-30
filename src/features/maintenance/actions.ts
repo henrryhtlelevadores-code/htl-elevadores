@@ -10,6 +10,7 @@ import {
   contracts,
   elevatorUnities,
   elevatorTypes,
+  brands,
   maintenanceModules,
   maintenanceTasks,
   maintenanceZones,
@@ -60,8 +61,7 @@ export async function getMaintenanceModules(elevatorTypeId?: string): Promise<Ma
         code: maintenanceModules.code,
         name: maintenanceModules.name,
         description: maintenanceModules.description,
-        frequencyPerYear: maintenanceModules.frequencyPerYear,
-        rotationGroup: maintenanceModules.rotationGroup,
+        monthsOfYear: maintenanceModules.monthsOfYear,
         elevatorTypeId: maintenanceModules.elevatorTypeId,
         isActive: maintenanceModules.isActive,
         taskCount: sql<number>`(
@@ -101,6 +101,63 @@ export async function getMaintenanceElevatorTypes() {
   return db.select().from(elevatorTypes).orderBy(asc(elevatorTypes.name));
 }
 
+export async function getMaintenancePlanPreview(
+  contractId: string,
+  elevatorIds: string[],
+  month: number
+) {
+  const rows = await db
+    .select({
+      contractElevatorId: contractElevators.id,
+      elevatorId: elevatorUnities.id,
+      internalCode: elevatorUnities.internalCode,
+      elevatorName: elevatorUnities.name,
+      elevatorType: elevatorTypes.name,
+      brand: brands.name,
+      moduleId: maintenanceModules.id,
+      moduleCode: maintenanceModules.code,
+      moduleName: maintenanceModules.name,
+      monthsOfYear: maintenanceModules.monthsOfYear,
+      taskCount: sql<number>`(SELECT COUNT(*) FROM maintenance_tasks mt WHERE mt.module_id = ${maintenanceModules.id} AND mt.is_active = 1)`,
+    })
+    .from(contractElevators)
+    .innerJoin(elevatorUnities, eq(contractElevators.elevatorUnityId, elevatorUnities.id))
+    .leftJoin(elevatorTypes, eq(elevatorUnities.elevatorTypeId, elevatorTypes.id))
+    .leftJoin(brands, eq(elevatorUnities.brandId, brands.id))
+    .innerJoin(maintenanceModules, and(
+      eq(maintenanceModules.elevatorTypeId, elevatorUnities.elevatorTypeId),
+      eq(maintenanceModules.isActive, true)
+    ))
+    .where(and(eq(contractElevators.contractId, contractId), inArray(contractElevators.elevatorUnityId, elevatorIds)));
+
+  const elevators = new Map<string, {
+    id: string; internalCode: string; name: string; elevatorType: string | null; brand: string | null;
+    modules: Array<{ id: string; code: string; name: string; monthsOfYear: string; frequencyPerYear: number; appliesThisMonth: boolean; taskCount: number }>;
+  }>();
+  for (const row of rows) {
+    const months = row.monthsOfYear.split(",").map(Number).filter(Boolean);
+    const elevator = elevators.get(row.elevatorId) ?? {
+      id: row.elevatorId, internalCode: row.internalCode, name: row.elevatorName,
+      elevatorType: row.elevatorType, brand: row.brand, modules: [],
+    };
+    elevator.modules.push({
+      id: row.moduleId, code: row.moduleCode, name: row.moduleName,
+      monthsOfYear: row.monthsOfYear, frequencyPerYear: months.length,
+      appliesThisMonth: months.includes(month), taskCount: Number(row.taskCount),
+    });
+    elevators.set(row.elevatorId, elevator);
+  }
+  const elevatorList = [...elevators.values()];
+  return {
+    elevators: elevatorList,
+    summary: {
+      elevatorsCount: elevatorList.length,
+      modulesToExecute: elevatorList.reduce((sum, elevator) => sum + elevator.modules.filter((module) => module.appliesThisMonth).length, 0),
+      tasksToExecute: elevatorList.reduce((sum, elevator) => sum + elevator.modules.filter((module) => module.appliesThisMonth).reduce((total, module) => total + module.taskCount, 0), 0),
+    },
+  };
+}
+
 export async function createMaintenanceModule(
   data: MaintenanceModuleFormValues
 ) {
@@ -131,8 +188,7 @@ export async function createMaintenanceModule(
       code,
       name: validated.name.trim(),
       description: validated.description?.trim() || null,
-      frequencyPerYear: validated.frequencyPerYear,
-      rotationGroup: validated.rotationGroup,
+      monthsOfYear: validated.monthsOfYear.join(","),
       elevatorTypeId: validated.elevatorTypeId,
       isActive: validated.isActive,
     });
@@ -166,12 +222,10 @@ export async function updateMaintenanceModule(
     if (validated.name !== undefined) update.name = validated.name.trim();
     if (validated.description !== undefined)
       update.description = validated.description?.trim() || null;
-    if (validated.frequencyPerYear !== undefined)
-      update.frequencyPerYear = validated.frequencyPerYear;
+    if (validated.monthsOfYear !== undefined)
+      update.monthsOfYear = validated.monthsOfYear.join(",");
     if (validated.isActive !== undefined) update.isActive = validated.isActive;
     if (validated.elevatorTypeId !== undefined) update.elevatorTypeId = validated.elevatorTypeId;
-    if (validated.rotationGroup !== undefined)
-      update.rotationGroup = validated.rotationGroup;
 
     // Estado actual: hace falta para distinguir "cambió" de "se envió igual".
     const [stored] = await db
@@ -179,8 +233,7 @@ export async function updateMaintenanceModule(
         code: maintenanceModules.code,
         name: maintenanceModules.name,
         description: maintenanceModules.description,
-        frequencyPerYear: maintenanceModules.frequencyPerYear,
-        rotationGroup: maintenanceModules.rotationGroup,
+        monthsOfYear: maintenanceModules.monthsOfYear,
         elevatorTypeId: maintenanceModules.elevatorTypeId,
         isActive: maintenanceModules.isActive,
       })
@@ -674,31 +727,29 @@ export async function reorderMaintenanceTasks(
 // PLAN POR ASCENSOR CONTRATADO
 // ==========================================
 // El plan se deriva del tipo de equipo: los módulos activos cuyo
-// `elevator_type_id` coincide con el del ascensor. La rotación vive en
-// `maintenance_modules.rotation_group` y la frecuencia en
-// `maintenance_modules.frequency_per_year`; el histórico de ejecuciones está en
-// `contract_elevator_module_executions`. No hay asignaciones por equipo.
+// `elevator_type_id` coincide con el del ascensor y cuyo calendario incluye
+// el mes actual.
 
 export type ContractElevatorModuleRow = {
   moduleId: string;
   moduleCode: string;
   moduleName: string;
-  moduleFrequencyPerYear: number;
-  moduleRotationGroup: number | null;
-  /** Meses entre visitas, derivado de `frequencyPerYear`. */
-  frequencyMonths: number;
+  monthsOfYear: string;
   /** Última ejecución según el histórico. */
   lastExecutedAt: number | null;
   nextDueAt: number;
-  /** Inicio del contrato y frecuencia de mantenimiento, para el calendario. */
+  /** Inicio del contrato. */
   contractStartDate: number;
-  contractFrequencyMonths: number | null;
 };
 
 /** Meses entre visitas a partir de la frecuencia anual del módulo. */
-function frequencyMonthsFromPerYear(frequencyPerYear: number): number {
-  if (!Number.isFinite(frequencyPerYear) || frequencyPerYear <= 0) return 12;
-  return Math.max(1, Math.min(60, Math.round(12 / frequencyPerYear)));
+function nextFixedCalendarDate(monthsOfYear: string, fromSeconds: number): number {
+  const months = monthsOfYear.split(",").map(Number).filter((month) => month >= 1 && month <= 12);
+  const from = new Date(fromSeconds * 1000);
+  const currentMonth = from.getMonth() + 1;
+  const month = months.find((value) => value >= currentMonth) ?? months[0] ?? currentMonth;
+  const year = month >= currentMonth ? from.getFullYear() : from.getFullYear() + 1;
+  return Math.floor(Date.UTC(year, month - 1, 1) / 1000);
 }
 
 /** Último `executedAt` por módulo para un ascensor contratado. */
@@ -724,7 +775,6 @@ export async function getContractElevatorModules(
       .select({
         elevatorTypeId: elevatorUnities.elevatorTypeId,
         startDate: contracts.startDate,
-        maintenanceFrequencyMonths: contracts.maintenanceFrequencyMonths,
       })
       .from(contractElevators)
       .innerJoin(
@@ -741,8 +791,7 @@ export async function getContractElevatorModules(
         moduleId: maintenanceModules.id,
         moduleCode: maintenanceModules.code,
         moduleName: maintenanceModules.name,
-        moduleFrequencyPerYear: maintenanceModules.frequencyPerYear,
-        moduleRotationGroup: maintenanceModules.rotationGroup,
+        monthsOfYear: maintenanceModules.monthsOfYear,
       })
       .from(maintenanceModules)
       .where(
@@ -758,20 +807,17 @@ export async function getContractElevatorModules(
     const contractStart = context.startDate ?? nowSeconds();
 
     return modules.map((module) => {
-      const frequencyMonths = frequencyMonthsFromPerYear(module.moduleFrequencyPerYear);
       const lastExecutedAt = lastByModule.get(module.moduleId) ?? null;
       return {
         ...module,
-        frequencyMonths,
         lastExecutedAt,
         // Sin ejecuciones, el primer vencimiento se cuenta desde el inicio del
         // contrato; con historial, desde la última ejecución.
         nextDueAt: addMonthsToTimestamp(
           lastExecutedAt ?? contractStart,
-          frequencyMonths
+          1
         ),
         contractStartDate: contractStart,
-        contractFrequencyMonths: context.maintenanceFrequencyMonths,
       };
     });
   } catch (error) {
@@ -932,7 +978,7 @@ export async function getUpcomingModuleDeadlines(limit = 20) {
         moduleId: maintenanceModules.id,
         moduleCode: maintenanceModules.code,
         moduleName: maintenanceModules.name,
-        frequencyPerYear: maintenanceModules.frequencyPerYear,
+        monthsOfYear: maintenanceModules.monthsOfYear,
         contractStartDate: contracts.startDate,
       })
       .from(contractElevators)
@@ -976,9 +1022,9 @@ export async function getUpcomingModuleDeadlines(limit = 20) {
           moduleCode: row.moduleCode,
           moduleName: row.moduleName,
           elevatorCode: row.elevatorCode,
-          nextDueAt: addMonthsToTimestamp(
-            lastExecutedAt ?? row.contractStartDate ?? now,
-            frequencyMonthsFromPerYear(row.frequencyPerYear)
+          nextDueAt: nextFixedCalendarDate(
+            row.monthsOfYear,
+            lastExecutedAt ?? row.contractStartDate ?? now
           ),
         };
       })

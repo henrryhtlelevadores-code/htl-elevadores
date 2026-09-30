@@ -233,7 +233,7 @@ export async function buildPreventiveElevatorDetail({
     .select({
       elevatorTypeId: elevatorUnities.elevatorTypeId,
       startDate: contracts.startDate,
-      frequencyMonths: contracts.maintenanceFrequencyMonths,
+      frequencyMonths: contractElevators.frequencyMonths,
     })
     .from(contractElevators)
     .innerJoin(elevatorUnities, eq(contractElevators.elevatorUnityId, elevatorUnities.id))
@@ -245,10 +245,22 @@ export async function buildPreventiveElevatorDetail({
     return { statements, errors };
   }
 
+  const [year, month, day] = scheduledDate.split("-").map(Number);
+  const startDate = new Date((context.startDate ?? 0) * 1000);
+  const scheduled = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+  const monthsSinceStart =
+    (scheduled.getUTCFullYear() - startDate.getUTCFullYear()) * 12 +
+    scheduled.getUTCMonth() - startDate.getUTCMonth();
+  const frequencyMonths = Math.max(1, context.frequencyMonths ?? 1);
+  if (monthsSinceStart < 0 || monthsSinceStart % frequencyMonths !== 0) {
+    errors.push("Al equipo no le corresponde mantenimiento según la frecuencia del contrato.");
+    return { statements, errors };
+  }
+
   const moduleRows = await db
     .select({
       moduleId: maintenanceModules.id,
-      rotationGroup: maintenanceModules.rotationGroup,
+      monthsOfYear: maintenanceModules.monthsOfYear,
       taskId: maintenanceTasks.id,
       taskDescription: maintenanceTasks.description,
       isCritical: maintenanceTasks.isCritical,
@@ -291,19 +303,16 @@ export async function buildPreventiveElevatorDetail({
     .filter((question) => question.length > 0);
 
   // Referencia del calendario: la fecha programada de la OT.
-  const [year, month, day] = scheduledDate.split("-").map(Number);
   const currentDate = new Date(
     Date.UTC(year, (month || 1) - 1, Math.min(day || 1, 28))
   );
   const assigned = moduleRows.map((row) => ({
     id: row.moduleId,
-    rotationGroup: row.rotationGroup,
+    monthsOfYear: row.monthsOfYear,
   }));
   const applicable = getApplicableModules({
     assigned,
-    startDate: new Date((context.startDate ?? 0) * 1000),
     currentDate,
-    frequencyMonths: context.frequencyMonths ?? 12,
   });
   const applicableIds = new Set(applicable.map((module) => module.id));
 

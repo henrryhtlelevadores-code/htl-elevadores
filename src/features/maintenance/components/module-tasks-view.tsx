@@ -10,10 +10,7 @@ import {
   type MaintenanceModuleWithCount,
   type MaintenanceTaskWithModule,
 } from "../actions";
-import {
-  frequencyPerYearLabel,
-  type MaintenanceZone,
-} from "../constants";
+import { type MaintenanceZone } from "../constants";
 import { TaskFormDialog } from "./task-form-dialog";
 import { TaskBatchDialog } from "./task-batch-dialog";
 import { Button } from "@/components/ui/button";
@@ -138,8 +135,6 @@ export function ModuleTasksView({ module, initialTasks, zones }: ModuleTasksView
             {module.name}
           </h1>
           <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>Frecuencia: {frequencyPerYearLabel(module.frequencyPerYear)}</span>
-            <span aria-hidden>·</span>
             <span>Tareas: {initialTasks.length}</span>
             <span aria-hidden>·</span>
             <span className={module.isActive ? "" : "text-muted-foreground/70"}>

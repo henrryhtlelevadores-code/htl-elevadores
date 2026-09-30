@@ -1,6 +1,8 @@
 import { getMaintenanceModules, getMaintenanceElevatorTypes } from "@/features/maintenance/actions";
 import { MaintenanceModulesTable } from "@/features/maintenance/components/maintenance-modules-table";
 import { Wrench } from "lucide-react";
+import { getClients } from "@/features/clients/actions";
+import { getContracts, getContractCostCenters, getContractElevators } from "@/features/contracts/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +11,13 @@ export const metadata = {
 };
 
 export default async function MaintenanceModulesPage() {
-  const [modules, elevatorTypes] = await Promise.all([
+  const [modules, elevatorTypes, clients, costCenters, contracts, elevators] = await Promise.all([
     getMaintenanceModules(),
     getMaintenanceElevatorTypes(),
+    getClients(),
+    getContractCostCenters(),
+    getContracts(),
+    getContractElevators(),
   ]);
 
   return (
@@ -28,7 +34,7 @@ export default async function MaintenanceModulesPage() {
         </div>
       </div>
 
-      <MaintenanceModulesTable initialModules={modules} elevatorTypes={elevatorTypes} />
+       <MaintenanceModulesTable initialModules={modules} elevatorTypes={elevatorTypes} clients={clients} costCenters={costCenters} contracts={contracts} elevators={elevators} />
     </div>
   );
 }
