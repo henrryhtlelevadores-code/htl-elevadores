@@ -70,7 +70,7 @@ export async function getMaintenanceModules(elevatorTypeId?: string): Promise<Ma
         )`,
         contractCount: sql<number>`(
           SELECT COUNT(*) FROM contract_elevators ce
-          INNER JOIN elevator_unities eu ON ce.elevator_unity_id = eu.id
+          INNER JOIN elevator_unity eu ON ce.elevator_unity_id = eu.id
           WHERE eu.elevator_type_id = ${maintenanceModules.elevatorTypeId}
         )`,
       })
