@@ -148,6 +148,97 @@
       "when": 1790502000000,
       "tag": "0020_quotation_document_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1790503000000,
+      "tag": "0021_staff_provider_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1790504000000,
+      "tag": "0022_roles_is_field_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790505000000,
+      "tag": "0023_maintenance_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1790506000000,
+      "tag": "0024_maintenance_execution_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1790507000000,
+      "tag": "0025_contract_elevator_module_months",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1790508000000,
+      "tag": "0026_move_months_to_maintenance_modules",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1790509000000,
+      "tag": "0027_maintenance_zones",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1790510000000,
+      "tag": "0028_maintenance_equipment_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1790511000000,
+      "tag": "0029_modules_code_by_elevator_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1790512000000,
+      "tag": "0030_maintenance_rotation_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1790599200000,
+      "tag": "0031_maintenance_rotation_group_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1790602800000,
+      "tag": "0032_sync_missing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1790606400000,
+      "tag": "0033_drop_invoice_items_line_type",
+      "breakpoints": true
     }
   ]
 }

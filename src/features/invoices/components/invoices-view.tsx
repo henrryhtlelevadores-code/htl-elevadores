@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -16,12 +16,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   type InvoiceListItem,
   type InvoiceItemDetail,
   type InvoiceFormData,
   getInvoiceItems,
+  updateInvoiceStatus,
 } from "../actions";
-import { PAYER_RELATIONSHIP_LABELS, PAYER_TAX_ID_TYPE_LABELS } from "../schema";
+import {
+  PAYER_RELATIONSHIP_LABELS,
+  PAYER_TAX_ID_TYPE_LABELS,
+  PAYMENT_STATUS,
+  SUNAT_STATUS,
+} from "../schema";
 import { InvoiceCreateDialog } from "./invoice-create-dialog";
 import { cn } from "@/lib/utils";
 import {
@@ -54,21 +67,13 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   NOTA_VENTA_INTERNA: "Nota de Venta Interna",
 };
 
-const SUNAT_STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Borrador",
-  ISSUED: "Emitida",
-  ACCEPTED: "Aceptada",
-  REJECTED: "Rechazada",
-  CANCELLED: "Anulada",
-  NO_APLICA: "No aplica",
-};
+const SUNAT_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  SUNAT_STATUS.map((s) => [s.value, s.label])
+);
 
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  PENDING: "Pendiente",
-  PARTIAL: "Parcial",
-  PAID: "Pagada",
-  OVERDUE: "Vencida",
-};
+const PAYMENT_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  PAYMENT_STATUS.map((s) => [s.value, s.label])
+);
 
 function formatAmount(currency: string | null, amount: number | null): string {
   const value = amount ?? 0;
@@ -234,6 +239,19 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [itemsByInvoice, setItemsByInvoice] = useState<Record<string, InvoiceItemDetail[]>>({});
   const [loadingItems, setLoadingItems] = useState(false);
+  // Estado local mientras se guarda: el diálogo se alimenta de `invoices`, que
+  // solo se actualiza con router.refresh(), así que sin esto el Select
+  // "rebotaría" al valor viejo apenas el usuario elige.
+  const [statusDraft, setStatusDraft] = useState<{
+    sunatStatus: string;
+    paymentStatus: string;
+  } | null>(null);
+  const [savingStatus, startStatusTransition] = useTransition();
+
+  const closeDetail = useCallback(() => {
+    setViewingId(null);
+    setStatusDraft(null);
+  }, []);
 
   const filteredCostCenters = useMemo(
     () =>
@@ -266,6 +284,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
   const handleOpen = useCallback(
     async (invoice: InvoiceListItem) => {
       setViewingId(invoice.id);
+      setStatusDraft(null);
       if (itemsByInvoice[invoice.id]) return;
       setLoadingItems(true);
       try {
@@ -287,6 +306,36 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
   const documentLabel = viewing
     ? DOCUMENT_TYPE_LABELS[viewing.documentType] ?? viewing.documentType
     : "";
+
+  const currentSunatStatus = statusDraft?.sunatStatus ?? viewing?.sunatStatus ?? "DRAFT";
+  const currentPaymentStatus = statusDraft?.paymentStatus ?? viewing?.paymentStatus ?? "PENDING";
+
+  const handleStatusChange = useCallback(
+    (field: "sunatStatus" | "paymentStatus", value: string) => {
+      if (!viewing) return;
+      const next = {
+        sunatStatus: field === "sunatStatus" ? value : currentSunatStatus,
+        paymentStatus: field === "paymentStatus" ? value : currentPaymentStatus,
+      };
+      setStatusDraft(next);
+      startStatusTransition(async () => {
+        const res = await updateInvoiceStatus(viewing.id, next);
+        if (res.success) {
+          toast.success("Estados actualizados", {
+            description: `${SUNAT_STATUS_LABELS[next.sunatStatus]} · ${
+              PAYMENT_STATUS_LABELS[next.paymentStatus]
+            }`,
+          });
+          setStatusDraft(null);
+          router.refresh();
+        } else {
+          setStatusDraft(null);
+          toast.error("Error", { description: res.error });
+        }
+      });
+    },
+    [viewing, currentSunatStatus, currentPaymentStatus, router]
+  );
 
   const columns = useMemo<ColumnDef<InvoiceListItem>[]>(
     () => [
@@ -494,13 +543,13 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
       />
 
       {/* Dialog: Detalle de factura */}
-      <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewingId(null)}>
+      <Dialog open={!!viewing} onOpenChange={(open) => !open && closeDetail()}>
         <DialogContent
           showCloseButton={false}
           className="bg-card border-border sm:max-w-[840px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto"
         >
           <button
-            onClick={() => setViewingId(null)}
+            onClick={closeDetail}
             className="absolute top-3 right-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 bg-card"
           >
             <ChevronLeft className="size-3" />
@@ -510,21 +559,29 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
           {viewing && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base font-bold flex items-center gap-2 flex-wrap">
-                  <ReceiptText className="size-4 text-[#0066CC]" />
-                  {documentLabel}
-                  {viewing.number ? (
-                    <span className="font-mono text-sm text-foreground">
-                      {viewing.series}-{viewing.number}
-                    </span>
-                  ) : (
-                    <Badge variant="outline" className="border text-[10px] font-bold text-muted-foreground">
-                      Borrador
-                    </Badge>
-                  )}
-                  <span className="flex items-center gap-1.5 ml-auto">
-                    <SunatBadge status={viewing.sunatStatus} />
-                    <PaymentBadge status={viewing.paymentStatus} />
+                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ReceiptText className="size-4 shrink-0 text-[#0066CC]" />
+                    <span className="truncate">{documentLabel}</span>
+                    {viewing.number && (
+                      <span className="truncate font-mono text-sm text-foreground">
+                        {viewing.series}-{viewing.number}
+                      </span>
+                    )}
+                  </span>
+                  {/* `pr-[104px]` reserva el ancho del botón Cerrar, que es
+                      absolute: sin esto los badges se meten debajo. */}
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-[104px]">
+                    {!viewing.number && (
+                      <Badge
+                        variant="outline"
+                        className="border text-[10px] font-bold text-muted-foreground"
+                      >
+                        Borrador
+                      </Badge>
+                    )}
+                    <SunatBadge status={currentSunatStatus} />
+                    <PaymentBadge status={currentPaymentStatus} />
                   </span>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
@@ -532,6 +589,78 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
                   {viewing.clientTaxIdSnapshot ? ` · ${viewing.clientTaxIdSnapshot}` : ""}
                 </DialogDescription>
               </DialogHeader>
+
+              {/* Estados */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="invoice-sunat-status"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"
+                  >
+                    <SunatBadge status={currentSunatStatus} />
+                    Estado SUNAT
+                  </label>
+                  <Select
+                    value={currentSunatStatus}
+                    onValueChange={(v) =>
+                      v && handleStatusChange("sunatStatus", v)
+                    }
+                    disabled={savingStatus}
+                  >
+                    <SelectTrigger
+                      id="invoice-sunat-status"
+                      className="w-full h-8 bg-background border-border text-xs"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SUNAT_STATUS.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="invoice-payment-status"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"
+                  >
+                    <PaymentBadge status={currentPaymentStatus} />
+                    Estado del pago
+                  </label>
+                  <Select
+                    value={currentPaymentStatus}
+                    onValueChange={(v) =>
+                      v && handleStatusChange("paymentStatus", v)
+                    }
+                    disabled={savingStatus}
+                  >
+                    <SelectTrigger
+                      id="invoice-payment-status"
+                      className="w-full h-8 bg-background border-border text-xs"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_STATUS.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {savingStatus && (
+                  <p className="sm:col-span-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Guardando el cambio de estado...
+                  </p>
+                )}
+              </div>
 
               {/* Resumen */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">

@@ -1,4 +1,4 @@
-import { getContracts, getContractElevators, getContractCostCenters, getContractServiceTypes } from "@/features/contracts/actions";
+import { getContracts, getContractElevators, getContractCostCenters, getContractServiceTypes, getContractsWithRotatingModules } from "@/features/contracts/actions";
 import { ContractsTable } from "@/features/contracts/components/contracts-table";
 import { getClients } from "@/features/clients/actions";
 import { getEquipmentList } from "@/features/equipment/actions";
@@ -7,13 +7,14 @@ import { FileSignature } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function ContractsPage() {
-  const [contracts, contractElevators, costCenters, serviceTypes, clients, equipment] = await Promise.all([
+  const [contracts, contractElevators, costCenters, serviceTypes, clients, equipment, rotatingByContract] = await Promise.all([
     getContracts(),
     getContractElevators(),
     getContractCostCenters(),
     getContractServiceTypes(),
     getClients(),
     getEquipmentList(),
+    getContractsWithRotatingModules(),
   ]);
 
   const equipmentOptions = equipment
@@ -74,6 +75,7 @@ export default async function ContractsPage() {
         serviceTypes={serviceTypes}
         initialContractElevators={contractElevators}
         equipmentOptions={equipmentOptions}
+        rotatingByContract={rotatingByContract}
       />
     </div>
   );

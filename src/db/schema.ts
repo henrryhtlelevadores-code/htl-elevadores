@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, unique, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 const unixNow = () => sql`(cast(strftime('%s','now') as int))`;
 
@@ -8,6 +17,8 @@ export const roles = sqliteTable("roles", {
   name: text("name").notNull().unique(),
   permissions: text("permissions", { mode: "json" }),
   isActive: integer("is_active", { mode: "boolean" }).default(true),
+  // Marca los roles de personal de campo: habilita el perfil de técnico.
+  isFieldRole: integer("is_field_role", { mode: "boolean" }).default(false),
   createdAt: integer("created_at").default(unixNow()),
 });
 
@@ -29,6 +40,8 @@ export const staffProfiles = sqliteTable("staff_profiles", {
   documentType: text("document_type").notNull(),
   documentNumber: text("document_number").notNull(),
   specialization: text("specialization"),
+  providerType: text("provider_type").default("INTERNAL"),
+  providerCompany: text("provider_company"),
   licenseNumber: text("license_number"),
   signatureUrl: text("signature_url"),
   hasSctr: integer("has_sctr", { mode: "boolean" }).default(false),
@@ -156,7 +169,7 @@ export const elevatorUnities = sqliteTable("elevator_unity", {
 
 export const serviceTypes = sqliteTable("service_types", {
   id: text("id").primaryKey(),
-  code: text("code").notNull().unique(),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   category: text("category").notNull(),
   requiresContract: integer("requires_contract", { mode: "boolean" }).default(false),
@@ -189,6 +202,12 @@ export const contracts = sqliteTable("contracts", {
   includesIgv: integer("includes_igv", { mode: "boolean" }).default(true),
   paymentTermsDays: integer("payment_terms_days").default(5),
   inflationAdjustment: integer("inflation_adjustment", { mode: "boolean" }).default(true),
+  /**
+   * Frecuencia del mantenimiento en meses: 1 mensual, 2 bimestral,
+   * 3 trimestral, 6 semestral, 12 anual. Solo aplica si el contrato tiene
+   * módulos rotativos.
+   */
+  maintenanceFrequencyMonths: integer("maintenance_frequency_months").default(1),
   slaEntrapmentMins: integer("sla_entrapment_mins").default(45),
   slaMechanicalFailureMins: integer("sla_mechanical_failure_mins").default(180),
   clientSignerName: text("client_signer_name"),
@@ -251,19 +270,30 @@ export const workOrders = sqliteTable("work_orders", {
   technicianId: text("technician_id").references(() => users.id),
   serviceTypeId: text("service_type_id").references(() => serviceTypes.id),
 
-  type: text("type").default("CORRECTIVE"),
   status: text("status").default("PENDING"),
   priority: text("priority").default("NORMAL"),
+
+  approvalStatus: text("approval_status").default("PENDING"),
+  approvedBy: text("approved_by"),
+  approvedAt: integer("approved_at"),
 
   scheduledDate: text("scheduled_date"),
   scheduledTime: text("scheduled_time"),
   startedAt: integer("started_at"),
   completedAt: integer("completed_at"),
 
+  supportingTechnicians: text("supporting_technicians"),
+  estimatedDurationMins: integer("estimated_duration_mins"),
+  estimatedEndAt: integer("estimated_end_at"),
+  parentWorkOrderId: text("parent_work_order_id").references((): AnySQLiteColumn => workOrders.id),
+  derivationReason: text("derivation_reason"),
+  closeTimeSource: text("close_time_source").default("MANUAL"),
+
   checkinLatitude: real("checkin_latitude"),
   checkinLongitude: real("checkin_longitude"),
 
   closingNotes: text("closing_notes"),
+  description: text("description"),
   clientSignatureUrl: text("client_signature_url"),
   clientSignerName: text("client_signer_name"),
 
@@ -279,6 +309,7 @@ export const workOrderElevators = sqliteTable("work_order_elevators", {
   elevatorUnityId: text("elevator_unity_id")
     .notNull()
     .references(() => elevatorUnities.id, { onDelete: "restrict" }),
+  contractElevatorId: text("contract_elevator_id").references(() => contractElevators.id),
   status: text("status").default("PENDING"),
   finding: text("finding"),
   evidencePhotoUrls: text("evidence_photo_urls", { mode: "json" }),
@@ -307,12 +338,59 @@ export const workOrderTasks = sqliteTable("work_order_tasks", {
     .notNull()
     .references(() => workOrderElevators.id, { onDelete: "cascade" }),
   taskDescription: text("task_description").notNull(),
+  maintenanceTaskId: text("maintenance_task_id").references(() => maintenanceTasks.id, { onDelete: "restrict" }),
+  moduleId: text("module_id").references(() => maintenanceModules.id, { onDelete: "restrict" }),
   isCritical: integer("is_critical", { mode: "boolean" }).default(false),
   isCompleted: integer("is_completed", { mode: "boolean" }).default(false),
+  status: text("status").default("PENDING"),
+  requiresPhoto: integer("requires_photo", { mode: "boolean" }).default(false),
   observations: text("observations"),
   evidencePhotoUrl: text("evidence_photo_url"),
   completedAt: integer("completed_at"),
 });
+
+export const workOrderElevatorSafety = sqliteTable("work_order_elevator_safety", {
+  id: text("id").primaryKey(),
+  workOrderElevatorId: text("work_order_elevator_id").notNull().references(() => workOrderElevators.id, { onDelete: "cascade" }),
+  templateId: text("template_id").notNull().references(() => safetyTemplates.id),
+  templateVersion: text("template_version"),
+  templateSnapshot: text("template_snapshot", { mode: "json" }),
+  status: text("status").default("PENDING"),
+  technicianSignatureUrl: text("technician_signature_url"),
+  clientSignatureUrl: text("client_signature_url"),
+  geolocation: text("geolocation", { mode: "json" }),
+  notes: text("notes"),
+  completedAt: integer("completed_at"),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const workOrderElevatorSafetyItems = sqliteTable("work_order_elevator_safety_items", {
+  id: text("id").primaryKey(),
+  safetyRecordId: text("safety_record_id").notNull().references(() => workOrderElevatorSafety.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  response: text("response"),
+  observations: text("observations"),
+  photoUrl: text("photo_url"),
+  orderIndex: integer("order_index").default(0),
+  answeredAt: integer("answered_at"),
+});
+
+export const workOrderElevatorPhotos = sqliteTable(
+  "work_order_elevator_photos",
+  {
+    id: text("id").primaryKey(),
+    workOrderElevatorId: text("work_order_elevator_id")
+      .notNull()
+      .references(() => workOrderElevators.id, { onDelete: "cascade" }),
+    workOrderTaskId: text("work_order_task_id").references(() => workOrderTasks.id, { onDelete: "set null" }),
+    url: text("url").notNull(),
+    /** 'BEFORE' | 'AFTER' | 'POINT' */
+    tag: text("tag").notNull(),
+    description: text("description"),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [index("idx_woep_elevator").on(t.workOrderElevatorId)]
+);
 
 export const preventiveRoutes = sqliteTable(
   "preventive_routes",
@@ -457,6 +535,7 @@ export const pricingConfig = sqliteTable("pricing_config", {
   // Reglas
   allowPriceOverride: integer("allow_price_override", { mode: "boolean" }).default(true),
   allowCostOverride: integer("allow_cost_override", { mode: "boolean" }).default(true),
+  maintenanceGraceDays: integer("maintenance_grace_days").default(15),
   updatedAt: integer("updated_at").default(unixNow()),
 });
 
@@ -562,6 +641,156 @@ export const quotationLineProducts = sqliteTable("quotation_line_products", {
   orderIndex: integer("order_index").default(0),
 });
 
+// ==========================================
+// MANTENIMIENTO PREVENTIVO Y REPUESTOS
+// ==========================================
+
+export const maintenanceModules = sqliteTable("maintenance_modules", {
+  id: text("id").primaryKey(),
+  /** Código de módulo M1..M8. Único por tipo de equipo, no global. */
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** Informativo: 12 = mensual, 4 = trimestral, etc. La generación usa el
+   *  grupo de rotación y la frecuencia del contrato. */
+  frequencyPerYear: integer("frequency_per_year").notNull(),
+  /**
+   * Único calendario del módulo:
+   *  - 1: va siempre en cada visita preventiva.
+   *  - 2, 3, 4...: se turna, uno por visita, junto a los demás grupos.
+   *
+   * Las columnas físicas `months_of_year` y `relative_offsets` quedaron
+   * obsoletas: se vacían en la migración 0031 y ya no se mapean aquí.
+   */
+  rotationGroup: integer("rotation_group").notNull().default(1),
+  elevatorTypeId: text("elevator_type_id").references(() => elevatorTypes.id),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+}, (t) => [unique("maintenance_modules_type_code_unique").on(t.elevatorTypeId, t.code)]);
+
+export const maintenanceZones = sqliteTable(
+  "maintenance_zones",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    orderIndex: integer("order_index").notNull().default(0),
+    isActive: integer("is_active", { mode: "boolean" }).default(true),
+    elevatorTypeId: text("elevator_type_id").references(() => elevatorTypes.id),
+  },
+  (t) => [index("idx_mz_order").on(t.orderIndex)]
+);
+
+export const maintenanceTasks = sqliteTable("maintenance_tasks", {
+  id: text("id").primaryKey(),
+  moduleId: text("module_id")
+    .notNull()
+    .references(() => maintenanceModules.id),
+  /** Foso, Cabina, Puerta, etc. */
+  zone: text("zone").notNull(),
+  zoneId: text("zone_id").references(() => maintenanceZones.id, { onDelete: "restrict" }),
+  description: text("description").notNull(),
+  isCritical: integer("is_critical", { mode: "boolean" }).default(false),
+  orderIndex: integer("order_index").default(0),
+  requiresPhoto: integer("requires_photo", { mode: "boolean" }).default(false),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+});
+
+export const contractElevatorModuleExecutions = sqliteTable(
+  "contract_elevator_module_executions",
+  {
+    id: text("id").primaryKey(),
+    contractElevatorId: text("contract_elevator_id")
+      .notNull()
+      .references(() => contractElevators.id, { onDelete: "cascade" }),
+    moduleId: text("module_id")
+      .notNull()
+      .references(() => maintenanceModules.id, { onDelete: "restrict" }),
+    workOrderId: text("work_order_id")
+      .notNull()
+      .references(() => workOrders.id, { onDelete: "restrict" }),
+    executedAt: integer("executed_at").notNull(),
+    technicianId: text("technician_id").references(() => users.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [
+    unique("contract_elevator_module_executions_unique").on(t.workOrderId, t.moduleId),
+    index("idx_ceme_contract_elevator").on(t.contractElevatorId),
+    index("idx_ceme_module").on(t.moduleId),
+    index("idx_ceme_executed_at").on(t.executedAt),
+    index("idx_ceme_work_order").on(t.workOrderId),
+  ]
+);
+
+export const maintenanceTemplates = sqliteTable("maintenance_templates", {
+  id: text("id").primaryKey(),
+  moduleId: text("module_id").references(() => maintenanceModules.id),
+  name: text("name").notNull(),
+  version: text("version").default("v1.0"),
+  /** JSON con checklists */
+  content: text("content").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const elevatorComponents = sqliteTable("elevator_components", {
+  id: text("id").primaryKey(),
+  elevatorUnityId: text("elevator_unity_id")
+    .notNull()
+    .references(() => elevatorUnities.id),
+  /** Jerarquía de componentes (auto-referencia). */
+  parentId: text("parent_id").references((): AnySQLiteColumn => elevatorComponents.id),
+  name: text("name").notNull(),
+  /** polea, cable, guiador, etc. */
+  componentType: text("component_type"),
+  serialNumber: text("serial_number"),
+  installDate: integer("install_date"),
+  status: text("status").default("OPERATIVE"),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const spareParts = sqliteTable("spare_parts", {
+  id: text("id").primaryKey(),
+  code: text("code").unique(),
+  name: text("name").notNull(),
+  brandId: text("brand_id").references(() => brands.id),
+  modelId: text("model_id").references(() => models.id),
+  unit: text("unit"),
+  stock: integer("stock").default(0),
+  minStock: integer("min_stock").default(0),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+});
+
+export const componentReplacements = sqliteTable("component_replacements", {
+  id: text("id").primaryKey(),
+  elevatorComponentId: text("elevator_component_id")
+    .notNull()
+    .references(() => elevatorComponents.id),
+  sparePartId: text("spare_part_id").references(() => spareParts.id),
+  workOrderId: text("work_order_id").references(() => workOrders.id),
+  replacementDate: integer("replacement_date").notNull(),
+  notes: text("notes"),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
+export const suppliers = sqliteTable("suppliers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  phone: text("phone"),
+  email: text("email"),
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+});
+
+export const purchaseOrders = sqliteTable("purchase_orders", {
+  id: text("id").primaryKey(),
+  supplierId: text("supplier_id").references(() => suppliers.id),
+  orderDate: integer("order_date"),
+  status: text("status").default("DRAFT"),
+  total: real("total"),
+  createdAt: integer("created_at").default(unixNow()),
+});
+
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -600,6 +829,8 @@ export type WorkOrderElevator = typeof workOrderElevators.$inferSelect;
 export type NewWorkOrderElevator = typeof workOrderElevators.$inferInsert;
 export type WorkOrderTask = typeof workOrderTasks.$inferSelect;
 export type NewWorkOrderTask = typeof workOrderTasks.$inferInsert;
+export type ContractElevatorModuleExecution = typeof contractElevatorModuleExecutions.$inferSelect;
+export type NewContractElevatorModuleExecution = typeof contractElevatorModuleExecutions.$inferInsert;
 export type PreventiveRoute = typeof preventiveRoutes.$inferSelect;
 export type NewPreventiveRoute = typeof preventiveRoutes.$inferInsert;
 export type PreventiveRouteStop = typeof preventiveRouteStops.$inferSelect;
@@ -620,3 +851,23 @@ export type QuotationLine = typeof quotationLines.$inferSelect;
 export type NewQuotationLine = typeof quotationLines.$inferInsert;
 export type QuotationLineProduct = typeof quotationLineProducts.$inferSelect;
 export type NewQuotationLineProduct = typeof quotationLineProducts.$inferInsert;
+export type MaintenanceModule = typeof maintenanceModules.$inferSelect;
+export type NewMaintenanceModule = typeof maintenanceModules.$inferInsert;
+export type MaintenanceZone = typeof maintenanceZones.$inferSelect;
+export type NewMaintenanceZone = typeof maintenanceZones.$inferInsert;
+export type MaintenanceTask = typeof maintenanceTasks.$inferSelect;
+export type NewMaintenanceTask = typeof maintenanceTasks.$inferInsert;
+export type MaintenanceTemplate = typeof maintenanceTemplates.$inferSelect;
+export type NewMaintenanceTemplate = typeof maintenanceTemplates.$inferInsert;
+export type ElevatorComponent = typeof elevatorComponents.$inferSelect;
+export type NewElevatorComponent = typeof elevatorComponents.$inferInsert;
+export type SparePart = typeof spareParts.$inferSelect;
+export type NewSparePart = typeof spareParts.$inferInsert;
+export type ComponentReplacement = typeof componentReplacements.$inferSelect;
+export type NewComponentReplacement = typeof componentReplacements.$inferInsert;
+export type Supplier = typeof suppliers.$inferSelect;
+export type NewSupplier = typeof suppliers.$inferInsert;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert;
+export type WorkOrderElevatorPhoto = typeof workOrderElevatorPhotos.$inferSelect;
+export type NewWorkOrderElevatorPhoto = typeof workOrderElevatorPhotos.$inferInsert;

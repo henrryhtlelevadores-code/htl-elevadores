@@ -1,0 +1,2 @@
+ALTER TABLE `work_order_tasks` ADD COLUMN `status` text DEFAULT 'PENDING';
+-- 'PENDING' | 'COMPLETED' | 'SKIPPED' | 'NOT_APPLICABLE'

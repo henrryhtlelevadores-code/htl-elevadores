@@ -168,7 +168,7 @@ export function QuotationDetailPage({
           <button
             key={item}
             onClick={() => setTab(item)}
-            className={`border-b-2 px-3 py-2 text-xs font-semibold ${tab === item ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-muted-foreground"}`}
+             className={`border-b-2 px-3 py-2 text-xs font-semibold ${tab === item ? "border-[#810303] text-[#810303]" : "border-transparent text-muted-foreground"}`}
           >
             {item === "lineas" ? "Líneas" : item === "preview" ? "Vista previa" : item[0].toUpperCase() + item.slice(1)}
           </button>
@@ -178,8 +178,7 @@ export function QuotationDetailPage({
       {tab === "documento" ? (
         <div className="space-y-5 rounded-lg border border-border p-5">
           <div>
-            <h2 className="mb-2 text-sm font-bold">Bienvenida</h2>
-            <div className="mb-2 flex gap-2 rounded-t border border-b-0 border-border bg-muted/30 p-2">
+             <div className="mb-2 flex gap-2 rounded-t border border-b-0 border-border bg-muted/30 p-2">
               <Button type="button" size="sm" variant="outline" className="px-3 hover:bg-muted" title="Negrita (Ctrl+B)" aria-label="Negrita (Ctrl+B)" onClick={() => insertMarkdown("**", "**")}>B</Button>
               <Button type="button" size="sm" variant="outline" className="px-3 italic hover:bg-muted" title="Cursiva (Ctrl+I)" aria-label="Cursiva (Ctrl+I)" onClick={() => insertMarkdown("*", "*")}>I</Button>
               <Button type="button" size="sm" variant="outline" className="px-3 hover:bg-muted" title="Lista con viñetas" aria-label="Lista con viñetas" onClick={() => insertMarkdown("- ")}>•</Button>

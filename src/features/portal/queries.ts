@@ -1,5 +1,5 @@
 import "server-only";
-import { sql, eq, and, isNull, desc, asc } from "drizzle-orm";
+import { sql, eq, and, or, isNull, desc, asc, inArray } from "drizzle-orm";
 import {
   db,
   costCenters,
@@ -10,11 +10,14 @@ import {
   workOrders,
   workOrderElevators,
   workOrderTasks,
+  workOrderElevatorPhotos,
+  maintenanceModules,
   users,
   clients,
   serviceTypes,
   ubigeos,
   quotations,
+  contracts,
 } from "@/db/index";
 
 export interface PortalLoginInfo {
@@ -63,6 +66,8 @@ export interface PortalEquipmentItem {
   stops: number | null;
   floors: number | null;
   status: string | null;
+  lastVisitDate: number | null;
+  nextVisitDate: number | null;
 }
 
 export interface PortalWorkOrderItem {
@@ -74,6 +79,10 @@ export interface PortalWorkOrderItem {
   scheduledDate: string | null;
   scheduledTime: string | null;
   createdAt: number | null;
+  completedAt: number | null;
+  serviceTypeName: string | null;
+  technicianName: string | null;
+  equipmentCount: number;
 }
 
 export interface PortalInformeItem {
@@ -104,11 +113,14 @@ export interface PortalDashboardData {
     address: string | null;
     district: string | null;
     mainPhotoUrl: string | null;
+    contactName: string | null;
+    contactPhone: string | null;
   };
   equipments: PortalEquipmentItem[];
   recentWorkOrders: PortalWorkOrderItem[];
   informes: PortalInformeItem[];
   quotations: PortalQuotationItem[];
+  documents: Array<{ id: string; name: string; url: string }>;
 }
 
 export async function getPortalQuotations(
@@ -128,7 +140,12 @@ export async function getPortalQuotations(
         lineCount,
       })
       .from(quotations)
-      .where(eq(quotations.costCenterId, costCenterId))
+      .where(
+        and(
+          eq(quotations.costCenterId, costCenterId),
+          or(eq(quotations.status, "SENT"), eq(quotations.status, "ACCEPTED"))
+        )
+      )
       .orderBy(desc(quotations.createdAt))
       .limit(20);
   } catch (error) {
@@ -147,7 +164,7 @@ export async function getPortalInformes(
       .select({
         id: workOrders.id,
         otNumber: workOrders.otNumber,
-        type: workOrders.type,
+        type: workOrders.serviceTypeId,
         serviceTypeName: serviceTypes.name,
         completedAt: workOrders.completedAt,
         scheduledDate: workOrders.scheduledDate,
@@ -155,11 +172,12 @@ export async function getPortalInformes(
         equipmentCount,
       })
       .from(workOrders)
-      .leftJoin(serviceTypes, eq(workOrders.type, serviceTypes.id))
+      .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
       .where(
         and(
           eq(workOrders.costCenterId, costCenterId),
           eq(workOrders.status, "COMPLETED"),
+          eq(workOrders.approvalStatus, "APPROVED"),
           isNull(workOrders.deletedAt)
         )
       )
@@ -181,6 +199,8 @@ export async function getPortalDashboardData(
       address: costCenters.address,
       district: ubigeos.distrito,
       mainPhotoUrl: costCenters.mainPhotoUrl,
+      contactName: sql<string | null>`(SELECT ccc.full_name FROM cost_center_contacts ccc WHERE ccc.cost_center_id = ${costCenters.id} AND ccc.is_active = 1 ORDER BY ccc.full_name LIMIT 1)`,
+      contactPhone: sql<string | null>`(SELECT ccc.phone FROM cost_center_contacts ccc WHERE ccc.cost_center_id = ${costCenters.id} AND ccc.is_active = 1 ORDER BY ccc.full_name LIMIT 1)`,
     })
     .from(costCenters)
     .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
@@ -190,7 +210,7 @@ export async function getPortalDashboardData(
   if (ccRows.length === 0) return null;
   const costCenter = ccRows[0];
 
-  const [equipments, workOrderRows, informeRows, quotationRows] = await Promise.all([
+  const [equipments, workOrderRows, informeRows, quotationRows, documents] = await Promise.all([
     db
       .select({
         id: elevatorUnities.id,
@@ -202,6 +222,8 @@ export async function getPortalDashboardData(
         stops: elevatorUnities.stops,
         floors: elevatorUnities.floors,
         status: elevatorUnities.status,
+        lastVisitDate: sql<number | null>`NULL`,
+        nextVisitDate: sql<number | null>`NULL`,
       })
       .from(elevatorUnities)
       .leftJoin(brands, eq(elevatorUnities.brandId, brands.id))
@@ -214,21 +236,38 @@ export async function getPortalDashboardData(
       .select({
         id: workOrders.id,
         otNumber: workOrders.otNumber,
-        type: workOrders.type,
+        type: workOrders.serviceTypeId,
         status: workOrders.status,
         priority: workOrders.priority,
         scheduledDate: workOrders.scheduledDate,
         scheduledTime: workOrders.scheduledTime,
         createdAt: workOrders.createdAt,
+        completedAt: workOrders.completedAt,
+        serviceTypeName: serviceTypes.name,
+        technicianName: users.fullName,
+        equipmentCount: sql<number>`(SELECT COUNT(*) FROM work_order_elevators woe WHERE woe.work_order_id = work_orders.id)`,
       })
       .from(workOrders)
-      .where(and(eq(workOrders.costCenterId, costCenterId), isNull(workOrders.deletedAt)))
+      .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
+      .leftJoin(users, eq(workOrders.technicianId, users.id))
+      .where(
+        and(
+          eq(workOrders.costCenterId, costCenterId),
+          isNull(workOrders.deletedAt),
+          eq(workOrders.approvalStatus, "APPROVED")
+        )
+      )
       .orderBy(desc(workOrders.createdAt))
-      .limit(6),
+       .limit(20),
 
     getPortalInformes(costCenterId),
 
     getPortalQuotations(costCenterId),
+
+    db
+      .select({ id: contracts.id, name: contracts.contractNumber, url: contracts.finalPdfUrl })
+      .from(contracts)
+      .where(and(eq(contracts.costCenterId, costCenterId), isNull(contracts.deletedAt))),
   ]);
 
   return {
@@ -237,6 +276,9 @@ export async function getPortalDashboardData(
     recentWorkOrders: workOrderRows,
     informes: informeRows,
     quotations: quotationRows,
+    documents: documents.flatMap((document) =>
+      document.url ? [{ id: document.id, name: document.name, url: document.url }] : []
+    ),
   };
 }
 
@@ -246,6 +288,16 @@ export interface PortalDocumentTask {
   isCritical: boolean;
   isCompleted: boolean;
   observations: string | null;
+  moduleId: string | null;
+  moduleCode: string | null;
+  moduleName: string | null;
+}
+
+export interface PortalDocumentPhoto {
+  id: string;
+  url: string;
+  tag: string;
+  description: string | null;
 }
 
 export interface PortalDocumentElevator {
@@ -257,6 +309,7 @@ export interface PortalDocumentElevator {
   elevatorTypeName: string | null;
   finding: string | null;
   evidencePhotoUrls: string[];
+  photos: PortalDocumentPhoto[];
   finalStatus: string | null;
   tasks: PortalDocumentTask[];
 }
@@ -292,7 +345,7 @@ export async function getPortalWorkOrderDocument(
       .select({
         id: workOrders.id,
         otNumber: workOrders.otNumber,
-        type: workOrders.type,
+        type: workOrders.serviceTypeId,
         status: workOrders.status,
         priority: workOrders.priority,
         scheduledDate: workOrders.scheduledDate,
@@ -314,12 +367,13 @@ export async function getPortalWorkOrderDocument(
       .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
       .innerJoin(clients, eq(costCenters.clientId, clients.id))
       .leftJoin(users, eq(workOrders.technicianId, users.id))
-      .leftJoin(serviceTypes, eq(workOrders.type, serviceTypes.id))
+      .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
       .where(
         and(
           eq(workOrders.id, workOrderId),
           eq(workOrders.costCenterId, costCenterId),
           eq(workOrders.status, "COMPLETED"),
+          eq(workOrders.approvalStatus, "APPROVED"),
           isNull(workOrders.deletedAt)
         )
       )
@@ -357,9 +411,40 @@ export async function getPortalWorkOrderDocument(
         isCritical: workOrderTasks.isCritical,
         isCompleted: workOrderTasks.isCompleted,
         observations: workOrderTasks.observations,
+        moduleId: workOrderTasks.moduleId,
+        moduleCode: maintenanceModules.code,
+        moduleName: maintenanceModules.name,
       })
       .from(workOrderTasks)
+      .leftJoin(maintenanceModules, eq(workOrderTasks.moduleId, maintenanceModules.id))
       .orderBy(asc(workOrderTasks.id));
+
+    const photoRows = await db
+      .select({
+        id: workOrderElevatorPhotos.id,
+        workOrderElevatorId: workOrderElevatorPhotos.workOrderElevatorId,
+        url: workOrderElevatorPhotos.url,
+        tag: workOrderElevatorPhotos.tag,
+        description: workOrderElevatorPhotos.description,
+      })
+      .from(workOrderElevatorPhotos)
+      .where(
+        elevatorRows.length > 0
+          ? inArray(workOrderElevatorPhotos.workOrderElevatorId, elevatorRows.map((elevator) => elevator.id))
+          : eq(workOrderElevatorPhotos.workOrderElevatorId, "__none__")
+      );
+
+    const photosByElevator = new Map<string, PortalDocumentPhoto[]>();
+    for (const photo of photoRows) {
+      const list = photosByElevator.get(photo.workOrderElevatorId) ?? [];
+      list.push({
+        id: photo.id,
+        url: photo.url,
+        tag: photo.tag,
+        description: photo.description,
+      });
+      photosByElevator.set(photo.workOrderElevatorId, list);
+    }
 
     const tasksByElevator = new Map<string, PortalDocumentTask[]>();
     for (const task of taskRows) {
@@ -370,6 +455,9 @@ export async function getPortalWorkOrderDocument(
         isCritical: !!task.isCritical,
         isCompleted: !!task.isCompleted,
         observations: task.observations,
+        moduleId: task.moduleId,
+        moduleCode: task.moduleCode,
+        moduleName: task.moduleName,
       });
       tasksByElevator.set(task.workOrderElevatorId, list);
     }
@@ -402,6 +490,7 @@ export async function getPortalWorkOrderDocument(
         elevatorTypeName: e.elevatorTypeName,
         finding: e.finding,
         evidencePhotoUrls: (e.evidencePhotoUrls as string[] | null) ?? [],
+        photos: photosByElevator.get(e.id) ?? [],
         finalStatus: e.finalStatus,
         tasks: tasksByElevator.get(e.id) ?? [],
       })),

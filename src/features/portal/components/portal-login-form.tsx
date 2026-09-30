@@ -25,6 +25,8 @@ import {
   ChevronRight,
   AlertTriangle,
   MapPin,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const portalLoginSchema = z.object({
@@ -51,6 +53,7 @@ export function PortalLoginForm({
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<PortalLoginValues>({
     resolver: zodResolver(portalLoginSchema),
@@ -146,12 +149,21 @@ export function PortalLoginForm({
                         <div className="relative">
                           <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                           <Input
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             placeholder="••••••••"
                             autoComplete="current-password"
                             className="bg-background border-border text-foreground pl-10 pr-9 h-11 font-mono focus-visible:ring-1 focus-visible:ring-primary"
                             {...field}
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((visible) => !visible)}
+                            className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                            aria-pressed={showPassword}
+                          >
+                            {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                          </button>
                         </div>
                       </FormControl>
                       <FormMessage className="text-xs text-red-600 dark:text-red-400" />

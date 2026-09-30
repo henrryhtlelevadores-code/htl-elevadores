@@ -6,6 +6,8 @@ import {
   workOrders,
   workOrderElevators,
   workOrderTasks,
+  workOrderElevatorPhotos,
+  maintenanceModules,
   costCenters,
   clients,
   users,
@@ -14,7 +16,9 @@ import {
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { buildEvidenceKey, uploadToR2 } from "@/lib/r2";
+import { generateUuid } from "@/lib/uuid";
 import { eq, asc, desc, and, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -32,6 +36,17 @@ export type ReportElevatorTask = {
   isCritical: boolean;
   isCompleted: boolean;
   observations: string | null;
+  moduleId: string | null;
+  moduleCode: string | null;
+  moduleName: string | null;
+};
+
+export type ReportPhoto = {
+  id: string;
+  url: string;
+  tag: string;
+  description: string | null;
+  createdAt: number | null;
 };
 
 export type ReportElevator = {
@@ -44,6 +59,7 @@ export type ReportElevator = {
   finalStatus: string | null;
   finding: string | null;
   evidencePhotoUrls: string[];
+  photos: ReportPhoto[];
   completedAt: number | null;
   tasks: ReportElevatorTask[];
 };
@@ -69,6 +85,10 @@ export type CompletedWorkOrderReport = {
   clientSignerName: string | null;
   createdAt: number | null;
   elevators: ReportElevator[];
+  approvalStatus: string | null;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvedAt: number | null;
 };
 
 export interface ActionResult {
@@ -92,8 +112,18 @@ function decodeDataUrl(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+async function isWorkOrderEditable(workOrderId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ approvalStatus: workOrders.approvalStatus })
+    .from(workOrders)
+    .where(eq(workOrders.id, workOrderId))
+    .limit(1);
+  return row?.approvalStatus !== "APPROVED";
+}
+
 export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport[]> {
   try {
+    const approvedUsers = alias(users, "approved_users");
     const woRows = await db
       .select({
         id: workOrders.id,
@@ -105,7 +135,7 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         technicianId: workOrders.technicianId,
         technician_name: users.fullName,
         serviceTypeName: serviceTypes.name,
-        type: workOrders.type,
+        type: workOrders.serviceTypeId,
         status: workOrders.status,
         priority: workOrders.priority,
         scheduledDate: workOrders.scheduledDate,
@@ -116,12 +146,17 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         clientSignatureUrl: workOrders.clientSignatureUrl,
         clientSignerName: workOrders.clientSignerName,
         createdAt: workOrders.createdAt,
+        approvalStatus: workOrders.approvalStatus,
+        approvedBy: workOrders.approvedBy,
+        approvedByName: approvedUsers.fullName,
+        approvedAt: workOrders.approvedAt,
       })
       .from(workOrders)
       .innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id))
       .innerJoin(clients, eq(costCenters.clientId, clients.id))
       .leftJoin(users, eq(workOrders.technicianId, users.id))
-      .leftJoin(serviceTypes, eq(workOrders.type, serviceTypes.id))
+      .leftJoin(approvedUsers, eq(workOrders.approvedBy, approvedUsers.id))
+      .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
       .where(and(eq(workOrders.status, "COMPLETED"), isNull(workOrders.deletedAt)))
       .orderBy(desc(workOrders.completedAt));
 
@@ -150,9 +185,38 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         isCritical: workOrderTasks.isCritical,
         isCompleted: workOrderTasks.isCompleted,
         observations: workOrderTasks.observations,
+        moduleId: workOrderTasks.moduleId,
+        moduleCode: maintenanceModules.code,
+        moduleName: maintenanceModules.name,
       })
       .from(workOrderTasks)
+      .leftJoin(maintenanceModules, eq(workOrderTasks.moduleId, maintenanceModules.id))
       .orderBy(asc(workOrderTasks.id));
+
+    const photoRows = await db
+      .select({
+        id: workOrderElevatorPhotos.id,
+        workOrderElevatorId: workOrderElevatorPhotos.workOrderElevatorId,
+        url: workOrderElevatorPhotos.url,
+        tag: workOrderElevatorPhotos.tag,
+        description: workOrderElevatorPhotos.description,
+        createdAt: workOrderElevatorPhotos.createdAt,
+      })
+      .from(workOrderElevatorPhotos)
+      .orderBy(asc(workOrderElevatorPhotos.createdAt));
+
+    const photosByElevator = new Map<string, ReportPhoto[]>();
+    for (const photo of photoRows) {
+      const list = photosByElevator.get(photo.workOrderElevatorId) ?? [];
+      list.push({
+        id: photo.id,
+        url: photo.url,
+        tag: photo.tag,
+        description: photo.description,
+        createdAt: photo.createdAt,
+      });
+      photosByElevator.set(photo.workOrderElevatorId, list);
+    }
 
     const tasksByElevator = new Map<string, ReportElevatorTask[]>();
     for (const task of taskRows) {
@@ -163,6 +227,9 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         isCritical: !!task.isCritical,
         isCompleted: !!task.isCompleted,
         observations: task.observations,
+        moduleId: task.moduleId,
+        moduleCode: task.moduleCode,
+        moduleName: task.moduleName,
       });
       tasksByElevator.set(task.workOrderElevatorId, list);
     }
@@ -179,6 +246,7 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         finalStatus: e.finalStatus,
         finding: e.finding,
         evidencePhotoUrls: (e.evidencePhotoUrls as string[] | null) ?? [],
+        photos: photosByElevator.get(e.id) ?? [],
         completedAt: e.completedAt,
         tasks: tasksByElevator.get(e.id) ?? [],
       };
@@ -209,6 +277,10 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
       clientSignerName: row.clientSignerName,
       createdAt: row.createdAt,
       elevators: elevatorsByWorkOrder.get(row.id) ?? [],
+      approvalStatus: row.approvalStatus ?? "PENDING",
+      approvedBy: row.approvedBy,
+      approvedByName: row.approvedByName,
+      approvedAt: row.approvedAt,
     }));
   } catch (error) {
     console.error("Error al obtener órdenes completadas:", error);
@@ -254,6 +326,14 @@ export async function updateElevatorFinding(
   finding: string
 ): Promise<ActionResult> {
   try {
+    const [elevator] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
+      .from(workOrderElevators)
+      .where(eq(workOrderElevators.id, elevatorId))
+      .limit(1);
+    if (!elevator || !(await isWorkOrderEditable(elevator.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
     await db
       .update(workOrderElevators)
       .set({ finding: finding.trim().slice(0, 2000) || null })
@@ -272,6 +352,9 @@ export async function updateWorkOrderClosingNotes(
   closingNotes: string
 ): Promise<ActionResult> {
   try {
+    if (!(await isWorkOrderEditable(workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
     await db
       .update(workOrders)
       .set({ closingNotes: closingNotes.trim().slice(0, 2000) || null })
@@ -290,6 +373,15 @@ export async function updateTaskObservation(
   observations: string
 ): Promise<ActionResult> {
   try {
+    const [task] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
+      .from(workOrderTasks)
+      .innerJoin(workOrderElevators, eq(workOrderTasks.workOrderElevatorId, workOrderElevators.id))
+      .where(eq(workOrderTasks.id, taskId))
+      .limit(1);
+    if (!task || !(await isWorkOrderEditable(task.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
     await db
       .update(workOrderTasks)
       .set({ observations: observations.trim().slice(0, 500) || null })
@@ -312,17 +404,20 @@ export async function addEvidencePhotos(
     if (!images || images.length === 0) {
       return { success: false, error: "No se recibieron imágenes." };
     }
-
-    const existing = await db
-      .select({ evidencePhotoUrls: workOrderElevators.evidencePhotoUrls })
+    const [elevator] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
       .from(workOrderElevators)
       .where(eq(workOrderElevators.id, elevatorId))
       .limit(1);
-    const urls: string[] = (
-      (existing[0]?.evidencePhotoUrls as string[] | null) ?? []
-    ).filter((u): u is string => typeof u === "string" && u.length > 0);
+    if (!elevator || !(await isWorkOrderEditable(elevator.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
 
-    const remaining = MAX_EVIDENCE_PER_ELEVATOR - urls.length;
+    const existing = await db
+      .select({ id: workOrderElevatorPhotos.id })
+      .from(workOrderElevatorPhotos)
+      .where(eq(workOrderElevatorPhotos.workOrderElevatorId, elevatorId));
+    const remaining = MAX_EVIDENCE_PER_ELEVATOR - existing.length;
     if (remaining <= 0) {
       return {
         success: false,
@@ -336,19 +431,20 @@ export async function addEvidencePhotos(
       const { dataUrl, contentType } = uploads[i];
       const ext = contentType === "image/png" ? "png" : "jpg";
       const bytes = decodeDataUrl(dataUrl);
-      const key = buildEvidenceKey(workOrderId, elevatorId, urls.length + i + 1, ext);
+      const key = buildEvidenceKey(workOrderId, elevatorId, existing.length + i + 1, ext);
       const url = await uploadToR2(
         key,
         bytes,
         ext === "png" ? "image/png" : "image/jpeg"
       );
       uploadedUrls.push(url);
+      await db.insert(workOrderElevatorPhotos).values({
+        id: generateUuid(),
+        workOrderElevatorId: elevatorId,
+        url,
+        tag: "POINT",
+      });
     }
-
-    await db
-      .update(workOrderElevators)
-      .set({ evidencePhotoUrls: [...urls, ...uploadedUrls] })
-      .where(eq(workOrderElevators.id, elevatorId));
 
     revalidatePath("/reports");
     return {
@@ -367,22 +463,25 @@ export async function removeEvidencePhoto(
   url: string
 ): Promise<ActionResult> {
   try {
-    const existing = await db
-      .select({ evidencePhotoUrls: workOrderElevators.evidencePhotoUrls })
+    const [elevator] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
       .from(workOrderElevators)
       .where(eq(workOrderElevators.id, elevatorId))
       .limit(1);
-    const urls: string[] = (
-      (existing[0]?.evidencePhotoUrls as string[] | null) ?? []
-    ).filter((u): u is string => typeof u === "string" && u !== url);
-
+    if (!elevator || !(await isWorkOrderEditable(elevator.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
     await db
-      .update(workOrderElevators)
-      .set({ evidencePhotoUrls: urls })
-      .where(eq(workOrderElevators.id, elevatorId));
+      .delete(workOrderElevatorPhotos)
+      .where(
+        and(
+          eq(workOrderElevatorPhotos.workOrderElevatorId, elevatorId),
+          eq(workOrderElevatorPhotos.url, url)
+        )
+      );
 
     revalidatePath("/reports");
-    return { success: true, message: "Foto eliminada de las evidencias.", urls };
+    return { success: true, message: "Foto eliminada de las evidencias." };
   } catch (error) {
     console.error("Error al eliminar evidencia:", error);
     return { success: false, error: getErrorMessage(error) };

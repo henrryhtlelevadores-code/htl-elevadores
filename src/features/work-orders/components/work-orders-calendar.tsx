@@ -48,6 +48,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -156,6 +157,9 @@ const emptyValues: WorkOrderFormValues = {
   scheduledDate: "",
   scheduledTime: "",
   elevatorUnityIds: [],
+  description: "",
+  supportingTechnicians: "",
+  estimatedDurationMins: null,
 };
 
 export function WorkOrdersCalendar({
@@ -193,6 +197,9 @@ export function WorkOrdersCalendar({
   const selectedCostCenterId = form.watch("costCenterId");
   const selectedServiceType = serviceTypeMap.get(form.watch("serviceTypeId"));
   const selectedClientId = form.watch("clientId");
+  const isPreventive = selectedServiceType?.code === "PREV";
+  const isEmergency = selectedServiceType?.category === "EMERGENCY" || selectedServiceType?.code.startsWith("EMER");
+  const isCorrective = selectedServiceType?.category === "MANTENIMIENTO" && !isPreventive;
 
   const costCentersByClient = useMemo(() => {
     if (!selectedClientId) return formData.costCenters;
@@ -414,9 +421,21 @@ export function WorkOrdersCalendar({
           const status = row.getValue<string>("status");
           const style = STATUS_STYLES[status] || STATUS_STYLES.PENDING;
           return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${style}`}>
-              {status.replace("_", " ")}
-            </span>
+            <div className="flex flex-wrap items-center gap-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${style}`}>
+                {status.replace("_", " ")}
+              </span>
+              {row.original.approvalStatus !== "APPROVED" && (
+                <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                  Pendiente aprobación
+                </span>
+              )}
+              {row.original.approvalStatus === "APPROVED" && (
+                <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  Aprobada
+                </span>
+              )}
+            </div>
           );
         },
       },
@@ -641,7 +660,7 @@ export function WorkOrdersCalendar({
                             e.stopPropagation();
                             setViewingWorkOrder(wo);
                           }}
-                          title={`${wo.otNumber} — ${typeLabelOf(wo.type)}`}
+                           title={`${wo.otNumber} — ${typeLabelOf(wo.serviceTypeId)}`}
                           className={`flex w-full items-center gap-1 rounded border px-1.5 py-0.5 text-left text-[9px] font-semibold leading-tight transition-opacity hover:opacity-80 ${style}`}
                         >
                           <Clock className="size-2.5 shrink-0" />
@@ -677,7 +696,7 @@ export function WorkOrdersCalendar({
 
       {/* Dialog: Crear Orden de Trabajo */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-[540px] text-foreground shadow-lg">
+        <DialogContent className="bg-card border-border sm:max-w-[540px] text-foreground shadow-lg max-h-[90dvh] overflow-y-auto overscroll-contain pr-3">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Plus className="size-4 text-[#0066CC]" />
@@ -747,9 +766,15 @@ export function WorkOrdersCalendar({
                     <FormControl>
                       <Select
                         value={field.value}
-                        onValueChange={(v) => {
-                          field.onChange(v ?? "");
-                          form.setValue("elevatorUnityIds", []);
+                          onValueChange={(v) => {
+                            field.onChange(v ?? "");
+                            form.setValue("elevatorUnityIds", []);
+                            if (v && (serviceTypeMap.get(v)?.category === "EMERGENCIA" || serviceTypeMap.get(v)?.code.startsWith("EMER"))) {
+                              const now = new Date();
+                              form.setValue("scheduledDate", toISO(now));
+                              form.setValue("scheduledTime", `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
+                              form.setValue("priority", "EMERGENCY");
+                            }
                         }}
                       >
                         <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
@@ -793,7 +818,14 @@ export function WorkOrdersCalendar({
                 )}
               />
 
-              {selectedServiceType?.code === "PREV" && (
+              {isEmergency && (
+                <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                  <Info className="size-3.5 mt-0.5 shrink-0" />
+                  <span>Emergencia: se creará inmediatamente y debe atenderse según el SLA del tipo de servicio.</span>
+                </div>
+              )}
+
+              {isPreventive && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                   <Info className="size-3.5 mt-0.5 shrink-0" />
                   <span>
@@ -801,6 +833,22 @@ export function WorkOrdersCalendar({
                     este mes, no se permitirá registrarlo de nuevo.
                   </span>
                 </div>
+              )}
+
+              {(isCorrective || isEmergency) && (
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Descripción del problema</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} value={field.value ?? ""} minLength={10} placeholder="Describe el problema (mínimo 10 caracteres)" className="text-xs min-h-20" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
 
               <FormField
@@ -866,20 +914,7 @@ export function WorkOrdersCalendar({
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">Técnico</FormLabel>
                       <FormControl>
-                        <Select value={field.value || ""} onValueChange={(v) => field.onChange(v ?? "")}>
-                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
-                            <SelectValue placeholder="Sin asignar">
-                              {formData.technicians.find((t) => t.id === field.value)?.fullName ?? null}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {formData.technicians.map((t) => (
-                              <SelectItem key={t.id} value={t.id}>
-                                {t.fullName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <SearchableSelect items={formData.technicians} value={field.value ?? ""} onValueChange={field.onChange} getValue={(t) => t.id} getLabel={(t) => t.fullName} getKeywords={(t) => t.providerType} renderItem={(t) => <span className="flex w-full items-center justify-between gap-2"><span>{t.fullName}</span><span className="rounded-full border px-1.5 py-0.5 text-[9px]">{t.providerType === "EXTERNAL" ? "Externo" : "HTL · Interno"}</span></span>} placeholder="Buscar técnico..." searchPlaceholder="Buscar técnico..." emptyText="No hay técnicos disponibles" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -911,12 +946,19 @@ export function WorkOrdersCalendar({
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="supportingTechnicians" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Técnicos de apoyo</FormLabel><FormControl><Input {...field} value={field.value ?? ""} placeholder="Si deseas colocar técnicos adicionales" className="text-xs" /></FormControl></FormItem>} />
+                <FormField control={form.control} name="estimatedDurationMins" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Duración estimada (min)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)} className="text-xs" /></FormControl></FormItem>} />
+              </div>
+
               <FormField
                 control={form.control}
                 name="elevatorUnityIds"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Equipos</FormLabel>
+                     <FormLabel className="text-xs font-semibold">
+                       {isPreventive ? "Equipos a mantener" : "Equipo afectado"}
+                     </FormLabel>
                     <FormControl>
                       <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
                         {!selectedCostCenterId ? (
@@ -936,10 +978,10 @@ export function WorkOrdersCalendar({
                               <Checkbox
                                 id={`wo-eq-${eq.id}`}
                                 checked={field.value.includes(eq.id)}
-                                onCheckedChange={(checked) => {
+                                 onCheckedChange={(checked) => {
                                   field.onChange(
                                     checked
-                                      ? [...field.value, eq.id]
+                                      ? isPreventive ? [...field.value, eq.id] : [eq.id]
                                       : field.value.filter((x) => x !== eq.id)
                                   );
                                 }}
@@ -962,6 +1004,7 @@ export function WorkOrdersCalendar({
                   </FormItem>
                 )}
               />
+
 
               <DialogFooter className="pt-2">
                 <Button
@@ -1034,7 +1077,7 @@ export function WorkOrdersCalendar({
                   </div>
 
                   <p className="mt-1.5 text-xs font-semibold text-foreground">
-                    {typeLabelOf(wo.type)}
+                    {typeLabelOf(wo.serviceTypeId)}
                   </p>
 
                   <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-muted-foreground">

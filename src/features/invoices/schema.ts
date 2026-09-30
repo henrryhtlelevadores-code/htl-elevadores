@@ -175,3 +175,32 @@ export const CURRENCIES = [
   { value: "PEN", label: "Soles (PEN)" },
   { value: "USD", label: "Dólares (USD)" },
 ] as const;
+
+/** Estados de la factura ante SUNAT. */
+export const SUNAT_STATUS = [
+  { value: "DRAFT", label: "Borrador" },
+  { value: "ISSUED", label: "Emitida" },
+  { value: "ACCEPTED", label: "Aceptada" },
+  { value: "REJECTED", label: "Rechazada" },
+  { value: "CANCELLED", label: "Anulada" },
+  { value: "NO_APLICA", label: "No aplica" },
+] as const;
+
+/** Estados de cobro de la factura. */
+export const PAYMENT_STATUS = [
+  { value: "PENDING", label: "Pendiente" },
+  { value: "PARTIAL", label: "Parcial" },
+  { value: "PAID", label: "Pagada" },
+  { value: "OVERDUE", label: "Vencida" },
+] as const;
+
+const toEnum = <T extends readonly { value: string }[]>(options: T) =>
+  options.map((o) => o.value) as [string, ...string[]];
+
+/** Cambio de estados desde el detalle de la factura. */
+export const invoiceStatusUpdateSchema = z.object({
+  sunatStatus: z.enum(toEnum(SUNAT_STATUS), { message: "Estado SUNAT inválido" }),
+  paymentStatus: z.enum(toEnum(PAYMENT_STATUS), { message: "Estado de pago inválido" }),
+});
+
+export type InvoiceStatusUpdateValues = z.infer<typeof invoiceStatusUpdateSchema>;

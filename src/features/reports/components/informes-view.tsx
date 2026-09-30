@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import {
   type CompletedWorkOrderReport,
   type ReportElevator,
   type ReportElevatorTask,
+  type ReportPhoto,
   updateElevatorFinding,
   updateWorkOrderClosingNotes,
   updateTaskObservation,
@@ -23,6 +25,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
@@ -53,6 +56,7 @@ interface InformesViewProps {
     clientId: string;
     client_name: string;
   }>;
+  currentUser: { id: string; fullName: string | null };
 }
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
@@ -77,6 +81,20 @@ function formatDate(ts: number | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString("es-PE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDuration(milliseconds: number): string {
+  const totalMinutes = Math.max(0, Math.round(milliseconds / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
 }
 
 function formatDayTime(date: string | null, time?: string | null): string {
@@ -105,7 +123,9 @@ export function InformesView({
   workOrders,
   clients,
   costCenters,
+  currentUser,
 }: InformesViewProps) {
+  const router = useRouter();
   const [data, setData] = useState<CompletedWorkOrderReport[]>(workOrders);
   const [clientFilter, setClientFilter] = useState("");
   const [ccFilter, setCcFilter] = useState("");
@@ -118,6 +138,9 @@ export function InformesView({
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalDate, setApprovalDate] = useState<number | null>(null);
+  const [approving, setApproving] = useState(false);
 
   const filteredCostCenters = useMemo(
     () =>
@@ -266,11 +289,21 @@ export function InformesView({
         patchWorkOrder(elevator.workOrderId, (wo) => ({
           ...wo,
           elevators: wo.elevators.map((e) =>
-            e.id === elevator.id
-              ? {
-                  ...e,
-                  evidencePhotoUrls: [...e.evidencePhotoUrls, ...(res.urls ?? [])],
-                }
+                  e.id === elevator.id
+                    ? {
+                        ...e,
+                        evidencePhotoUrls: [...e.evidencePhotoUrls, ...(res.urls ?? [])],
+                        photos: [
+                          ...e.photos,
+                          ...(res.urls ?? []).map((url) => ({
+                            id: url,
+                            url,
+                            tag: "POINT",
+                            description: null,
+                            createdAt: Date.now(),
+                          })),
+                        ],
+                      }
               : e
           ),
         }));
@@ -291,11 +324,18 @@ export function InformesView({
 
   async function handleRemovePhoto(elevator: ReportElevator, url: string) {
     const previous = elevator.evidencePhotoUrls;
+    const previousPhotos = elevator.photos;
     const optimistic = elevator.evidencePhotoUrls.filter((u) => u !== url);
     patchWorkOrder(elevator.workOrderId, (wo) => ({
       ...wo,
       elevators: wo.elevators.map((e) =>
-        e.id === elevator.id ? { ...e, evidencePhotoUrls: optimistic } : e
+        e.id === elevator.id
+          ? {
+              ...e,
+              evidencePhotoUrls: optimistic,
+              photos: e.photos.filter((photo) => photo.url !== url),
+            }
+          : e
       ),
     }));
     const res = await removeEvidencePhoto(elevator.id, url);
@@ -305,10 +345,46 @@ export function InformesView({
       patchWorkOrder(elevator.workOrderId, (wo) => ({
         ...wo,
         elevators: wo.elevators.map((e) =>
-          e.id === elevator.id ? { ...e, evidencePhotoUrls: previous } : e
+          e.id === elevator.id
+            ? { ...e, evidencePhotoUrls: previous, photos: previousPhotos }
+            : e
         ),
       }));
       toast.error("Error", { description: res.error });
+    }
+  }
+
+  async function handleApprove() {
+    if (!viewing || viewing.approvalStatus === "APPROVED") return;
+    setApproving(true);
+    try {
+      const response = await fetch(`/api/work-orders/${viewing.id}/approve`, {
+        method: "POST",
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "No se pudo aprobar la OT.");
+      toast.success("OT aprobada y publicada");
+      setApprovalOpen(false);
+      router.refresh();
+      setData((previous) =>
+        previous.map((wo) =>
+          wo.id === viewing.id
+            ? {
+                ...wo,
+                approvalStatus: "APPROVED",
+                approvedBy: currentUser.id,
+                approvedByName: currentUser.fullName,
+                approvedAt: Date.now(),
+              }
+            : wo
+        )
+      );
+    } catch (error) {
+      toast.error("No se pudo aprobar", {
+        description: error instanceof Error ? error.message : "Intenta nuevamente.",
+      });
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -415,7 +491,7 @@ export function InformesView({
   );
 
   const totalPhotos = useMemo(
-    () => viewing?.elevators.reduce((acc, e) => acc + e.evidencePhotoUrls.length, 0) ?? 0,
+    () => viewing?.elevators.reduce((acc, e) => acc + e.photos.length, 0) ?? 0,
     [viewing]
   );
 
@@ -473,13 +549,26 @@ export function InformesView({
           showCloseButton={false}
           className="bg-card border-border sm:max-w-[820px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto"
         >
-          <button
-            onClick={() => setViewingId(null)}
-            className="absolute top-3 right-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 bg-card"
-          >
-            <ChevronLeft className="size-3" />
-            Cerrar
-          </button>
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+            {viewing && viewing.approvalStatus === "PENDING" && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setApprovalDate(Date.now());
+                  setApprovalOpen(true);
+                }}
+              >
+                Aprobar y publicar
+              </Button>
+            )}
+            <button
+              onClick={() => setViewingId(null)}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="size-3" />
+              Cerrar
+            </button>
+          </div>
 
           {viewing && (
             <>
@@ -490,6 +579,11 @@ export function InformesView({
                   <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
                     Completada
                   </span>
+                  {viewing.approvalStatus !== "PENDING" && (
+                    <span className="ml-auto inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                      ✓ Aprobada por {viewing.approvedByName ?? viewing.approvedBy ?? "usuario"} · {formatDate(viewing.approvedAt)}
+                    </span>
+                  )}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
                   {viewing.client_name} — {viewing.cost_center_name}
@@ -522,6 +616,12 @@ export function InformesView({
                   label="Estado"
                   value={STATUS_LABELS[viewing.status ?? ""] ?? viewing.status ?? "—"}
                 />
+                {viewing.startedAt && viewing.completedAt && (
+                  <InfoChip
+                    label="Duración"
+                    value={`${formatDuration(viewing.completedAt - viewing.startedAt)} (${formatTime(viewing.startedAt)} – ${formatTime(viewing.completedAt)})`}
+                  />
+                )}
               </div>
 
               {/* Firma del cliente */}
@@ -557,7 +657,7 @@ export function InformesView({
                     variant="outline"
                     size="xs"
                     onClick={handleSaveNotes}
-                    disabled={busy["notes"]}
+                    disabled={busy["notes"] || viewing.approvalStatus === "APPROVED"}
                     className="text-xs font-semibold gap-1.5"
                   >
                     {busy["notes"] ? (
@@ -572,6 +672,7 @@ export function InformesView({
                   rows={3}
                   value={notesDraft}
                   onChange={(e) => setNotesDraft(e.target.value)}
+                  disabled={viewing.approvalStatus === "APPROVED"}
                   placeholder="Notas de cierre de la orden..."
                   className="bg-card border-border text-xs leading-relaxed focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                 />
@@ -614,6 +715,7 @@ export function InformesView({
                       onSaveTask={(task) =>
                         handleSaveTaskObservation(task, elevator)
                       }
+                      readOnly={viewing.approvalStatus === "APPROVED"}
                     />
                   ))
                 )}
@@ -638,6 +740,30 @@ export function InformesView({
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={approvalOpen} onOpenChange={setApprovalOpen}>
+        <DialogContent className="bg-card text-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Aprobar y publicar</DialogTitle>
+            <DialogDescription>
+              La OT se marcará como aprobada y será visible inmediatamente en el portal del cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+            <p><strong>Aprobada por:</strong> {currentUser.fullName ?? currentUser.id}</p>
+            <p><strong>Fecha:</strong> {formatDate(approvalDate)}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalOpen(false)} disabled={approving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleApprove} disabled={approving}>
+              {approving && <Loader2 className="size-4 animate-spin" />}
+              Aprobar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -653,6 +779,7 @@ function ElevatorReviewCard({
   onSaveFinding,
   onRemovePhoto,
   onSaveTask,
+  readOnly = false,
 }: {
   elevator: ReportElevator;
   finding: string;
@@ -664,14 +791,76 @@ function ElevatorReviewCard({
   onSaveFinding: () => void;
   onRemovePhoto: (url: string) => void;
   onSaveTask: (task: ReportElevatorTask) => void;
+  readOnly?: boolean;
 }) {
   const completedTasks = elevator.tasks.filter((t) => t.isCompleted).length;
+  const hasModules = elevator.tasks.some((task) => task.moduleId !== null);
+  const moduleGroups = Array.from(
+    elevator.tasks.reduce((groups, task) => {
+      const key = task.moduleId ?? "__without-module__";
+      const group = groups.get(key) ?? [];
+      group.push(task);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, ReportElevatorTask[]>())
+  );
   const finalStatusLabel =
     elevator.finalStatus === "OUT_OF_SERVICE"
       ? "Fuera de servicio"
       : elevator.finalStatus === "OPERATIVE"
         ? "Operativo"
         : "—";
+
+  function renderTask(task: ReportElevatorTask) {
+    return (
+      <div
+        key={task.id}
+        className="rounded-lg border border-border bg-muted/20 px-2.5 py-2 space-y-1.5"
+      >
+        <div className="flex items-center gap-2">
+          {task.isCompleted ? (
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+          ) : (
+            <Circle className="size-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className={cn("text-xs flex-1", task.isCompleted && "line-through text-muted-foreground/60")}>
+            {task.taskDescription}
+            {task.isCritical && (
+              <span className="ml-1.5 rounded border border-red-500/30 bg-red-500/10 px-1 py-0.5 text-[9px] font-bold uppercase text-red-500">
+                Crítica
+              </span>
+            )}
+          </span>
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => onSaveTask(task)}
+              disabled={busy[`task:${task.id}`]}
+              title="Guardar observación"
+              className="text-muted-foreground"
+            >
+              {busy[`task:${task.id}`] ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <FileText className="size-3 shrink-0 text-muted-foreground" />
+          {readOnly ? (
+            <p className="flex-1 text-xs text-muted-foreground">{task.observations || "Sin observaciones."}</p>
+          ) : (
+            <textarea
+              value={taskObsDraft[task.id] ?? ""}
+              onChange={(e) => onTaskObsChange(task.id, e.target.value)}
+              rows={1}
+              placeholder="Observaciones de la tarea..."
+              className="flex-1 resize-y rounded-md border border-border bg-card px-2 py-1 text-xs outline-none focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
@@ -700,11 +889,11 @@ function ElevatorReviewCard({
               <StickyNote className="size-3.5" />
               Hallazgos
             </div>
-            <Button
+             <Button
               variant="outline"
               size="xs"
               onClick={onSaveFinding}
-              disabled={busy[`finding:${elevator.id}`]}
+               disabled={readOnly || busy[`finding:${elevator.id}`]}
               className="text-xs font-semibold gap-1.5"
             >
               {busy[`finding:${elevator.id}`] ? (
@@ -717,8 +906,9 @@ function ElevatorReviewCard({
           </div>
           <Textarea
             rows={2}
-            value={finding}
-            onChange={(e) => onFindingChange(e.target.value)}
+             value={finding}
+             onChange={(e) => onFindingChange(e.target.value)}
+             disabled={readOnly}
             placeholder="Hallazgos de la intervención..."
             className="bg-card border-border text-xs leading-relaxed focus-visible:ring-1 focus-visible:ring-[#0066CC]"
           />
@@ -729,13 +919,13 @@ function ElevatorReviewCard({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <Camera className="size-3.5" />
-              Evidencias ({elevator.evidencePhotoUrls.length})
+              Evidencias ({elevator.photos.length})
             </div>
             <Button
               variant="outline"
               size="xs"
               onClick={() => onPhotoTarget(elevator.id)}
-              disabled={busy[`upload:${elevator.id}`]}
+              disabled={readOnly || busy[`upload:${elevator.id}`]}
               className="text-xs font-semibold gap-1.5"
             >
               {busy[`upload:${elevator.id}`] ? (
@@ -746,30 +936,25 @@ function ElevatorReviewCard({
               Agregar fotos
             </Button>
           </div>
-          {elevator.evidencePhotoUrls.length === 0 ? (
+          {elevator.photos.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic py-1">
               Sin evidencias fotográficas.
             </p>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {elevator.evidencePhotoUrls.map((url, idx) => (
-                <div key={url} className="relative group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt={`Evidencia ${idx + 1}`}
-                    className="aspect-square w-full object-cover rounded-lg border border-border"
+            <div className="space-y-3">
+              {(["BEFORE", "AFTER", "POINT"] as const).map((tag) => {
+                const items = elevator.photos.filter((photo) => photo.tag === tag);
+                if (items.length === 0) return null;
+                return (
+                  <PhotoSection
+                    key={tag}
+                    title={{ BEFORE: "Antes", AFTER: "Después", POINT: "Puntuales" }[tag]}
+                    photos={items}
+                    readOnly={readOnly}
+                    onRemovePhoto={onRemovePhoto}
                   />
-                  <button
-                    type="button"
-                    onClick={() => onRemovePhoto(url)}
-                    className="absolute top-1 right-1 size-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                    title="Quitar foto"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -785,62 +970,66 @@ function ElevatorReviewCard({
               Sin tareas registradas para este equipo.
             </p>
           ) : (
-            <div className="space-y-1">
-              {elevator.tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-lg border border-border bg-muted/20 px-2.5 py-2 space-y-1.5"
-                >
-                  <div className="flex items-center gap-2">
-                    {task.isCompleted ? (
-                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <Circle className="size-4 text-muted-foreground shrink-0" />
-                    )}
-                    <span
-                      className={cn(
-                        "text-xs flex-1",
-                        task.isCompleted &&
-                          "line-through text-muted-foreground/60"
-                      )}
-                    >
-                      {task.taskDescription}
-                      {task.isCritical && (
-                        <span className="ml-1.5 text-[9px] font-bold uppercase text-red-500 border border-red-500/30 rounded px-1 py-0.5 bg-red-500/10">
-                          Crítica
-                        </span>
-                      )}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => onSaveTask(task)}
-                      disabled={busy[`task:${task.id}`]}
-                      title="Guardar observación"
-                      className="text-muted-foreground"
-                    >
-                      {busy[`task:${task.id}`] ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="size-3" />
-                      )}
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="size-3 text-muted-foreground shrink-0" />
-                    <textarea
-                      value={taskObsDraft[task.id] ?? ""}
-                      onChange={(e) => onTaskObsChange(task.id, e.target.value)}
-                      rows={1}
-                      placeholder="Observaciones de la tarea..."
-                      className="flex-1 resize-y rounded-md border border-border bg-card px-2 py-1 text-xs outline-none focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            hasModules ? (
+              <div className="space-y-2">
+                {moduleGroups.map(([moduleId, moduleTasks]) => (
+                  <details key={moduleId} open className="rounded-lg border border-border">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-xs font-bold">
+                      {moduleTasks[0]?.moduleCode ?? "Sin módulo"} · {moduleTasks[0]?.moduleName ?? "Tareas generales"} ({moduleTasks.length} tareas)
+                    </summary>
+                    <div className="space-y-1 border-t border-border p-2">
+                      {moduleTasks.map(renderTask)}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1">{elevator.tasks.map(renderTask)}</div>
+            )
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PhotoSection({
+  title,
+  photos,
+  readOnly,
+  onRemovePhoto,
+}: {
+  title: string;
+  photos: ReportPhoto[];
+  readOnly: boolean;
+  onRemovePhoto: (url: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <h4 className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        {title} ({photos.length})
+      </h4>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {photos.map((photo, index) => (
+          <div key={photo.id} className="group relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.url}
+              alt={`${title} ${index + 1}`}
+              className="aspect-square w-full rounded-lg border border-border object-cover"
+            />
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => onRemovePhoto(photo.url)}
+                className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
+                title="Quitar foto"
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

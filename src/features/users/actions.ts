@@ -12,6 +12,7 @@ import {
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
+import { uploadToR2, deleteR2ObjectByUrl, buildStaffSignatureKey } from "@/lib/r2";
 import { ARGON2ID_PARAMS, requiresRehash } from "./password";
 import {
   createUserFormSchema,
@@ -21,12 +22,65 @@ import {
   type UpdateUserFormValues,
   type ChangeUserPasswordValues,
 } from "./schema";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+
+/** Roles que habilitan el perfil de técnico en el formulario de usuarios. */
+const FIELD_ROLE_NAMES = ["TECNICO DE CAMPO", "SUPERVISOR"];
+
+const MAX_SIGNATURE_BYTES = 5 * 1024 * 1024;
+
+/** True si el rol corresponde a personal de campo (perfil de técnico). */
+async function isFieldRole(roleId: string): Promise<boolean> {
+  const rows = await db
+    .select({ isFieldRole: roles.isFieldRole, name: roles.name })
+    .from(roles)
+    .where(eq(roles.id, roleId))
+    .limit(1);
+  const role = rows[0];
+  if (!role) return false;
+  // Respaldo por nombre si is_field_role no se aplicó en la base actual.
+  return role.isFieldRole === true || FIELD_ROLE_NAMES.includes(role.name);
+}
+
+/** Mapea los campos del formulario a columnas de staff_profiles. */
+function staffProfileFields(data: {
+  providerType: "INTERNAL" | "EXTERNAL";
+  providerCompany?: string | null;
+  hasSctr?: boolean | null;
+  sctrExpiryDate?: string | null;
+  baseSalary?: string | null;
+  signatureUrl?: string | null;
+}) {
+  return {
+    providerType: data.providerType,
+    providerCompany: data.providerType === "EXTERNAL"
+      ? data.providerCompany?.trim() || null
+      : null,
+    hasSctr: data.hasSctr ?? false,
+    // Epoch ms en UTC; el DatePicker trabaja con YYYY-MM-DD.
+    sctrExpiryDate: data.hasSctr && data.sctrExpiryDate
+      ? Date.parse(`${data.sctrExpiryDate}T00:00:00Z`)
+      : null,
+    baseSalary: data.baseSalary && data.baseSalary !== ""
+      ? Number(data.baseSalary)
+      : null,
+    signatureUrl: data.signatureUrl?.trim() || null,
+  };
+}
 
 export type UserListItem = Omit<User, "passwordHash"> & {
   role_name?: string | null;
+  isFieldRole?: boolean | null;
   specialization?: string | null;
+  documentType?: string | null;
   documentNumber?: string | null;
+  licenseNumber?: string | null;
+  providerType?: string | null;
+  providerCompany?: string | null;
+  hasSctr?: boolean | null;
+  sctrExpiryDate?: number | null;
+  baseSalary?: number | null;
+  signatureUrl?: string | null;
 };
 
 // ==========================================
@@ -48,22 +102,38 @@ export async function getAllRoles(): Promise<Role[]> {
 export async function ensureDefaultRoles() {
   try {
     const existing = await db.select({ id: roles.id }).from(roles).limit(1);
-    if (existing.length > 0) return;
 
-    const defaultRoles = [
-      { name: "ADMINISTRADOR", permissions: ["*"] },
-      { name: "SUPERVISOR", permissions: ["work_orders", "reports", "users:read"] },
-      { name: "TECNICO DE CAMPO", permissions: ["work_orders", "safety"] },
-      { name: "SOPORTE", permissions: ["work_orders:read"] },
-    ];
+    if (existing.length === 0) {
+      const defaultRoles = [
+        { name: "ADMINISTRADOR", permissions: ["*"], isFieldRole: false },
+        {
+          name: "SUPERVISOR",
+          permissions: ["work_orders", "reports", "users:read"],
+          isFieldRole: true,
+        },
+        {
+          name: "TECNICO DE CAMPO",
+          permissions: ["work_orders", "safety"],
+          isFieldRole: true,
+        },
+        { name: "SOPORTE", permissions: ["work_orders:read"], isFieldRole: false },
+      ];
 
-    await db.insert(roles).values(
-      defaultRoles.map((r) => ({
-        id: generateUuid(),
-        name: r.name,
-        permissions: r.permissions,
-      }))
-    );
+      await db.insert(roles).values(
+        defaultRoles.map((r) => ({
+          id: generateUuid(),
+          name: r.name,
+          permissions: r.permissions,
+          isFieldRole: r.isFieldRole,
+        }))
+      );
+    }
+
+    // Respaldo idempotente por si la migración 0022 no llegó a aplicarse.
+    await db
+      .update(roles)
+      .set({ isFieldRole: true })
+      .where(inArray(roles.name, FIELD_ROLE_NAMES));
   } catch (error) {
     console.error("Error al inicializar roles:", error);
   }
@@ -87,8 +157,17 @@ export async function getUsers(): Promise<UserListItem[]> {
         createdAt: users.createdAt,
         deletedAt: users.deletedAt,
         role_name: roles.name,
+        isFieldRole: roles.isFieldRole,
         specialization: staffProfiles.specialization,
+        documentType: staffProfiles.documentType,
         documentNumber: staffProfiles.documentNumber,
+        licenseNumber: staffProfiles.licenseNumber,
+        providerType: staffProfiles.providerType,
+        providerCompany: staffProfiles.providerCompany,
+        hasSctr: staffProfiles.hasSctr,
+        sctrExpiryDate: staffProfiles.sctrExpiryDate,
+        baseSalary: staffProfiles.baseSalary,
+        signatureUrl: staffProfiles.signatureUrl,
       })
       .from(users)
       .leftJoin(roles, eq(users.roleId, roles.id))
@@ -137,6 +216,26 @@ export async function createUser(data: CreateUserFormValues) {
     const passwordHash = await hash(validated.password, ARGON2ID_PARAMS);
     const userId = generateUuid();
 
+    const isField = await isFieldRole(validated.roleId);
+    if (!isField && validated.providerType === "EXTERNAL") {
+      return {
+        success: false,
+        error: "El tipo de trabajador solo aplica a roles de personal de campo.",
+      };
+    }
+    if (isField && validated.providerType === "EXTERNAL" && !validated.providerCompany?.trim()) {
+      return {
+        success: false,
+        error: "La empresa proveedora es obligatoria para proveedores externos.",
+      };
+    }
+    if (isField && validated.hasSctr && !validated.sctrExpiryDate) {
+      return {
+        success: false,
+        error: "Indica la fecha de vencimiento del SCTR.",
+      };
+    }
+
     await db.insert(users).values({
       id: userId,
       email: validated.email.trim().toLowerCase(),
@@ -153,10 +252,12 @@ export async function createUser(data: CreateUserFormValues) {
       documentNumber: validated.documentNumber.trim(),
       specialization: validated.specialization?.trim() || null,
       licenseNumber: validated.licenseNumber?.trim() || null,
+      ...(isField ? staffProfileFields(validated) : {}),
     });
 
     revalidatePath("/users");
     revalidatePath("/work-orders");
+    revalidatePath("/routes");
     return { success: true, message: "Usuario creado correctamente" };
   } catch (error) {
     console.error("Error al crear usuario:", error);
@@ -170,6 +271,20 @@ export async function createUser(data: CreateUserFormValues) {
 export async function updateUser(id: string, data: UpdateUserFormValues) {
   try {
     const validated = updateUserFormSchema.parse(data);
+
+    const isField = await isFieldRole(validated.roleId);
+    if (isField && validated.providerType === "EXTERNAL" && !validated.providerCompany?.trim()) {
+      return {
+        success: false,
+        error: "La empresa proveedora es obligatoria para proveedores externos.",
+      };
+    }
+    if (isField && validated.hasSctr && !validated.sctrExpiryDate) {
+      return {
+        success: false,
+        error: "Indica la fecha de vencimiento del SCTR.",
+      };
+    }
 
     const user: Partial<User & { passwordHash: string }> = {
       email: validated.email.trim().toLowerCase(),
@@ -186,6 +301,11 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
 
     await db.update(users).set(user).where(eq(users.id, id));
 
+    const staffFields = isField
+      ? staffProfileFields(validated)
+      : // Fuera de roles de campo se conservan los datos ya guardados.
+        {};
+
     await db
       .insert(staffProfiles)
       .values({
@@ -194,6 +314,7 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
         documentNumber: validated.documentNumber.trim(),
         specialization: validated.specialization?.trim() || null,
         licenseNumber: validated.licenseNumber?.trim() || null,
+        ...staffFields,
       })
       .onConflictDoUpdate({
         target: staffProfiles.userId,
@@ -202,17 +323,54 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
           documentNumber: validated.documentNumber.trim(),
           specialization: validated.specialization?.trim() || null,
           licenseNumber: validated.licenseNumber?.trim() || null,
+          ...staffFields,
         },
       });
 
+    // Si se reemplazó la firma, el objeto anterior queda huérfano en R2.
+    const previous = await db
+      .select({ signatureUrl: staffProfiles.signatureUrl })
+      .from(staffProfiles)
+      .where(eq(staffProfiles.userId, id))
+      .limit(1);
+    const previousUrl = previous[0]?.signatureUrl ?? null;
+    const nextUrl = validated.signatureUrl?.trim() || null;
+    if (previousUrl && previousUrl !== nextUrl) {
+      await deleteR2ObjectByUrl(previousUrl).catch(() => undefined);
+    }
+
     revalidatePath("/users");
     revalidatePath("/work-orders");
+    revalidatePath("/routes");
     return { success: true, message: "Usuario actualizado correctamente" };
   } catch (error) {
     console.error("Error al actualizar usuario:", error);
     if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
       return { success: false, error: "El correo electrónico ya está en uso." };
     }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+/** Sube la firma del técnico a R2 y devuelve la URL pública. */
+export async function uploadStaffSignature(dataUrl: string) {
+  try {
+    const match = /^data:(image\/(?:png|jpe?g));base64,(.+)$/i.exec(dataUrl ?? "");
+    if (!match) {
+      return { success: false, error: "Adjunta una imagen PNG o JPG válida." };
+    }
+    const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
+    if (bytes.byteLength > MAX_SIGNATURE_BYTES) {
+      return { success: false, error: "La firma supera los 5 MB." };
+    }
+    const url = await uploadToR2(
+      buildStaffSignatureKey(generateUuid()),
+      bytes,
+      match[1]
+    );
+    return { success: true, url };
+  } catch (error) {
+    console.error("Error al subir la firma del técnico:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

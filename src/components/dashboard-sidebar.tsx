@@ -16,8 +16,10 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  X,
   Map,
   ReceiptText,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -73,6 +75,11 @@ const navItems = [
     icon: Users,
   },
   {
+    title: "Mantenimiento",
+    href: "/configuracion/mantenimiento/modulos",
+    icon: Wrench,
+  },
+  {
     title: "Tablas Maestras",
     href: "/masters",
     icon: Database,
@@ -84,15 +91,24 @@ const navItems = [
   },
 ];
 
-export function DashboardSidebar() {
+export function DashboardSidebar({
+  mobileOpen = false,
+  onMobileClose,
+}: {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
     <aside
       className={cn(
-        "relative flex flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-all duration-300 select-none z-30 shadow-xs",
-        collapsed ? "w-16" : "w-64"
+        "select-none border-border bg-sidebar text-sidebar-foreground shadow-xs transition-transform duration-300",
+        "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(20rem,calc(100vw-3rem))] flex-col border-r",
+        "md:relative md:z-30 md:h-auto md:flex md:translate-x-0 md:transition-[width]",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        collapsed ? "md:w-16" : "md:w-64"
       )}
     >
       {/* HTL Brand Header */}
@@ -125,15 +141,21 @@ export function DashboardSidebar() {
         <Button
           variant="ghost"
           size="icon-xs"
+          onClick={onMobileClose}
+          className="ml-auto text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+          title="Cerrar menú"
+          aria-label="Cerrar menú"
+        >
+          <X className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={() => setCollapsed(!collapsed)}
-          className="text-muted-foreground hover:text-foreground hover:bg-muted ml-auto"
+          className="ml-auto hidden text-muted-foreground hover:bg-muted hover:text-foreground md:inline-flex"
           title={collapsed ? "Expandir menú" : "Colapsar menú"}
         >
-          {collapsed ? (
-            <ChevronRight className="size-3.5" />
-          ) : (
-            <ChevronLeft className="size-3.5" />
-          )}
+          {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
         </Button>
       </div>
 
@@ -167,6 +189,7 @@ export function DashboardSidebar() {
                 collapsed && "justify-center px-2"
               )}
               title={collapsed ? item.title : undefined}
+              onClick={onMobileClose}
             >
               <Icon
                 className={cn(

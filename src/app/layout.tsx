@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -16,6 +16,13 @@ export const metadata: Metadata = {
   title: "HTL Elevadores | Portal Privado - Gestión Técnica de Elevación",
   description:
     "Portal privado de HTL Elevadores para gestión técnica, órdenes de trabajo, contratos y catálogos de transporte vertical.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

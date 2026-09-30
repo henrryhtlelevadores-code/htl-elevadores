@@ -1,27 +1,32 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and, isNull, inArray, or } from "drizzle-orm";
+import { sql, eq, and, isNull, inArray } from "drizzle-orm";
 import {
   db,
   workOrders,
   workOrderElevators,
+  workOrderTasks,
+  workOrderElevatorPhotos,
   elevatorUnities,
   safetyTemplates,
-  workOrderSafetyRecords,
+  workOrderElevatorSafety,
+  workOrderElevatorSafetyItems,
+  serviceTypes,
 } from "@/db/index";
 import { getSessionUserId } from "@/features/auth/server";
+import { checklistQuestion, parseChecklistItems } from "@/features/safety/checklist-content";
 import {
-  buildEvidenceKey,
+  deleteR2ObjectByUrl,
+  buildElevatorPhotoKey,
   buildSignatureKey,
   uploadToR2,
 } from "@/lib/r2";
 import { generateUuid } from "@/lib/uuid";
 
-const MAX_EVIDENCE_PER_ELEVATOR = 10;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB (dataUrl decodificada)
 
-interface ActionState {
+export interface ActionState {
   success: boolean;
   message?: string;
   error?: string;
@@ -99,6 +104,38 @@ async function getElevatorWorkOrderByTechnician(
   return row;
 }
 
+async function assertOwnedSafetyItem(
+  technicianId: string,
+  itemId: string
+): Promise<string> {
+  const rows = await db
+    .select({ safetyId: workOrderElevatorSafetyItems.safetyRecordId })
+    .from(workOrderElevatorSafetyItems)
+    .innerJoin(
+      workOrderElevatorSafety,
+      eq(workOrderElevatorSafety.id, workOrderElevatorSafetyItems.safetyRecordId)
+    )
+    .innerJoin(
+      workOrderElevators,
+      eq(workOrderElevators.id, workOrderElevatorSafety.workOrderElevatorId)
+    )
+    .innerJoin(
+      workOrders,
+      and(
+        eq(workOrders.id, workOrderElevators.workOrderId),
+        eq(workOrders.technicianId, technicianId),
+        isNull(workOrders.deletedAt)
+      )
+    )
+    .where(eq(workOrderElevatorSafetyItems.id, itemId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new Error("No tienes acceso a este ítem de seguridad.");
+  }
+  return row.safetyId;
+}
+
 const PATHS_TO_REVALIDATE = [
   "/technician/work-orders",
   "/work-orders",
@@ -109,43 +146,6 @@ function revalidateTechnicianUrls() {
   for (const path of PATHS_TO_REVALIDATE) {
     revalidatePath(path);
   }
-}
-
-function parseChecklistItems(content: unknown): unknown[] {
-  let current: unknown = content;
-  // El contenido puede venir como texto, o texto JSON de texto JSON (doble
-  // codificación al guardarse desde el formulario de administración).
-  for (let depth = 0; depth < 3; depth++) {
-    if (Array.isArray(current)) return current;
-    if (typeof current !== "string") return [];
-    try {
-      current = JSON.parse(current);
-    } catch {
-      return [];
-    }
-  }
-  return Array.isArray(current) ? current : [];
-}
-
-function buildSafetyResponses(content: unknown): Array<{
-  id: string;
-  label: string;
-  isCritical: boolean;
-  completed: boolean;
-}> {
-  return parseChecklistItems(content).map((item) => {
-    const it = (item ?? {}) as {
-      id?: string;
-      label?: string;
-      isCritical?: boolean;
-    };
-    return {
-      id: it.id ?? generateUuid(),
-      label: it.label ?? "",
-      isCritical: !!it.isCritical,
-      completed: true,
-    };
-  });
 }
 
 /**
@@ -170,60 +170,52 @@ async function setEquipmentInMaintenance(workOrderId: string): Promise<void> {
  * Crea (y completa) los registros de seguridad de la OT a partir de las
  * plantillas activas que aplican al tipo de equipo de cada elevador.
  */
-async function ensureSafetyRecords(
-  workOrderId: string,
-  technicianId: string
-): Promise<void> {
+async function ensureSafetyRecords(workOrderId: string): Promise<void> {
   const elevators = await db
-    .select({ equipmentTypeId: elevatorUnities.elevatorTypeId })
+    .select({ id: workOrderElevators.id, equipmentTypeId: elevatorUnities.elevatorTypeId })
     .from(workOrderElevators)
     .innerJoin(elevatorUnities, eq(workOrderElevators.elevatorUnityId, elevatorUnities.id))
     .where(eq(workOrderElevators.workOrderId, workOrderId));
 
-  const typeIds = Array.from(
-    new Set(
-      elevators
-        .map((e) => e.equipmentTypeId)
-        .filter((v): v is string => typeof v === "string" && v.length > 0)
-    )
-  );
+  for (const elevator of elevators) {
+    const existing = await db.select({ id: workOrderElevatorSafety.id })
+      .from(workOrderElevatorSafety)
+      .where(eq(workOrderElevatorSafety.workOrderElevatorId, elevator.id))
+      .limit(1);
+    if (existing.length > 0) continue;
 
-  const existing = await db
-    .select({ templateId: workOrderSafetyRecords.templateId })
-    .from(workOrderSafetyRecords)
-    .where(eq(workOrderSafetyRecords.workOrderId, workOrderId));
-  const recorded = new Set(existing.map((r) => r.templateId));
+    const template = await db.select().from(safetyTemplates).where(and(
+      eq(safetyTemplates.isActive, true),
+      eq(safetyTemplates.equipmentTypeId, elevator.equipmentTypeId)
+    )).orderBy(safetyTemplates.createdAt).limit(1);
+    const selected = template[0];
+    if (!selected) throw new Error("No existe un checklist de seguridad activo para uno de los equipos.");
 
-  const templates = await db
-    .select()
-    .from(safetyTemplates)
-    .where(
-      and(
-        eq(safetyTemplates.isActive, true),
-        typeIds.length > 0
-          ? or(
-              inArray(safetyTemplates.equipmentTypeId, typeIds),
-              isNull(safetyTemplates.equipmentTypeId)
-            )
-          : isNull(safetyTemplates.equipmentTypeId)
-      )
-    );
+    // `parseChecklistItems` tolera que el contenido venga como texto JSON.
+    const questions = parseChecklistItems(selected.content)
+      .map((item) => checklistQuestion(item))
+      .filter((question) => question.length > 0);
 
-  const pending = templates.filter((t) => !recorded.has(t.id));
-  if (pending.length === 0) return;
-
-  const now = Date.now();
-  await db.insert(workOrderSafetyRecords).values(
-    pending.map((t) => ({
-      id: generateUuid(),
-      workOrderId,
-      templateId: t.id,
-      technicianId,
-      status: "COMPLETED",
-      responses: buildSafetyResponses(t.content),
-      signedAt: now,
-    }))
-  );
+    const recordId = generateUuid();
+    await db.insert(workOrderElevatorSafety).values({
+      id: recordId,
+      workOrderElevatorId: elevator.id,
+      templateId: selected.id,
+      templateVersion: selected.version,
+      templateSnapshot: selected.content,
+      status: "PENDING",
+    });
+    if (questions.length > 0) {
+      await db.insert(workOrderElevatorSafetyItems).values(
+        questions.map((question, index) => ({
+          id: generateUuid(),
+          safetyRecordId: recordId,
+          question,
+          orderIndex: index,
+        }))
+      );
+    }
+  }
 }
 
 export async function startWorkOrder(workOrderId: string): Promise<ActionState> {
@@ -244,7 +236,7 @@ export async function startWorkOrder(workOrderId: string): Promise<ActionState> 
     }
     if (current?.status === "IN_PROGRESS") {
       // Idempotente: también cubre órdenes iniciadas antes de esta funcionalidad.
-      await ensureSafetyRecords(workOrderId, session.technicianId);
+      await ensureSafetyRecords(workOrderId);
       await setEquipmentInMaintenance(workOrderId);
       await markEquipmentStarted(workOrderId, current.startedAt ?? Date.now());
       return { success: true, message: "La orden ya estaba en curso." };
@@ -256,7 +248,7 @@ export async function startWorkOrder(workOrderId: string): Promise<ActionState> 
       .set({ status: "IN_PROGRESS", startedAt: now })
       .where(eq(workOrders.id, workOrderId));
 
-    await ensureSafetyRecords(workOrderId, session.technicianId);
+    await ensureSafetyRecords(workOrderId);
     await setEquipmentInMaintenance(workOrderId);
     await markEquipmentStarted(workOrderId, now);
 
@@ -284,9 +276,55 @@ async function markEquipmentStarted(workOrderId: string, startedAt: number): Pro
     );
 }
 
-export async function saveElevatorFindings(
+export async function saveSafetyItem(
+  itemId: string,
+  data: { response?: string | null; observations?: string | null }
+): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    await assertOwnedSafetyItem(session.technicianId, itemId);
+
+    const update: Record<string, unknown> = {};
+    if (data.response !== undefined) {
+      const clean = (data.response ?? "").trim().toUpperCase();
+      if (!["", "SI", "NO", "NA"].includes(clean)) {
+        return { success: false, error: "Respuesta inválida para el ítem." };
+      }
+      update.response = clean || null;
+      update.answeredAt = clean ? Date.now() : null;
+      if (clean && clean !== "NO") {
+        update.observations = null;
+      }
+    }
+    if (data.observations !== undefined) {
+      update.observations = (data.observations ?? "").trim().slice(0, 2000) || null;
+    }
+    if (Object.keys(update).length === 0) {
+      return { success: true, message: "Sin cambios." };
+    }
+
+    await db
+      .update(workOrderElevatorSafetyItems)
+      .set(update)
+      .where(eq(workOrderElevatorSafetyItems.id, itemId));
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Respuesta guardada." };
+  } catch (error) {
+    console.error("saveSafetyItem:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al guardar la respuesta.",
+    };
+  }
+}
+
+export async function saveSafetyNotes(
   elevatorId: string,
-  finding: string
+  notes: string
 ): Promise<ActionState> {
   try {
     const session = await requireTechnician();
@@ -294,127 +332,445 @@ export async function saveElevatorFindings(
 
     await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
 
-    const clean = finding.trim().slice(0, 2000);
+    const clean = (notes ?? "").trim().slice(0, 4000);
+    const rows = await db
+      .select({ id: workOrderElevatorSafety.id })
+      .from(workOrderElevatorSafety)
+      .where(eq(workOrderElevatorSafety.workOrderElevatorId, elevatorId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return {
+        success: false,
+        error: "El checklist de seguridad no existe para este equipo.",
+      };
+    }
+
+    await db
+      .update(workOrderElevatorSafety)
+      .set({ notes: clean || null })
+      .where(eq(workOrderElevatorSafety.id, row.id));
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Observaciones guardadas." };
+  } catch (error) {
+    console.error("saveSafetyNotes:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al guardar observaciones.",
+    };
+  }
+}
+
+export type SafetyGeolocation = { latitude: number; longitude: number } | null;
+
+export async function completeElevatorSafety(args: {
+  elevatorId: string;
+  geolocation: SafetyGeolocation;
+}): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const { elevatorId, geolocation } = args;
+
+    await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
+
+    const rows = await db
+      .select()
+      .from(workOrderElevatorSafety)
+      .where(eq(workOrderElevatorSafety.workOrderElevatorId, elevatorId))
+      .limit(1);
+    const safetyRow = rows[0];
+    if (!safetyRow) {
+      return {
+        success: false,
+        error: "No existe el checklist de seguridad de este equipo.",
+      };
+    }
+    if (safetyRow.status === "COMPLETED") {
+      return { success: true, message: "La seguridad ya fue completada." };
+    }
+
+    const items = await db
+      .select({ id: workOrderElevatorSafetyItems.id, response: workOrderElevatorSafetyItems.response })
+      .from(workOrderElevatorSafetyItems)
+      .where(eq(workOrderElevatorSafetyItems.safetyRecordId, safetyRow.id));
+    if (items.some((item) => !item.response)) {
+      return {
+        success: false,
+        error: "Debes responder todas las preguntas antes de completar.",
+      };
+    }
+
+    const now = Date.now();
+    await db
+      .update(workOrderElevatorSafety)
+      .set({
+        status: "COMPLETED",
+        geolocation: geolocation ?? null,
+        completedAt: now,
+      })
+      .where(eq(workOrderElevatorSafety.id, safetyRow.id));
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Seguridad completada. ¡A trabajar!" };
+  } catch (error) {
+    console.error("completeElevatorSafety:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al completar la seguridad.",
+    };
+  }
+}
+
+export async function updateWorkOrderTask(
+  taskId: string,
+  data: {
+    isCompleted?: boolean;
+    status?: string;
+    observations?: string | null;
+  }
+): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const rows = await db
+      .select({ elevatorId: workOrderTasks.workOrderElevatorId })
+      .from(workOrderTasks)
+      .innerJoin(
+        workOrderElevators,
+        eq(workOrderElevators.id, workOrderTasks.workOrderElevatorId)
+      )
+      .innerJoin(
+        workOrders,
+        and(
+          eq(workOrders.id, workOrderElevators.workOrderId),
+          eq(workOrders.technicianId, session.technicianId),
+          isNull(workOrders.deletedAt)
+        )
+      )
+      .where(eq(workOrderTasks.id, taskId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return { success: false, error: "No tienes acceso a esta tarea." };
+    }
+
+    const update: Record<string, unknown> = {};
+    if (data.isCompleted !== undefined) {
+      const completed = Boolean(data.isCompleted);
+      update.isCompleted = completed;
+      update.status = completed ? "COMPLETED" : "PENDING";
+      update.completedAt = completed ? Date.now() : null;
+    }
+    if (data.status !== undefined) {
+      const status = (data.status ?? "").trim().toUpperCase();
+      if (!["PENDING", "COMPLETED", "SKIPPED", "NOT_APPLICABLE"].includes(status)) {
+        return { success: false, error: "Estado de tarea inválido." };
+      }
+      update.status = status;
+      update.isCompleted = status === "COMPLETED";
+      update.completedAt =
+        status === "COMPLETED" ? Date.now() : null;
+    }
+    if (data.observations !== undefined) {
+      update.observations = (data.observations ?? "").trim().slice(0, 2000) || null;
+    }
+    if (Object.keys(update).length === 0) {
+      return { success: true, message: "Sin cambios." };
+    }
+
+    await db
+      .update(workOrderTasks)
+      .set(update)
+      .where(eq(workOrderTasks.id, taskId));
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Tarea actualizada." };
+  } catch (error) {
+    console.error("updateWorkOrderTask:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al actualizar la tarea.",
+    };
+  }
+}
+
+export async function bulkUpdateModuleTasks(args: {
+  elevatorId: string;
+  moduleId: string | null;
+  isCompleted: boolean;
+}): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const { elevatorId, moduleId, isCompleted } = args;
+    await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
+
+    const where = moduleId
+      ? and(
+          eq(workOrderTasks.workOrderElevatorId, elevatorId),
+          eq(workOrderTasks.moduleId, moduleId)
+        )
+      : and(
+          eq(workOrderTasks.workOrderElevatorId, elevatorId),
+          isNull(workOrderTasks.moduleId)
+        );
+
+    const completed = Boolean(isCompleted);
+    await db
+      .update(workOrderTasks)
+      .set({
+        isCompleted: completed,
+        status: completed ? "COMPLETED" : "PENDING",
+        completedAt: completed ? Date.now() : null,
+      })
+      .where(where);
+
+    revalidateTechnicianUrls();
+    return {
+      success: true,
+      message: completed
+        ? "Módulo marcado como completado."
+        : "Módulo desmarcado.",
+    };
+  } catch (error) {
+    console.error("bulkUpdateModuleTasks:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al actualizar el módulo.",
+    };
+  }
+}
+
+export async function updateElevatorFindings(args: {
+  elevatorId: string;
+  findings: string;
+}): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const { elevatorId, findings } = args;
+    await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
+
+    const clean = (findings ?? "").trim().slice(0, 2000);
     await db
       .update(workOrderElevators)
       .set({ finding: clean || null })
       .where(eq(workOrderElevators.id, elevatorId));
 
     revalidateTechnicianUrls();
-    return { success: true, message: clean ? "Hallazgos guardados." : "Hallazgos eliminados." };
+    return { success: true, message: "Hallazgos guardados." };
   } catch (error) {
-    console.error("saveElevatorFindings:", error);
+    console.error("updateElevatorFindings:", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Error al guardar hallazgos.",
+      message:
+        error instanceof Error ? error.message : "Error al guardar los hallazgos.",
     };
   }
 }
 
-export async function addElevatorEvidence(
-  elevatorId: string,
-  images: Array<{ dataUrl: string; contentType: string }>
-): Promise<ActionState> {
+export type ElevatorFinishMode = "all_completed" | "partial";
+
+const MIN_PHOTOS = 4;
+
+/**
+ * Finaliza el checklist de mantenimiento de un equipo. `mode` indica si las
+ * tareas pendientes deben marcarse como completadas ("all_completed") o
+ * dejarse tal cual en la base ("partial"). El safety debe estar completo y,
+ * para servicios preventivos/correctivos, se exigen al menos 4 fotos.
+ */
+export async function completeElevator(args: {
+  elevatorId: string;
+  mode: ElevatorFinishMode;
+}): Promise<ActionState> {
   try {
     const session = await requireTechnician();
     if (!session.success || !session.technicianId) return session;
 
-    if (!images || images.length === 0) {
-      return { success: false, error: "No se recibieron imágenes." };
-    }
-
-    const rel = await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
-
-    const existing = await db
-      .select({ evidencePhotoUrls: workOrderElevators.evidencePhotoUrls })
-      .from(workOrderElevators)
-      .where(eq(workOrderElevators.id, elevatorId))
-      .limit(1);
-    const urls: string[] = ((existing[0]?.evidencePhotoUrls as string[] | null) ?? []).filter(
-      (u): u is string => typeof u === "string" && u.length > 0
-    );
-
-    const remaining = MAX_EVIDENCE_PER_ELEVATOR - urls.length;
-    if (remaining <= 0) {
-      return {
-        success: false,
-        message: `Límite de ${MAX_EVIDENCE_PER_ELEVATOR} fotos por equipo alcanzado.`,
-      };
-    }
-
-    const uploads = images.slice(0, remaining);
-    const uploadedUrls: string[] = [];
-    for (let i = 0; i < uploads.length; i++) {
-      const { dataUrl, contentType } = uploads[i];
-      const ext = contentType === "image/png" ? "png" : "jpg";
-      const bytes = decodeDataUrl(dataUrl);
-      const key = buildEvidenceKey(rel.workOrderId, elevatorId, urls.length + i + 1, ext);
-      const url = await uploadToR2(
-        key,
-        bytes,
-        ext === "png" ? "image/png" : "image/jpeg"
-      );
-      uploadedUrls.push(url);
-    }
-
-    await db
-      .update(workOrderElevators)
-      .set({ evidencePhotoUrls: [...urls, ...uploadedUrls] })
-      .where(eq(workOrderElevators.id, elevatorId));
-
-    revalidateTechnicianUrls();
-    return {
-      success: true,
-      message: `${uploadedUrls.length} foto(s) subida(s).`,
-    };
-  } catch (error) {
-    console.error("addElevatorEvidence:", error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : "Error al subir las fotos.",
-    };
-  }
-}
-
-export type ElevatorFinalStatus = "OPERATIVE" | "OUT_OF_SERVICE";
-
-export async function removeElevatorEvidence(
-  elevatorId: string,
-  url: string
-): Promise<ActionState> {
-  try {
-    const session = await requireTechnician();
-    if (!session.success || !session.technicianId) return session;
-
-    if (!url) {
-      return { success: false, error: "URL de imagen inválida." };
+    const { elevatorId, mode } = args;
+    if (mode !== "all_completed" && mode !== "partial") {
+      return { success: false, error: "Modo de finalización inválido." };
     }
 
     await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
 
-    const existing = await db
-      .select({ evidencePhotoUrls: workOrderElevators.evidencePhotoUrls })
-      .from(workOrderElevators)
+    const safety = await db
+      .select({ status: workOrderElevatorSafety.status })
+      .from(workOrderElevatorSafety)
+      .where(eq(workOrderElevatorSafety.workOrderElevatorId, elevatorId))
+      .limit(1);
+    if (safety[0]?.status !== "COMPLETED") {
+      return {
+        success: false,
+        error:
+          "Debes completar la seguridad del equipo antes de finalizar el mantenimiento.",
+      };
+    }
+
+    // Evidencia fotográfica mínima (solo preventivos/correctivos).
+    const woRows = await db
+      .select({ serviceTypeCode: serviceTypes.code })
+      .from(workOrders)
+      .innerJoin(
+        workOrderElevators,
+        eq(workOrderElevators.workOrderId, workOrders.id)
+      )
+      .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
       .where(eq(workOrderElevators.id, elevatorId))
       .limit(1);
-    const urls: string[] = ((existing[0]?.evidencePhotoUrls as string[] | null) ?? []).filter(
-      (u): u is string => typeof u === "string" && u.length > 0
-    );
+    const serviceTypeCode = woRows[0]?.serviceTypeCode ?? null;
+    const photosRequired =
+      serviceTypeCode === "PREV" || serviceTypeCode === "CORR";
+    if (photosRequired) {
+      const photos = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(workOrderElevatorPhotos)
+        .where(eq(workOrderElevatorPhotos.workOrderElevatorId, elevatorId));
+      const photoCount = photos[0]?.count ?? 0;
+      if (photoCount < MIN_PHOTOS) {
+        return {
+          success: false,
+          error: `Debes subir al menos ${MIN_PHOTOS} fotos. Faltan ${
+            MIN_PHOTOS - photoCount
+          }.`,
+        };
+      }
+    }
 
-    const next = urls.filter((u) => u !== url);
-    if (next.length === urls.length) {
-      return { success: false, error: "La foto no existe en este equipo." };
+    if (mode === "all_completed") {
+      await db
+        .update(workOrderTasks)
+        .set({
+          isCompleted: true,
+          status: "COMPLETED",
+          completedAt: Date.now(),
+        })
+        .where(
+          and(
+            eq(workOrderTasks.workOrderElevatorId, elevatorId),
+            eq(workOrderTasks.isCompleted, false)
+          )
+        );
     }
 
     await db
       .update(workOrderElevators)
-      .set({ evidencePhotoUrls: next })
+      .set({ status: "COMPLETED", completedAt: Date.now() })
       .where(eq(workOrderElevators.id, elevatorId));
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Equipo finalizado." };
+  } catch (error) {
+    console.error("completeElevator:", error);
+    return {
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Error al finalizar el equipo.",
+    };
+  }
+}
+
+export async function addElevatorPhoto(args: {
+  elevatorId: string;
+  taskId?: string | null;
+  tag: string;
+  description?: string | null;
+  dataUrl: string;
+}): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const { elevatorId, taskId, tag: rawTag, description, dataUrl } = args;
+    const tag = (rawTag ?? "").trim().toUpperCase();
+    if (!["BEFORE", "AFTER", "POINT"].includes(tag)) {
+      return { success: false, error: "Tipo de foto inválido." };
+    }
+    if (!dataUrl) {
+      return { success: false, error: "No se recibió la imagen." };
+    }
+
+    const rel = await getElevatorWorkOrderByTechnician(session.technicianId, elevatorId);
+
+    if (taskId) {
+      const task = await db
+        .select({ elevatorId: workOrderTasks.workOrderElevatorId })
+        .from(workOrderTasks)
+        .where(eq(workOrderTasks.id, taskId))
+        .limit(1);
+      if (task[0]?.elevatorId !== elevatorId) {
+        return { success: false, error: "La tarea no pertenece a este equipo." };
+      }
+    }
+
+    const bytes = decodeDataUrl(dataUrl);
+    const url = await uploadToR2(
+      buildElevatorPhotoKey(rel.workOrderId, elevatorId, "jpg"),
+      bytes,
+      "image/jpeg"
+    );
+
+    await db.insert(workOrderElevatorPhotos).values({
+      id: generateUuid(),
+      workOrderElevatorId: elevatorId,
+      workOrderTaskId: taskId ?? null,
+      url,
+      tag,
+      description: description?.trim().slice(0, 1000) || null,
+      createdAt: Date.now(),
+    });
+
+    revalidateTechnicianUrls();
+    return { success: true, message: "Foto agregada." };
+  } catch (error) {
+    console.error("addElevatorPhoto:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Error al subir la foto.",
+    };
+  }
+}
+
+export async function removeElevatorPhoto(photoId: string): Promise<ActionState> {
+  try {
+    const session = await requireTechnician();
+    if (!session.success || !session.technicianId) return session;
+
+    const rows = await db
+      .select({
+        id: workOrderElevatorPhotos.id,
+        url: workOrderElevatorPhotos.url,
+        elevatorId: workOrderElevatorPhotos.workOrderElevatorId,
+      })
+      .from(workOrderElevatorPhotos)
+      .where(eq(workOrderElevatorPhotos.id, photoId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return { success: false, error: "La foto no existe." };
+    }
+
+    await getElevatorWorkOrderByTechnician(session.technicianId, row.elevatorId);
+
+    await deleteR2ObjectByUrl(row.url).catch(() => undefined);
+    await db
+      .delete(workOrderElevatorPhotos)
+      .where(eq(workOrderElevatorPhotos.id, row.id));
 
     revalidateTechnicianUrls();
     return { success: true, message: "Foto eliminada." };
   } catch (error) {
-    console.error("removeElevatorEvidence:", error);
+    console.error("removeElevatorPhoto:", error);
     return {
       success: false,
       message:
@@ -422,6 +778,8 @@ export async function removeElevatorEvidence(
     };
   }
 }
+
+export type ElevatorFinalStatus = "OPERATIVE" | "OUT_OF_SERVICE" | "UNCOMPLETED_MAINTENANCE";
 
 export async function completeWorkOrder(args: {
   workOrderId: string;
@@ -444,12 +802,46 @@ export async function completeWorkOrder(args: {
     const elevators = await db
       .select({
         id: workOrderElevators.id,
+        status: workOrderElevators.status,
         elevatorUnityId: workOrderElevators.elevatorUnityId,
       })
       .from(workOrderElevators)
       .where(eq(workOrderElevators.workOrderId, workOrderId));
 
-    const allowed = new Set<string>(["OPERATIVE", "OUT_OF_SERVICE"]);
+    const elevatorIds = elevators.map((e) => e.id);
+
+    const safetyRows = await db
+      .select({
+        elevatorId: workOrderElevatorSafety.workOrderElevatorId,
+        status: workOrderElevatorSafety.status,
+      })
+      .from(workOrderElevatorSafety)
+      .where(inArray(workOrderElevatorSafety.workOrderElevatorId, elevatorIds));
+    const safetyByElevator = new Map(
+      safetyRows.map((s) => [s.elevatorId, s.status])
+    );
+    for (const elevator of elevators) {
+      if (safetyByElevator.get(elevator.id) !== "COMPLETED") {
+        return {
+          success: false,
+          error:
+            "Todos los equipos deben tener la seguridad completada antes de finalizar la orden.",
+        };
+      }
+    }
+
+    const incompleteElevators = elevators.filter(
+      (e) => e.status !== "COMPLETED"
+    );
+    if (incompleteElevators.length > 0) {
+      return {
+        success: false,
+        error:
+          "Todos los equipos deben tener su checklist terminado antes de finalizar la orden.",
+      };
+    }
+
+    const allowed = new Set<string>(["OPERATIVE", "OUT_OF_SERVICE", "UNCOMPLETED_MAINTENANCE"]);
     const finalStatuses = new Map<string, ElevatorFinalStatus>();
     for (const elevator of elevators) {
       const value = (elevatorStatuses ?? {})[elevator.id];
@@ -457,13 +849,11 @@ export async function completeWorkOrder(args: {
         return {
           success: false,
           error:
-            "Debes indicar el estado final de cada equipo (Operativo o Fuera de Servicio).",
+            "Debes indicar el estado final de cada equipo (Operativo, Fuera de Servicio o Mantenimiento sin culminar).",
         };
       }
       finalStatuses.set(elevator.id, value as ElevatorFinalStatus);
     }
-
-    await ensureSafetyRecords(workOrderId, session.technicianId);
 
     const signatureBytes = decodeDataUrl(signatureDataUrl);
     const signatureUrl = await uploadToR2(

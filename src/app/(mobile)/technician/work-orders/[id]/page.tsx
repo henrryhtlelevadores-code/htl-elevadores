@@ -7,6 +7,7 @@ import {
   getTechnicianWorkOrderExecution,
 } from "@/features/technician/queries";
 import { TechnicianExecutionView } from "@/features/technician/components/execution";
+import { remainingUntilLabel } from "@/features/technician/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,13 @@ export default async function TechnicianWorkOrderExecutionPage({
   const execution = await getTechnicianWorkOrderExecution(context.userId, id);
   if (!execution) notFound();
 
+  const isEmergency =
+    execution.serviceType?.category === "EMERGENCIA" ||
+    Boolean(execution.serviceType?.code?.toUpperCase().startsWith("EMER"));
+  const slaRemainingLabel = isEmergency
+    ? remainingUntilLabel(execution.scheduledDate, execution.scheduledTime)
+    : null;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -36,7 +44,10 @@ export default async function TechnicianWorkOrderExecutionPage({
           Mis órdenes
         </Button>
       </div>
-      <TechnicianExecutionView workOrder={execution} />
+      <TechnicianExecutionView
+        workOrder={execution}
+        slaRemainingLabel={slaRemainingLabel}
+      />
     </div>
   );
 }

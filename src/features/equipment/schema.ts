@@ -29,7 +29,7 @@ tractionType: z
     .optional()
     .or(z.literal("")),
   yearOfFabrication: z.coerce.number().int().min(1900, "Año no válido").max(2100, "Año no válido").optional().nullable(),
-  status: z.string().optional().or(z.literal("")),
+  status: z.enum(["OPERATIVE", "OUT_OF_SERVICE", "UNCOMPLETED_MAINTENANCE"]).optional(),
 });
 
 export type ElevatorUnityFormValues = z.infer<typeof elevatorUnityFormSchema>;

@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { type Brand, type ElevatorType, type ServiceType, type Ubigeo } from "@/db";
+import { type Brand, type ElevatorType, type ServiceType, type Ubigeo, type MaintenanceZone } from "@/db";
 import { type ModelWithBrand } from "../actions";
 import { BrandsModelsTab } from "./brands-models-tab";
 import { TypesTab } from "./types-tab";
 import { ServiceTypesTab } from "./service-types-tab";
 import { UbigeosTab } from "./ubigeos-tab";
+import { MaintenanceZonesTab } from "./maintenance-zones-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tag, Cpu, Layers, Database, Wrench, MapPin } from "lucide-react";
+import { Tag, Cpu, Layers, Database, Wrench, MapPin, MapPinned } from "lucide-react";
 
 interface MastersViewProps {
   brands: Brand[];
@@ -16,9 +17,11 @@ interface MastersViewProps {
   models: ModelWithBrand[];
   serviceTypes: ServiceType[];
   ubigeos: Ubigeo[];
+  maintenanceZones: MaintenanceZone[];
+  maintenanceTypes: ElevatorType[];
 }
 
-export function MastersView({ brands, types, models, serviceTypes, ubigeos }: MastersViewProps) {
+export function MastersView({ brands, types, models, serviceTypes, ubigeos, maintenanceZones, maintenanceTypes }: MastersViewProps) {
   const [activeTab, setActiveTab] = useState("brands-models");
 
   return (
@@ -38,7 +41,7 @@ export function MastersView({ brands, types, models, serviceTypes, ubigeos }: Ma
         </div>
 
         {/* Global Statistics Badges */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-card border border-border text-xs font-mono shadow-xs">
             <Tag className="size-3 text-[#0066CC]" />
             <span className="text-muted-foreground">Marcas:</span>
@@ -68,14 +71,21 @@ export function MastersView({ brands, types, models, serviceTypes, ubigeos }: Ma
       </div>
 
       {/* Tabs Layout */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="w-full overflow-x-auto bg-card border border-border p-1 h-10 rounded-lg shadow-xs sm:w-fit sm:overflow-x-visible">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 space-y-4">
+        <TabsList className="flex h-auto max-w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-card border border-border p-1 rounded-lg shadow-xs scrollbar-thin">
           <TabsTrigger
             value="brands-models"
             className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
           >
             <Tag className="size-3.5" />
             <span>Marcas y Modelos</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="maintenance-zones"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+          >
+            <MapPinned className="size-3.5" />
+            <span>Zonas de Mantenimiento</span>
           </TabsTrigger>
           <TabsTrigger
             value="types"
@@ -114,6 +124,10 @@ export function MastersView({ brands, types, models, serviceTypes, ubigeos }: Ma
 
         <TabsContent value="ubigeos" className="outline-hidden focus:outline-none">
           <UbigeosTab initialUbigeos={ubigeos} />
+        </TabsContent>
+
+        <TabsContent value="maintenance-zones" className="outline-hidden focus:outline-none">
+          <MaintenanceZonesTab initialZones={maintenanceZones} elevatorTypes={maintenanceTypes} />
         </TabsContent>
       </Tabs>
     </div>

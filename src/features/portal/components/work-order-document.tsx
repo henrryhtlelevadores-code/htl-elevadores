@@ -5,6 +5,7 @@ import Link from "next/link";
 import type {
   PortalWorkOrderDocument,
   PortalDocumentElevator,
+  PortalDocumentTask,
 } from "../queries";
 import {
   ArrowLeft,
@@ -252,6 +253,16 @@ function ElevatorDocumentSection({
   elevator: PortalDocumentElevator;
 }) {
   const completed = elevator.tasks.filter((t) => t.isCompleted).length;
+  const hasModules = elevator.tasks.some((task) => task.moduleId !== null);
+  const taskGroups = Array.from(
+    elevator.tasks.reduce((groups, task) => {
+      const key = task.moduleId ?? "__without-module__";
+      const group = groups.get(key) ?? [];
+      group.push(task);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, PortalDocumentTask[]>())
+  );
   const finalStatus =
     elevator.finalStatus === "OUT_OF_SERVICE"
       ? "Fuera de servicio"
@@ -318,64 +329,88 @@ function ElevatorDocumentSection({
                 {completed}/{elevator.tasks.length} completadas
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100">
-              {elevator.tasks.map((task) => (
-                <div key={task.id} className="px-3 py-2 flex items-start gap-2.5">
-                  {task.isCompleted ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-slate-300 mt-0.5 shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={`text-sm ${
-                        task.isCompleted
-                          ? "text-slate-700"
-                          : "text-slate-500 line-through"
-                      }`}
-                    >
-                      {task.taskDescription}
-                      {task.isCritical && (
-                        <span className="ml-1.5 text-[9px] font-bold uppercase text-red-600 border border-red-100 rounded px-1 py-0.5 bg-red-50 align-middle">
-                          Crítica
-                        </span>
-                      )}
-                    </p>
-                    {task.observations && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Obs.: {task.observations}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {hasModules ? (
+              <div className="space-y-2">
+                {taskGroups.map(([moduleId, moduleTasks]) => (
+                  <details key={moduleId} open className="rounded-lg border border-slate-200">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-xs font-bold text-slate-700">
+                      {moduleTasks[0]?.moduleCode ?? "Sin módulo"} · {moduleTasks[0]?.moduleName ?? "Tareas generales"} ({moduleTasks.length} tareas)
+                    </summary>
+                    <div className="divide-y divide-slate-100 border-t border-slate-200">
+                      {moduleTasks.map((task) => <TaskRow key={task.id} task={task} />)}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                {elevator.tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Evidencias */}
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-            Evidencia fotográfica ({elevator.evidencePhotoUrls.length})
+             Evidencia fotográfica ({elevator.photos.length})
           </div>
-          {elevator.evidencePhotoUrls.length === 0 ? (
+           {elevator.photos.length === 0 ? (
             <p className="text-sm text-slate-400 italic">
               Sin evidencias fotográficas registradas.
             </p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {elevator.evidencePhotoUrls.map((url, idx) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={url}
-                  src={url}
-                  alt={`Evidencia ${idx + 1} - ${elevator.internalCode ?? ""}`}
-                  className="aspect-square w-full object-cover rounded-lg border border-slate-200"
-                />
-              ))}
+              {(["BEFORE", "AFTER", "POINT"] as const).map((tag) => {
+                const photos = elevator.photos.filter((photo) => photo.tag === tag);
+                if (photos.length === 0) return null;
+                return (
+                  <div key={tag} className="col-span-full space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      {{ BEFORE: "Antes", AFTER: "Después", POINT: "Puntuales" }[tag]}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {photos.map((photo, idx) => (
+                        <div key={photo.id} className="space-y-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={photo.url} alt={`Evidencia ${idx + 1} - ${elevator.internalCode ?? ""}`} className="aspect-square w-full rounded-lg border border-slate-200 object-cover" />
+                          {photo.description && (
+                            <p className="text-[11px] leading-snug text-slate-500">
+                              {photo.description}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskRow({ task }: { task: PortalDocumentTask }) {
+  return (
+    <div className="flex items-start gap-2.5 px-3 py-2">
+      {task.isCompleted ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+      ) : (
+        <Circle className="mt-0.5 size-4 shrink-0 text-slate-300" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm ${task.isCompleted ? "text-slate-700" : "text-slate-500 line-through"}`}>
+          {task.taskDescription}
+          {task.isCritical && (
+            <span className="ml-1.5 rounded border border-red-100 bg-red-50 px-1 py-0.5 text-[9px] font-bold uppercase text-red-600">
+              Crítica
+            </span>
+          )}
+        </p>
+        {task.observations && <p className="mt-0.5 text-xs text-slate-500">Obs.: {task.observations}</p>}
       </div>
     </div>
   );

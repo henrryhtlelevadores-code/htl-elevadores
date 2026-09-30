@@ -4,15 +4,18 @@ import { revalidatePath } from "next/cache";
 import {
   db,
   brands,
-  elevatorTypes,
   models,
   serviceTypes,
   ubigeos,
+  maintenanceZones,
+  maintenanceTasks,
+  elevatorTypes,
   type Brand,
   type ElevatorType,
   type Model,
   type ServiceType,
   type Ubigeo,
+  type MaintenanceZone,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
@@ -29,8 +32,10 @@ import {
   type ServiceTypeFormValues,
   type UbigeoFormValues,
   type UbigeoBulkImportValues,
+  maintenanceZoneFormSchema,
+  type MaintenanceZoneFormValues,
 } from "./schema";
-import { eq, asc } from "drizzle-orm";
+import { and, eq, asc, max } from "drizzle-orm";
 
 // ==========================================
 // 1. MARCAS (BRANDS)
@@ -42,6 +47,106 @@ export async function getBrands(): Promise<Brand[]> {
   } catch (error) {
     console.error("Error al obtener marcas desde Turso:", error);
     return [];
+  }
+}
+
+export async function getMaintenanceZones(): Promise<MaintenanceZone[]> {
+  try {
+    return await db.select().from(maintenanceZones).orderBy(asc(maintenanceZones.orderIndex));
+  } catch (error) {
+    console.error("Error al obtener zonas de mantenimiento:", error);
+    return [];
+  }
+}
+
+export async function getMaintenanceElevatorTypes(): Promise<ElevatorType[]> {
+  return db.select().from(elevatorTypes).orderBy(asc(elevatorTypes.name));
+}
+
+export async function createMaintenanceZone(data: MaintenanceZoneFormValues) {
+  try {
+    const validated = maintenanceZoneFormSchema.parse(data);
+    const [equipmentType] = await db.select({ id: elevatorTypes.id })
+      .from(elevatorTypes).where(eq(elevatorTypes.id, validated.elevatorTypeId)).limit(1);
+    if (!equipmentType) return { success: false, error: "El tipo de equipo seleccionado no existe." };
+    const duplicate = await db.select({ id: maintenanceZones.id }).from(maintenanceZones)
+      .where(and(eq(maintenanceZones.name, validated.name.trim()), eq(maintenanceZones.elevatorTypeId, validated.elevatorTypeId))).limit(1);
+    if (duplicate.length > 0) return { success: false, error: "Ya existe una zona con ese nombre para este tipo de equipo." };
+    const [{ nextOrder }] = await db
+      .select({ nextOrder: max(maintenanceZones.orderIndex) })
+      .from(maintenanceZones)
+      .where(eq(maintenanceZones.elevatorTypeId, validated.elevatorTypeId));
+    const orderIndex = (nextOrder ?? 0) + 1;
+    const existingCodes = await db.select({ code: maintenanceZones.code }).from(maintenanceZones);
+    const usedCodes = new Set(existingCodes.map((zone) => zone.code));
+    let codeNumber = 1;
+    while (usedCodes.has(`ZONA_${String(codeNumber).padStart(2, "0")}`)) codeNumber += 1;
+    const code = `ZONA_${String(codeNumber).padStart(2, "0")}`;
+    const id = generateUuid();
+    await db.insert(maintenanceZones).values({
+      id,
+      code,
+      name: validated.name.trim(),
+      orderIndex,
+      isActive: validated.isActive,
+      elevatorTypeId: validated.elevatorTypeId,
+    });
+    revalidatePath("/masters");
+    return {
+      success: true,
+      message: "Zona creada correctamente",
+      zone: { id, code, name: validated.name.trim(), orderIndex, isActive: validated.isActive, elevatorTypeId: validated.elevatorTypeId },
+    };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function updateMaintenanceZone(id: string, data: MaintenanceZoneFormValues) {
+  try {
+    const validated = maintenanceZoneFormSchema.parse(data);
+    const [currentZone] = await db.select({ code: maintenanceZones.code, elevatorTypeId: maintenanceZones.elevatorTypeId })
+      .from(maintenanceZones).where(eq(maintenanceZones.id, id)).limit(1);
+    if (!currentZone) return { success: false, error: "La zona no existe." };
+
+    const [equipmentType] = await db.select({ id: elevatorTypes.id })
+      .from(elevatorTypes).where(eq(elevatorTypes.id, validated.elevatorTypeId)).limit(1);
+    if (!equipmentType) return { success: false, error: "El tipo de equipo seleccionado no existe." };
+    if (validated.elevatorTypeId && currentZone?.elevatorTypeId !== validated.elevatorTypeId) {
+      const assignedTasks = await db.select({ id: maintenanceTasks.id }).from(maintenanceTasks)
+        .where(eq(maintenanceTasks.zoneId, id)).limit(1);
+      if (assignedTasks.length > 0) return { success: false, error: "No se puede cambiar el tipo: la zona tiene tareas asignadas." };
+    }
+    const duplicate = await db.select({ id: maintenanceZones.id }).from(maintenanceZones)
+      .where(and(eq(maintenanceZones.name, validated.name.trim()), eq(maintenanceZones.elevatorTypeId, validated.elevatorTypeId))).limit(1);
+    if (duplicate.length > 0 && duplicate[0].id !== id) return { success: false, error: "Ya existe una zona con ese nombre para este tipo de equipo." };
+    await db.update(maintenanceZones).set({
+      ...(validated.code ? { code: validated.code.trim().toUpperCase() } : {}),
+      name: validated.name.trim(),
+      orderIndex: validated.orderIndex,
+      isActive: validated.isActive,
+      elevatorTypeId: validated.elevatorTypeId,
+    }).where(eq(maintenanceZones.id, id));
+    revalidatePath("/masters");
+    revalidatePath("/configuracion/mantenimiento/modulos");
+    return {
+      success: true,
+      message: "Zona actualizada correctamente",
+      zone: { id, code: validated.code?.trim().toUpperCase() || currentZone.code, name: validated.name.trim(), orderIndex: validated.orderIndex ?? 0, isActive: validated.isActive, elevatorTypeId: validated.elevatorTypeId },
+    };
+  } catch (error) {
+    console.error("Error al actualizar zona de mantenimiento:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function deleteMaintenanceZone(id: string) {
+  try {
+    await db.delete(maintenanceZones).where(eq(maintenanceZones.id, id));
+    revalidatePath("/masters");
+    return { success: true, message: "Zona eliminada correctamente" };
+  } catch (error) {
+    return { success: false, error: "No se puede eliminar una zona utilizada por tareas." };
   }
 }
 

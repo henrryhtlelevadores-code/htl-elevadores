@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { loginAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FortexLogo } from "@/components/fortex-logo";
 import {
   Form,
   FormControl,
@@ -76,16 +77,11 @@ export function LoginForm({ next = "/" }: { next?: string }) {
         <div className="absolute -right-24 -top-24 size-96 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-black/20 blur-2xl" />
 
-        <div className="relative flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-white text-[#0066CC] font-extrabold shadow-lg">
-            <span className="text-lg tracking-tighter">H</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-base font-bold tracking-tight">HTL Elevadores</span>
-            <span className="text-[11px] text-white/70 font-medium uppercase tracking-wider">
-              Portal Privado
-            </span>
-          </div>
+        <div className="relative flex flex-col gap-2.5">
+          <FortexLogo variant="white" maxWidth={180} priority />
+          <p className="text-[11px] text-white/70 font-medium">
+            Creado por <span className="font-semibold text-white/90">Fortex Digital Solutions</span>
+          </p>
         </div>
 
         <div className="relative space-y-6">
@@ -128,18 +124,17 @@ export function LoginForm({ next = "/" }: { next?: string }) {
         <div className="w-full max-w-sm">
           {/* Marca compacta (móvil) */}
           <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
-            <div className="flex size-12 items-center justify-center rounded-xl bg-[#0066CC] text-white font-extrabold shadow-md">
-              <span className="text-lg tracking-tighter">H</span>
-            </div>
-            <div className="text-center">
-              <p className="text-base font-bold tracking-tight">HTL Elevadores</p>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">
-                Portal Privado
-              </p>
-            </div>
+            <FortexLogo maxWidth={150} priority />
+            <p className="text-center text-[11px] text-muted-foreground font-medium">
+              Creado por{" "}
+              <span className="font-semibold text-foreground">Fortex Digital Solutions</span>
+            </p>
           </div>
 
           <div className="mb-8">
+            <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Portal de HTL Elevadores
+            </p>
             <h2 className="text-2xl font-extrabold tracking-tight">Iniciar sesión</h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
               Accede con tu correo y contraseña corporativos.

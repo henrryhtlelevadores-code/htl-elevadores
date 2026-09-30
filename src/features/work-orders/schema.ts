@@ -5,10 +5,13 @@ export const workOrderFormSchema = z.object({
   costCenterId: z.string().min(1, "El centro de costo es obligatorio"),
   serviceTypeId: z.string().min(1, "El tipo de servicio es obligatorio"),
   technicianId: z.string().optional().or(z.literal("")),
-  priority: z.string().optional().or(z.literal("")),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "EMERGENCY"]).optional(),
   scheduledDate: z.string().min(1, "La fecha programada es obligatoria"),
-  scheduledTime: z.string().optional().or(z.literal("")),
-  elevatorUnityIds: z.array(z.string()),
+  scheduledTime: z.string().min(1, "La hora programada es obligatoria"),
+  elevatorUnityIds: z.array(z.string()).min(1, "Selecciona al menos un equipo"),
+  description: z.string().optional(),
+  supportingTechnicians: z.string().optional(),
+  estimatedDurationMins: z.coerce.number().int().positive().optional().nullable(),
 });
 
 export type WorkOrderFormValues = z.infer<typeof workOrderFormSchema>;
@@ -37,6 +40,7 @@ export const workOrderTaskFormSchema = z.object({
     .max(500, "Máximo 500 caracteres")
     .optional()
     .or(z.literal("")),
+  requiresPhoto: z.boolean().default(false),
 });
 
 export type WorkOrderTaskFormValues = z.infer<typeof workOrderTaskFormSchema>;

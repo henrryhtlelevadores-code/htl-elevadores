@@ -9,6 +9,7 @@ import {
   serviceTypes,
   elevatorUnities,
   contractElevators,
+  maintenanceModules,
   brands,
   models,
   elevatorTypes,
@@ -24,7 +25,7 @@ import {
   type ContractFormValues,
   type ContractElevatorFormValues,
 } from "./schema";
-import { eq, asc, desc, isNull, and, or, gte, inArray, like, count } from "drizzle-orm";
+import { eq, asc, desc, isNull, isNotNull, and, or, gte, inArray, like, count } from "drizzle-orm";
 import { preventiveRouteStops, workOrders, workOrderElevators } from "@/db/index";
 
 export type ContractWithRelations = Contract & {
@@ -71,6 +72,7 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
         includesIgv: contracts.includesIgv,
         paymentTermsDays: contracts.paymentTermsDays,
         inflationAdjustment: contracts.inflationAdjustment,
+        maintenanceFrequencyMonths: contracts.maintenanceFrequencyMonths,
         slaEntrapmentMins: contracts.slaEntrapmentMins,
         slaMechanicalFailureMins: contracts.slaMechanicalFailureMins,
         clientSignerName: contracts.clientSignerName,
@@ -114,6 +116,7 @@ export async function createContract(data: ContractFormValues) {
       includesIgv: validated.includesIgv,
       paymentTermsDays: validated.paymentTermsDays ?? 5,
       inflationAdjustment: validated.inflationAdjustment,
+      maintenanceFrequencyMonths: validated.maintenanceFrequencyMonths ?? 1,
       slaEntrapmentMins: validated.slaEntrapmentMins ?? 45,
       slaMechanicalFailureMins: validated.slaMechanicalFailureMins ?? 180,
     });
@@ -141,6 +144,7 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
       includesIgv?: boolean;
       paymentTermsDays?: number;
       inflationAdjustment?: boolean;
+      maintenanceFrequencyMonths?: number;
       slaEntrapmentMins?: number;
       slaMechanicalFailureMins?: number;
     } = {};
@@ -157,6 +161,8 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
     if (data.paymentTermsDays !== undefined) updateData.paymentTermsDays = data.paymentTermsDays;
     if (data.inflationAdjustment !== undefined)
       updateData.inflationAdjustment = data.inflationAdjustment;
+    if (data.maintenanceFrequencyMonths !== undefined)
+      updateData.maintenanceFrequencyMonths = data.maintenanceFrequencyMonths;
     if (data.slaEntrapmentMins !== undefined) updateData.slaEntrapmentMins = data.slaEntrapmentMins;
     if (data.slaMechanicalFailureMins !== undefined)
       updateData.slaMechanicalFailureMins = data.slaMechanicalFailureMins;
@@ -208,8 +214,8 @@ export async function cancelContract(id: string) {
       const prevServiceTypeId = prev?.id;
 
       const typeFilter = prevServiceTypeId
-        ? or(eq(workOrders.type, prevServiceTypeId), eq(workOrders.type, "PREVENTIVE"))
-        : eq(workOrders.type, "PREVENTIVE");
+        ? or(eq(workOrders.serviceTypeId, prevServiceTypeId), eq(serviceTypes.code, "PREV"))
+        : eq(serviceTypes.code, "PREV");
 
       const futurePending = await db
         .select({ id: workOrders.id })
@@ -257,9 +263,79 @@ export async function cancelContract(id: string) {
   }
 }
 
+/**
+ * Mapa contrato -> tiene módulos rotativos.
+ * Permite ocultar la frecuencia de mantenimiento cuando todos los módulos del
+ * contrato son fijos (por ejemplo plataformas, que usan meses absolutos).
+ */
+export async function getContractsWithRotatingModules(): Promise<
+  Record<string, boolean>
+> {
+  try {
+    const rows = await db
+      .selectDistinct({ contractId: contractElevators.contractId })
+      .from(contractElevators)
+      .innerJoin(
+        elevatorUnities,
+        eq(contractElevators.elevatorUnityId, elevatorUnities.id)
+      )
+      .innerJoin(
+        maintenanceModules,
+        eq(maintenanceModules.elevatorTypeId, elevatorUnities.elevatorTypeId)
+      )
+      .where(
+        and(
+          eq(maintenanceModules.isActive, true),
+          isNotNull(maintenanceModules.rotationGroup)
+        )
+      );
+
+    return Object.fromEntries(rows.map((row) => [row.contractId, true]));
+  } catch (error) {
+    console.error("Error al revisar módulos rotativos por contrato:", error);
+    return {};
+  }
+}
+
 // ==========================================
 // 2. EQUIPOS DEL CONTRATO (CONTRACT ELEVATORS)
 // ==========================================
+
+/**
+ * ¿El contrato tiene algún módulo rotativo asignado?
+ * La frecuencia de mantenimiento del contrato solo aplica en ese caso.
+ */
+export async function contractHasRotatingModules(
+  contractId: string
+): Promise<boolean> {
+  try {
+    const rows = await db
+      .select({ id: maintenanceModules.id })
+      .from(contractElevators)
+      .innerJoin(
+        elevatorUnities,
+        eq(contractElevators.elevatorUnityId, elevatorUnities.id)
+      )
+      .innerJoin(
+        maintenanceModules,
+        eq(maintenanceModules.elevatorTypeId, elevatorUnities.elevatorTypeId)
+      )
+      .where(
+        and(
+          eq(contractElevators.contractId, contractId),
+          eq(maintenanceModules.isActive, true),
+          isNotNull(maintenanceModules.rotationGroup)
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
+  } catch (error) {
+    console.error("Error al revisar módulos rotativos del contrato:", error);
+    // Ante cualquier duda se muestra el campo: la validación real ocurre al
+    // generar la orden de trabajo.
+    return true;
+  }
+}
 
 export type ContractElevatorWithRelations = ContractElevator & {
   internal_code?: string | null;
@@ -439,6 +515,7 @@ export async function getContractById(id: string): Promise<ContractDetail | null
         includesIgv: contracts.includesIgv,
         paymentTermsDays: contracts.paymentTermsDays,
         inflationAdjustment: contracts.inflationAdjustment,
+        maintenanceFrequencyMonths: contracts.maintenanceFrequencyMonths,
         slaEntrapmentMins: contracts.slaEntrapmentMins,
         slaMechanicalFailureMins: contracts.slaMechanicalFailureMins,
         clientSignerName: contracts.clientSignerName,

@@ -1,13 +1,15 @@
 import { getCompletedWorkOrders, getReportsFilterData } from "@/features/reports/actions";
 import { InformesView } from "@/features/reports/components/informes-view";
 import { FileText } from "lucide-react";
+import { getSessionUser } from "@/features/auth/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const [workOrders, filterData] = await Promise.all([
+  const [workOrders, filterData, currentUser] = await Promise.all([
     getCompletedWorkOrders(),
     getReportsFilterData(),
+    getSessionUser(),
   ]);
 
   return (
@@ -29,6 +31,10 @@ export default async function ReportsPage() {
         workOrders={workOrders}
         clients={filterData.clients}
         costCenters={filterData.costCenters}
+        currentUser={{
+          id: currentUser?.id ?? "",
+          fullName: currentUser?.fullName ?? null,
+        }}
       />
     </div>
   );

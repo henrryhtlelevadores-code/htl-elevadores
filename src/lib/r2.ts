@@ -96,4 +96,24 @@ export function buildSignatureKey(workOrderId: string): string {
   return `work-orders/${wo}/client-signature.png`;
 }
 
+/** Foto etiquetada (antes/después/puntual) del flujo del técnico. */
+export function buildElevatorPhotoKey(
+  workOrderId: string,
+  elevatorId: string,
+  ext: string
+): string {
+  const wo = workOrderId.replace(/-/g, "").toLowerCase().slice(0, 12);
+  const ev = elevatorId.replace(/-/g, "").toLowerCase().slice(0, 12);
+  const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `work-orders/${wo}/${ev}/photos-${ts}-${rand}.${ext}`;
+}
+
+/** Firma del técnico en su perfil de personal. Usa un id propio para poder
+ *  subirla antes de que el usuario exista (usuarios nuevos). */
+export function buildStaffSignatureKey(signatureId: string): string {
+  const id = signatureId.replace(/-/g, "").toLowerCase().slice(0, 24);
+  return `staff/signatures/${id}.png`;
+}
+
 const INDEX_SAFE_REPLACEMENTS = (n: number) => String(n).padStart(2, "0");

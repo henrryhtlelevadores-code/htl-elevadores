@@ -2,9 +2,10 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LogoutButton } from "@/components/logout-button";
+import { Button } from "@/components/ui/button";
 
 const routeNames: Record<string, string> = {
   "/": "Inicio",
@@ -40,9 +41,11 @@ function initialsFromName(name: string): string {
 export function DashboardTopbar({
   userName,
   roleName,
+  onMenuClick,
 }: {
   userName: string;
   roleName: string;
+  onMenuClick?: () => void;
 }) {
   const pathname = usePathname();
   const currentTitle = routeNames[pathname] || "Operaciones";
@@ -51,15 +54,25 @@ export function DashboardTopbar({
   return (
     <header className="h-16 border-b border-border bg-card/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20 select-none shadow-xs">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs sm:gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onMenuClick}
+          className="shrink-0 md:hidden"
+          aria-label="Abrir menú de navegación"
+        >
+          <Menu className="size-5" />
+        </Button>
         <Link
           href="/"
-          className="text-muted-foreground hover:text-foreground font-medium transition-colors"
+          className="truncate font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           HTL Elevadores
         </Link>
         <ChevronRight className="size-3 text-muted-foreground/60" />
-        <span className="text-foreground font-semibold">{currentTitle}</span>
+        <span className="truncate font-semibold text-foreground">{currentTitle}</span>
       </div>
 
       {/* Right Tools / User */}

@@ -40,7 +40,9 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  Wrench,
 } from "lucide-react";
+import { MaintenancePlanDialog } from "@/features/maintenance/components/maintenance-plan-dialog";
 
 interface EquipmentOption {
   id: string;
@@ -117,6 +119,7 @@ export function ContractElevatorsTable({
   const [freqInput, setFreqInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [planElevator, setPlanElevator] = useState<ContractElevatorWithRelations | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const costCenterEquipment = useMemo(
@@ -267,6 +270,15 @@ export function ContractElevatorsTable({
           const ce = row.original;
           return (
             <div className="flex items-center justify-end gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setPlanElevator(ce)}
+                className="text-[#0066CC] hover:bg-[#0066CC]/10"
+                title="Plan de mantenimiento"
+              >
+                <Wrench className="size-3.5" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-xs"
@@ -580,6 +592,16 @@ export function ContractElevatorsTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog: Plan de mantenimiento por ascensor */}
+      <MaintenancePlanDialog
+        open={!!planElevator}
+        onOpenChange={(open) => !open && setPlanElevator(null)}
+        contractElevatorId={planElevator?.id ?? null}
+        elevatorLabel={
+          planElevator ? `${planElevator.internal_code} — ${planElevator.elevator_name}` : ""
+        }
+      />
     </div>
   );
 }

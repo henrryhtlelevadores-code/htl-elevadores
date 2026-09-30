@@ -1,357 +1,109 @@
 "use client";
 
 import Link from "next/link";
-import type { PortalDashboardData, PortalInformeItem, PortalQuotationItem } from "../queries";
-import {
-  Building2,
-  MapPin,
-  CheckCircle2,
-  LogOut,
-  Wrench,
-  Activity,
-  FileText,
-  ArrowRight,
-  ReceiptText,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import type { PortalDashboardData, PortalQuotationItem, PortalWorkOrderItem } from "../queries";
+import { Activity, ArrowRight, Building2, Download, FileText, LogOut, MapPin, Phone, ReceiptText, Wrench } from "lucide-react";
 
-const COVER_FALLBACK =
-  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=2000&auto=format&fit=crop";
-
-function formatDate(unix: number | null): string {
-  if (!unix) return "Fecha no registrada";
-  const date = new Date(unix * 1000);
-  return date.toLocaleDateString("es-PE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+function formatDate(value: number | null): string {
+  if (!value) return "—";
+  const date = new Date(value < 100000000000 ? value * 1000 : value);
+  return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function equipmentStatusLabel(status: string | null): {
-  label: string;
-  dot: string;
-  text: string;
-} {
+function equipmentStatus(status: string | null) {
   switch (status) {
-    case "OPERATIVE":
-      return { label: "Operativo", dot: "bg-emerald-500", text: "text-emerald-600" };
-    case "MAINTENANCE":
-      return { label: "En mantenimiento", dot: "bg-amber-500", text: "text-amber-600" };
-    case "OUT_OF_SERVICE":
-      return { label: "Fuera de servicio", dot: "bg-red-500", text: "text-red-600" };
-    default:
-      return { label: status || "Desconocido", dot: "bg-slate-400", text: "text-slate-500" };
+    case "OPERATIVE": return ["Operativo", "bg-emerald-50 text-emerald-700 border-emerald-200"];
+    case "MAINTENANCE": return ["En mantenimiento", "bg-blue-50 text-blue-700 border-blue-200"];
+    case "STOPPED":
+    case "OUT_OF_SERVICE": return ["Detenido", "bg-red-50 text-red-700 border-red-200"];
+    case "PENDING_COMPLETION": return ["Sin culminar", "bg-orange-50 text-orange-700 border-orange-200"];
+    default: return [status || "Sin estado", "bg-slate-100 text-slate-600 border-slate-200"];
   }
 }
 
-function workOrderStatusLabel(status: string | null): { label: string; className: string } {
-  switch (status) {
-    case "COMPLETED":
-      return {
-        label: "Completado",
-        className: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-      };
-    case "IN_PROGRESS":
-      return { label: "En proceso", className: "bg-amber-50 text-amber-700 border border-amber-100" };
-    case "PENDING":
-      return { label: "Pendiente", className: "bg-slate-100 text-slate-600" };
-    default:
-      return { label: status || "—", className: "bg-slate-100 text-slate-600" };
-  }
+function workType(order: PortalWorkOrderItem) {
+  return order.serviceTypeName ?? (order.type === "PREV" ? "Preventivo" : order.type === "CORR" ? "Correctivo" : "Mantenimiento");
 }
 
-const LEGACY_TYPE_LABELS: Record<string, string> = {
-  CORRECTIVE: "Mantenimiento Correctivo",
-  PREVENTIVE: "Mantenimiento Preventivo",
-  PREDICTIVE: "Mantenimiento Predictivo",
-  INSTALLATION: "Instalación",
-};
-
-function typeLabel(item: { type: string | null; serviceTypeName: string | null }): string {
-  if (item.serviceTypeName) return item.serviceTypeName;
-  if (item.type && LEGACY_TYPE_LABELS[item.type]) return LEGACY_TYPE_LABELS[item.type];
-  return item.type || "—";
+function quotationStatus(status: string | null) {
+  return status === "ACCEPTED"
+    ? ["Aceptada", "bg-emerald-50 text-emerald-700 border-emerald-200"]
+    : ["Pendiente", "bg-blue-50 text-blue-700 border-blue-200"];
 }
-
-function informeLink(costCenterId: string, item: PortalInformeItem): string {
-  return `/portal/${costCenterId}/informes/${item.id}`;
-}
-
-function quotationLink(costCenterId: string, item: PortalQuotationItem): string {
-  return `/portal/${costCenterId}/cotizaciones/${item.id}`;
-}
-
-function quotationStatusLabel(status: string | null): { label: string; className: string } {
-  switch (status) {
-    case "ACCEPTED":
-      return {
-        label: "Aceptada",
-        className: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-      };
-    case "SENT":
-      return { label: "Enviada", className: "bg-blue-50 text-blue-700 border border-blue-100" };
-    case "REJECTED":
-      return { label: "Rechazada", className: "bg-red-50 text-red-700 border border-red-100" };
-    case "DRAFT":
-      return { label: "Borrador", className: "bg-amber-50 text-amber-700 border border-amber-100" };
-    default:
-      return { label: status || "—", className: "bg-slate-100 text-slate-600" };
-  }
-}
-
-const quotationMoney = (value: number | null) =>
-  Number(value ?? 0).toLocaleString("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  });
 
 export function CostCenterDashboard({ data }: { data: PortalDashboardData }) {
-  const { costCenter, equipments, recentWorkOrders, informes, quotations } = data;
+  const { costCenter, equipments, recentWorkOrders, quotations, documents } = data;
+  const [year, setYear] = useState("ALL");
+  const [type, setType] = useState("ALL");
+  const [quotationTab, setQuotationTab] = useState<"pending" | "history">("pending");
+  const [sixMonthsAgo] = useState(() => Date.now() - 1000 * 60 * 60 * 24 * 30 * 6);
+  const hasStopped = equipments.some((equipment) => ["STOPPED", "OUT_OF_SERVICE", "PENDING_COMPLETION"].includes(equipment.status ?? ""));
+  const stoppedCount = equipments.filter((equipment) => ["STOPPED", "OUT_OF_SERVICE", "PENDING_COMPLETION"].includes(equipment.status ?? "")).length;
+  const years = [...new Set(recentWorkOrders.map((order) => {
+    const date = order.completedAt ?? order.createdAt;
+    return date ? String(new Date(date < 100000000000 ? date * 1000 : date).getFullYear()) : null;
+  }).filter(Boolean) as string[])];
+  const visibleOrders = useMemo(() => recentWorkOrders.filter((order) => {
+    const date = order.completedAt ?? order.createdAt;
+    const timestamp = date ? (date < 100000000000 ? date * 1000 : date) : 0;
+    const orderYear = date ? String(new Date(date < 100000000000 ? date * 1000 : date).getFullYear()) : "";
+    const recentEnough = timestamp >= sixMonthsAgo;
+    return (year === "ALL" ? recentEnough : year === orderYear) &&
+      (type === "ALL" || order.type === type || (type === "PREV" && workType(order).toLowerCase().includes("prevent")) || (type === "CORR" && workType(order).toLowerCase().includes("correct")));
+  }), [recentWorkOrders, sixMonthsAgo, type, year]);
+  const pendingQuotes = quotations.filter((quote) => quote.status === "SENT");
+  const historyQuotes = quotations.filter((quote) => quote.status === "ACCEPTED");
+  const lastVisit = recentWorkOrders.find((order) => order.status === "COMPLETED")?.completedAt ?? null;
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
-      {/* Cover Image */}
-      <div
-        className="h-56 w-full bg-cover bg-center"
-        style={{
-          backgroundImage: `url(${costCenter.mainPhotoUrl || COVER_FALLBACK})`,
-          backgroundColor: "#e2e8f0",
-        }}
-      />
-
-      {/* Contenedor Principal */}
-      <div className="max-w-5xl mx-auto px-6 sm:px-12 pb-20">
-        {/* Cabecera Superior (Botón Salir) */}
-        <div className="flex justify-end pt-4 relative z-20">
-          <form action={`/portal/${costCenter.id}/logout`} method="post">
-            <button
-              type="submit"
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Salir
-            </button>
-          </form>
-        </div>
-
-        {/* Bloque del Ícono (Aislado con margen negativo, flota sobre la imagen) */}
-        <div className="-mt-16 sm:-mt-20 mb-4 relative z-10">
-          <div className="w-24 h-24 sm:w-28 sm:h-28 bg-white rounded-xl border border-slate-200 flex items-center justify-center shadow-sm">
-            <Building2 className="w-10 h-10 sm:w-12 sm:h-12 text-[#021133]" />
-          </div>
-        </div>
-
-        {/* Bloque de Texto (Reposa sobre el fondo blanco) */}
-        <div className="mb-10">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mb-2 truncate">
-            {costCenter.name}
-          </h1>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
-            <div className="flex items-center gap-1.5 text-slate-500 min-w-0">
-              <MapPin className="w-4 h-4 shrink-0" />
-              <span className="truncate">
-                {[costCenter.address, costCenter.district].filter(Boolean).join(", ") ||
-                  "Dirección no registrada"}
-              </span>
+    <main className="min-h-dvh bg-slate-50 text-slate-900">
+      <div className="mx-auto w-full max-w-[900px] space-y-8 px-4 py-5 sm:px-6 sm:py-8">
+        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#021133] text-white"><Building2 className="size-5" /></div>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold sm:text-2xl">{costCenter.name}</h1>
+                <p className="mt-1 flex items-start gap-1.5 text-sm text-slate-500"><MapPin className="mt-0.5 size-4 shrink-0" />{[costCenter.address, costCenter.district].filter(Boolean).join(", ") || "Dirección no registrada"}</p>
+                {(costCenter.contactName || costCenter.contactPhone) && <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500"><span>👤</span>{costCenter.contactName ?? "Contacto"}{costCenter.contactPhone && <><span>·</span><Phone className="size-3.5" />{costCenter.contactPhone}</>}</p>}
+              </div>
             </div>
-
-            <div className="flex items-center gap-1.5 text-emerald-600 font-medium shrink-0">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Mantenimiento al día</span>
-            </div>
+            <form action={`/portal/${costCenter.id}/logout`} method="post"><button type="submit" className="inline-flex shrink-0 items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900"><LogOut className="size-4" />Salir</button></form>
           </div>
-        </div>
-
-        <hr className="border-slate-100 mb-10" />
-
-        {/* Grid de Contenido Principal */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-          {/* Columna Izquierda: Equipos y OTs (2/3 del espacio) */}
-          <div className="md:col-span-2 space-y-8">
-            <section>
-              <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-[#021133]" /> Equipos Instalados
-              </h2>
-              {equipments.length === 0 ? (
-                <div className="p-6 rounded-lg bg-white border border-slate-200 text-sm text-slate-500">
-                  No hay equipos registrados para este edificio.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {equipments.map((e) => {
-                    const status = equipmentStatusLabel(e.status);
-                    return (
-                      <div
-                        key={e.id}
-                        className="p-4 rounded-lg bg-white border border-slate-200 flex justify-between items-center gap-3 hover:bg-slate-50 transition-colors cursor-default"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-900 truncate">
-                            {e.internalCode || e.name}
-                          </p>
-                          <p className="text-sm text-slate-500 truncate">
-                            {[e.brandName, e.modelName, e.elevatorTypeName]
-                              .filter(Boolean)
-                              .join(" • ") || "Equipo"}
-                            {e.stops != null && e.floors != null ? ` • ${e.floors} niveles` : ""}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`w-2 h-2 rounded-full ${status.dot}`} />
-                          <span className={`text-sm font-medium ${status.text}`}>
-                            {status.label}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-[#021133]" /> Últimas Órdenes de Trabajo
-              </h2>
-              {recentWorkOrders.length === 0 ? (
-                <div className="p-6 rounded-lg bg-white border border-slate-200 text-sm text-slate-500">
-                  No hay órdenes de trabajo registradas todavía.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {recentWorkOrders.map((wo) => {
-                    const status = workOrderStatusLabel(wo.status);
-                    return (
-                      <div
-                        key={wo.id}
-                        className="p-4 rounded-lg bg-white border border-slate-200 flex justify-between items-center gap-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-900 truncate">
-                            {wo.otNumber} ·{" "}
-                            {wo.type === "PREVENTIVE"
-                              ? "Mantenimiento Preventivo"
-                              : "Mantenimiento Correctivo"}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            {wo.scheduledDate
-                              ? `Programado el ${formatDate(Number(wo.scheduledDate))}`
-                              : wo.scheduledTime
-                                ? `Programado a las ${wo.scheduledTime}`
-                                : `Registrado el ${formatDate(wo.createdAt)}`}
-                          </p>
-                        </div>
-                        <span
-                          className={`px-3 py-1 text-xs rounded-full font-medium shrink-0 ${status.className}`}
-                        >
-                          {status.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+          <div className={`mt-5 inline-flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${hasStopped ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+            {hasStopped ? `⚠ ${stoppedCount} equipo(s) requiere(n) atención` : <>✅ Mantenimiento al día <span className="font-normal">Última: {formatDate(lastVisit)} · Próxima: —</span></>}
           </div>
+        </header>
 
-          {/* Columna Derecha: Informes y Documentos (1/3 del espacio) */}
-          <div className="space-y-6">
-            <div className="p-5 sm:p-6 rounded-lg bg-white border border-slate-200">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#021133]" /> Informes y Documentos
-              </h3>
-              {informes.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Aún no hay informes emitidos para este edificio.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {informes.map((item) => (
-                    <li key={item.id}>
-                      <Link
-                        href={informeLink(costCenter.id, item)}
-                        className="group block p-3 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-mono font-semibold text-sm text-slate-900 truncate">
-                            {item.otNumber}
-                          </p>
-                          <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-[#021133] transition-colors shrink-0" />
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1 truncate">
-                          {typeLabel(item)}
-                          {item.completedAt
-                            ? ` • ${formatDate(item.completedAt)}`
-                            : ""}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {item.equipmentCount} equipo(s) atendido(s)
-                        </p>
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-[#021133] mt-2">
-                          <FileText className="w-3.5 h-3.5" />
-                          Ver documento
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="p-5 sm:p-6 rounded-lg bg-white border border-slate-200">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <ReceiptText className="w-5 h-5 text-[#021133]" /> Cotizaciones
-              </h3>
-              {quotations.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Aún no hay cotizaciones para este edificio.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {quotations.map((item) => {
-                    const status = quotationStatusLabel(item.status);
-                    return (
-                      <li key={item.id}>
-                        <Link
-                          href={quotationLink(costCenter.id, item)}
-                          className="group block p-3 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-mono font-semibold text-sm text-slate-900 truncate">
-                              {item.quotationNumber}
-                            </p>
-                            <span
-                              className={`px-2.5 py-0.5 text-[11px] rounded-full font-medium shrink-0 ${status.className}`}
-                            >
-                              {status.label}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {item.issueDate
-                              ? `Emitida el ${formatDate(item.issueDate)}`
-                              : "Sin fecha de emisión"}{" "}
-                            • {quotationMoney(item.total)}
-                          </p>
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-[#021133] mt-2">
-                            <FileText className="w-3.5 h-3.5" />
-                            Ver cotización y PDF
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
+        <section>
+          <SectionTitle icon={<Wrench className="size-5" />} title="Equipos" />
+          {equipments.length === 0 ? <EmptyState>No hay equipos registrados</EmptyState> : <div className="grid gap-3 sm:grid-cols-2">{equipments.map((equipment) => { const [label, classes] = equipmentStatus(equipment.status); return <article key={equipment.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-2"><span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold">{equipment.internalCode}</span><h3 className="truncate text-sm font-bold">{equipment.name}</h3></div><p className="mt-2 truncate text-xs text-slate-500">{[equipment.brandName, equipment.elevatorTypeName, equipment.floors != null ? `${equipment.floors} niveles` : null].filter(Boolean).join(" · ") || "Equipo de elevación"}</p><span className={`mt-3 inline-flex rounded-full border px-2 py-1 text-[11px] font-semibold ${classes}`}>● {label}</span><div className="mt-3 space-y-1 text-xs text-slate-500"><p>Última visita: {formatDate(equipment.lastVisitDate)}</p><p>Próxima: {formatDate(equipment.nextVisitDate)}</p></div><button type="button" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#021133]">Ver historial <ArrowRight className="size-3.5" /></button></article>; })}</div>}
+        </section>
 
-        <hr className="border-slate-100 mt-10 mb-6" />
-        <p className="text-center text-[11px] text-slate-400">
-          © {new Date().getFullYear()} HTL Elevadores · Portal del cliente
-        </p>
+        <section>
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><SectionTitle icon={<Activity className="size-5" />} title="Órdenes de Trabajo" /><div className="flex gap-2"><select value={year} onChange={(event) => setYear(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="ALL">Todos los años</option>{years.map((item) => <option key={item} value={item}>{item}</option>)}</select><select value={type} onChange={(event) => setType(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="ALL">Todas</option><option value="PREV">Preventivo</option><option value="CORR">Correctivo</option></select></div></div>
+          {visibleOrders.length === 0 ? <EmptyState>Aún no hay órdenes de trabajo registradas</EmptyState> : <div className="space-y-3">{visibleOrders.map((order) => <WorkOrderPublicCard key={order.id} order={order} costCenterId={costCenter.id} />)}</div>}
+        </section>
+
+        <section><SectionTitle icon={<ReceiptText className="size-5" />} title="Cotizaciones" /><div className="mb-3 flex rounded-lg bg-slate-100 p-1"><button onClick={() => setQuotationTab("pending")} className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold ${quotationTab === "pending" ? "bg-white shadow-sm" : "text-slate-500"}`}>Pendientes</button><button onClick={() => setQuotationTab("history")} className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold ${quotationTab === "history" ? "bg-white shadow-sm" : "text-slate-500"}`}>Historial</button></div>{(quotationTab === "pending" ? pendingQuotes : historyQuotes).length === 0 ? <EmptyState>{quotationTab === "pending" ? "No tienes cotizaciones pendientes" : "No hay cotizaciones en el historial"}</EmptyState> : <div className="space-y-3">{(quotationTab === "pending" ? pendingQuotes : historyQuotes).map((quote) => <QuotationPublicCard key={quote.id} quote={quote} costCenterId={costCenter.id} />)}</div>}</section>
+
+        <section><SectionTitle icon={<FileText className="size-5" />} title="Documentos" />{documents.length === 0 ? <EmptyState>No hay documentos disponibles</EmptyState> : <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">{documents.map((document) => <a key={document.id} href={document.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 p-4 text-sm hover:bg-slate-50"><span className="flex min-w-0 items-center gap-2"><FileText className="size-4 shrink-0 text-[#021133]" /><span className="truncate">{document.name}</span></span><Download className="size-4 shrink-0 text-slate-500" /></a>)}</div>}</section>
+
+        <p className="pb-6 text-center text-[11px] text-slate-400">© {new Date().getFullYear()} HTL Elevadores · Portal del cliente</p>
       </div>
-    </div>
+    </main>
   );
+}
+
+function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) { return <h2 className="mb-3 flex items-center gap-2 text-lg font-bold"><span className="text-[#021133]">{icon}</span>{title}</h2>; }
+function EmptyState({ children }: { children: React.ReactNode }) { return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">{children}</div>; }
+
+function WorkOrderPublicCard({ order, costCenterId }: { order: PortalWorkOrderItem; costCenterId: string }) {
+  return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">{formatDate(order.completedAt ?? order.createdAt)}</p><h3 className="mt-1 font-mono text-sm font-bold">{order.otNumber}</h3><p className="mt-1 text-sm font-semibold">{workType(order)}</p></div><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">✓ Aprobada</span></div><p className="mt-3 text-xs text-slate-500">{order.equipmentCount} equipo(s) · Técnico: {order.technicianName ?? "—"}</p><div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500"><span>✓ Reporte disponible</span><span>⏱ {order.completedAt ? "Completada" : "En proceso"}</span></div><div className="mt-4 flex flex-wrap gap-2"><Link href={`/portal/${costCenterId}/informes/${order.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#021133] px-3 py-2 text-xs font-semibold text-white">📄 Ver informe <ArrowRight className="size-3.5" /></Link></div></article>;
+}
+
+function QuotationPublicCard({ quote, costCenterId }: { quote: PortalQuotationItem; costCenterId: string }) {
+  const [label, classes] = quotationStatus(quote.status);
+  return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><h3 className="font-mono text-sm font-bold">{quote.quotationNumber}</h3><p className="mt-1 text-xs text-slate-500">{formatDate(quote.issueDate)}</p></div><span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${classes}`}>{label}</span></div><p className="mt-3 text-lg font-bold">Total: S/ {Number(quote.total ?? 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}</p><p className="mt-1 text-xs text-slate-500">Válido hasta: {formatDate(quote.validUntil)}</p><Link href={`/portal/${costCenterId}/cotizaciones/${quote.id}`} className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#021133]">Ver cotización y PDF <ArrowRight className="size-3.5" /></Link></article>;
 }

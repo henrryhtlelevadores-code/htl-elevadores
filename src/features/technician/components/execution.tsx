@@ -1,43 +1,30 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  type TechnicianWorkOrderExecution,
-  type TechnicianElevator,
-} from "../queries";
-import {
-  startWorkOrder,
-  saveElevatorFindings,
-  addElevatorEvidence,
-  removeElevatorEvidence,
-  completeWorkOrder,
-  type ElevatorFinalStatus,
-} from "../actions";
-import { fileToCompressedDataUrl } from "../lib/media";
+import { type TechnicianWorkOrderExecution } from "../queries";
+import { type ElevatorFinalStatus } from "../actions";
+import { runSync } from "../lib/sync-client";
+import { SyncStatus } from "./sync-status";
 import { SignaturePad, type SignaturePadHandle } from "./signature-pad";
+import { TechnicianOrderPreview } from "./preview";
+import { ElevatorSelector } from "./elevator-selector";
+import { SafetyForm } from "./safety-form";
+import { MaintenanceChecklist } from "./maintenance-checklist";
 import {
+  AlertTriangle,
   Building2,
   CalendarDays,
-  Camera,
   CheckCheck,
   CheckCircle2,
-  ChevronDown,
-  Circle,
   ClipboardList,
-  Eraser,
+  Copy,
   Loader2,
   MapPin,
+  Phone,
   StickyNote,
-  Trash2,
   X,
 } from "lucide-react";
 import { cn } from "cn";
@@ -70,21 +57,16 @@ function formatDate(date: string | null, time?: string | null): string {
 
 export function TechnicianExecutionView({
   workOrder,
+  slaRemainingLabel,
 }: {
   workOrder: TechnicianWorkOrderExecution;
+  slaRemainingLabel?: string | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [findings, setFindings] = useState<Record<string, string>>(() =>
-    Object.fromEntries(workOrder.elevators.map((e) => [e.id, e.finding ?? ""]))
-  );
-  const [findingStatus, setFindingStatus] = useState<
-    Record<string, "idle" | "saving" | "saved">
-  >({});
-  const [uploadingElevator, setUploadingElevator] = useState<string | null>(null);
-  const [activeElevatorId, setActiveElevatorId] = useState<string | null>(
-    workOrder.elevators[0]?.id ?? null
+  const [selectedElevatorId, setSelectedElevatorId] = useState<string | null>(
+    workOrder.elevators.length === 1 ? workOrder.elevators[0].id : null
   );
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [clientName, setClientName] = useState("");
@@ -95,62 +77,27 @@ export function TechnicianExecutionView({
       workOrder.elevators.map((e) => [e.id, "OPERATIVE"])
     )
   );
-  const signatureRef = useRef<SignaturePadHandle>(null);
-  const [removeTarget, setRemoveTarget] = useState<{
-    elevatorId: string;
-    url: string;
+  const [reportElevator, setReportElevator] = useState<{
+    id: string;
+    internalCode: string;
   } | null>(null);
+  const signatureRef = useRef<SignaturePadHandle>(null);
 
   const isCompleted = workOrder.status === "COMPLETED";
-
-  const serverFindings = useMemo(
-    () =>
-      Object.fromEntries(
-        workOrder.elevators.map((e) => [e.id, e.finding ?? ""])
-      ),
-    [workOrder.elevators]
+  const selectedElevator =
+    workOrder.elevators.find((e) => e.id === selectedElevatorId) ?? null;
+  const showTasks =
+    !!selectedElevator &&
+    selectedElevator.safety?.status === "COMPLETED";
+  const allComplete = workOrder.elevators.every(
+    (e) => e.status === "COMPLETED"
   );
-
-  // Autoguardado de hallazgos: guarda ~1s después de la última tecla.
-  useEffect(() => {
-    const dirty = Object.keys(findings).filter(
-      (id) => findings[id] !== (serverFindings[id] ?? "")
-    );
-    if (dirty.length === 0) return;
-
-    const timer = setTimeout(() => {
-      void (async () => {
-        for (const id of dirty) {
-          setFindingStatus((prev) => ({ ...prev, [id]: "saving" }));
-          const res = await saveElevatorFindings(id, findings[id] ?? "");
-          setFindingStatus((prev) => ({
-            ...prev,
-            [id]: res.success ? "saved" : "idle",
-          }));
-          if (!res.success) {
-            toast.error("Error al guardar hallazgos", {
-              description: res.error,
-            });
-          }
-        }
-      })();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [findings, serverFindings]);
-
-  // Vuelca los hallazgos pendientes antes de completar la orden.
-  async function flushFindings(): Promise<void> {
-    for (const elevator of workOrder.elevators) {
-      const value = findings[elevator.id] ?? "";
-      if (value !== (elevator.finding ?? "")) {
-        await saveElevatorFindings(elevator.id, value);
-      }
-    }
-  }
 
   function handleStart() {
     startTransition(async () => {
-      const res = await startWorkOrder(workOrder.id);
+      const res = await runSync("startWorkOrder", {
+        workOrderId: workOrder.id,
+      });
       if (res.success) {
         toast.success("Orden iniciada", { description: res.message });
         router.refresh();
@@ -160,50 +107,36 @@ export function TechnicianExecutionView({
     });
   }
 
-  async function handleFiles(
-    elevatorId: string,
-    files: FileList | null
+  function handleFinalize() {
+    setSignatureOpen(true);
+  }
+
+  function handleElevatorStatus(
+    status: ElevatorFinalStatus,
+    elevator: { id: string; internalCode: string }
   ) {
-    if (!files || files.length === 0) return;
-    setUploadingElevator(elevatorId);
-    try {
-      const images = await Promise.all(
-        Array.from(files)
-          .slice(0, 4)
-          .map((file) => fileToCompressedDataUrl(file))
-      );
-      const res = await addElevatorEvidence(elevatorId, images);
-      if (res.success) {
-        toast.success(res.message);
-        router.refresh();
-      } else {
-        toast.error("Error", { description: res.error });
-      }
-    } catch (error) {
-      toast.error("Error", {
-        description:
-          error instanceof Error ? error.message : "No se pudo subir la foto.",
-      });
-    } finally {
-      setUploadingElevator(null);
+    setElevatorStatuses((prev) => ({ ...prev, [elevator.id]: status }));
+    if (status === "UNCOMPLETED_MAINTENANCE") {
+      setReportElevator(elevator);
     }
   }
 
-  function handleRemoveEvidence() {
-    if (!removeTarget) return;
-    startTransition(async () => {
-      const res = await removeElevatorEvidence(
-        removeTarget.elevatorId,
-        removeTarget.url
-      );
-      if (res.success) {
-        toast.success(res.message);
-        setRemoveTarget(null);
-        router.refresh();
-      } else {
-        toast.error("Error", { description: res.error });
-      }
-    });
+  const reportMessage = reportElevator
+    ? `Hola Henrry, tengo un problema en el equipo ${reportElevator.internalCode} del cliente ${workOrder.client_name}. Se marcó como mantenimiento sin culminar. Necesito coordinar una visita de emergencia.`
+    : "";
+
+  async function handleCopyMessage() {
+    if (!reportElevator) return;
+    try {
+      await navigator.clipboard.writeText(reportMessage);
+      toast.success("Mensaje copiado", {
+        description: "Pégalo en WhatsApp o llámalo directamente.",
+      });
+    } catch {
+      toast.error("No se pudo copiar", {
+        description: "Selecciona y copia el mensaje manualmente.",
+      });
+    }
   }
 
   function handleComplete() {
@@ -215,8 +148,7 @@ export function TechnicianExecutionView({
       return;
     }
     startTransition(async () => {
-      await flushFindings();
-      const res = await completeWorkOrder({
+      const res = await runSync("completeWorkOrder", {
         workOrderId: workOrder.id,
         clientName,
         signatureDataUrl,
@@ -274,8 +206,23 @@ export function TechnicianExecutionView({
     );
   }
 
+  // Vista previa antes de iniciar: aún no hay ejecución que mostrar.
+  if (workOrder.status !== "IN_PROGRESS") {
+    return (
+      <TechnicianOrderPreview
+        workOrder={workOrder}
+        isPending={isPending}
+        onStart={handleStart}
+        slaRemainingLabel={slaRemainingLabel}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4 pb-24">
+      <div className="flex justify-end">
+        <SyncStatus />
+      </div>
       <div className="rounded-2xl border border-border bg-card p-4 space-y-2 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 font-mono text-sm font-bold">
@@ -285,9 +232,7 @@ export function TechnicianExecutionView({
           <span
             className={cn(
               "inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border",
-              workOrder.status === "IN_PROGRESS"
-                ? "bg-blue-500/10 text-[#0066CC] dark:text-blue-400 border-[#0066CC]/20"
-                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+              "bg-blue-500/10 text-[#0066CC] dark:text-blue-400 border-[#0066CC]/20"
             )}
           >
             {STATUS_LABELS[workOrder.status || "PENDING"] ?? workOrder.status}
@@ -318,115 +263,27 @@ export function TechnicianExecutionView({
         </div>
       </div>
 
-      {workOrder.status !== "IN_PROGRESS" && (
-        <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-muted/30 py-8 px-6 text-center">
-          <p className="text-sm text-muted-foreground mb-4">
-            Cuando llegues al lugar, presiona para iniciar la orden y registrar
-            el horario de trabajo.
-          </p>
-          <Button
-            className="w-full min-h-[52px] text-base font-bold"
-            onClick={handleStart}
-            disabled={isPending}
-          >
-            {isPending ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-5" />
-            )}
-            Iniciar trabajo
-          </Button>
-        </div>
+      {selectedElevator ? (
+        showTasks ? (
+          <MaintenanceChecklist
+            elevator={selectedElevator}
+            onBack={() => setSelectedElevatorId(null)}
+          />
+        ) : (
+          <SafetyForm
+            elevator={selectedElevator}
+            onBack={() => setSelectedElevatorId(null)}
+          />
+        )
+      ) : (
+        <ElevatorSelector
+          elevators={workOrder.elevators}
+          onSelect={(elevator) => setSelectedElevatorId(elevator.id)}
+          allComplete={allComplete}
+          onFinalize={handleFinalize}
+          isFinishing={isPending}
+        />
       )}
-
-      {workOrder.status === "IN_PROGRESS" && (
-        <>
-          <div className="space-y-3">
-            {workOrder.elevators.map((elevator) => (
-              <ElevatorSection
-                key={elevator.id}
-                elevator={elevator}
-                active={activeElevatorId === elevator.id}
-                onToggle={() =>
-                  setActiveElevatorId((prev) =>
-                    prev === elevator.id ? null : elevator.id
-                  )
-                }
-                finding={findings[elevator.id] ?? ""}
-                onFindingChange={(value) =>
-                  setFindings((prev) => ({ ...prev, [elevator.id]: value }))
-                }
-                saveStatus={findingStatus[elevator.id] ?? "idle"}
-                uploading={uploadingElevator === elevator.id}
-                onUpload={(files) => handleFiles(elevator.id, files)}
-                onRequestRemove={(url) =>
-                  setRemoveTarget({ elevatorId: elevator.id, url })
-                }
-              />
-            ))}
-          </div>
-
-          <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-border bg-background/90 backdrop-blur p-3">
-            <div className="mx-auto w-full max-w-md">
-              <Button
-                className="w-full min-h-[52px] text-base font-bold"
-                onClick={() => setSignatureOpen(true)}
-              >
-                <Eraser className="size-5" />
-                Finalizar orden de trabajo
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-
-      <Dialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <X className="size-4 text-red-500" />
-              Eliminar evidencia
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              ¿Eliminar esta foto? El técnico podrá volver a agregarla si es
-              necesario.
-            </DialogDescription>
-          </DialogHeader>
-
-          {removeTarget && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={removeTarget.url}
-              alt="Evidencia a eliminar"
-              className="aspect-square w-full object-cover rounded-lg border border-border"
-            />
-          )}
-
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 min-h-[48px]"
-              onClick={() => setRemoveTarget(null)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              className="flex-1 min-h-[48px] font-bold bg-red-600 hover:bg-red-700"
-              onClick={handleRemoveEvidence}
-              disabled={isPending}
-            >
-              {isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Eliminar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
         <DialogContent className="bg-card border-border sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
@@ -460,31 +317,37 @@ export function TechnicianExecutionView({
                       {elevator.elevatorName}
                     </p>
                   </div>
-                  <div className="flex shrink-0 rounded-lg border border-border overflow-hidden">
-                    {(["OPERATIVE", "OUT_OF_SERVICE"] as const).map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() =>
-                          setElevatorStatuses((prev) => ({
-                            ...prev,
-                            [elevator.id]: status,
-                          }))
-                        }
-                        className={cn(
-                          "px-3 py-1.5 text-[11px] font-bold transition-colors",
-                          elevatorStatuses[elevator.id] === status
-                            ? status === "OPERATIVE"
-                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                              : "bg-red-500/10 text-red-600 dark:text-red-400"
-                            : "text-muted-foreground hover:bg-muted"
-                        )}
-                      >
-                        {status === "OPERATIVE"
-                          ? "Operativo"
-                          : "Fuera de servicio"}
-                      </button>
-                    ))}
+                  <div className="flex shrink-0 flex-wrap gap-0.5 rounded-lg border border-border overflow-hidden">
+                    {(["OPERATIVE", "OUT_OF_SERVICE", "UNCOMPLETED_MAINTENANCE"] as const).map(
+                      (status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() =>
+                            handleElevatorStatus(status, {
+                              id: elevator.id,
+                              internalCode: elevator.internalCode ?? "—",
+                            })
+                          }
+                          className={cn(
+                            "px-2.5 py-1.5 text-[11px] font-bold transition-colors",
+                            elevatorStatuses[elevator.id] === status
+                              ? status === "OPERATIVE"
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : status === "OUT_OF_SERVICE"
+                                  ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {status === "OPERATIVE"
+                            ? "Operativo"
+                            : status === "OUT_OF_SERVICE"
+                              ? "Fuera de servicio"
+                              : "Mant. sin culminar"}
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               ))}
@@ -535,195 +398,73 @@ export function TechnicianExecutionView({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
 
-function ElevatorSection({
-  elevator,
-  active,
-  onToggle,
-  finding,
-  onFindingChange,
-  saveStatus,
-  uploading,
-  onUpload,
-  onRequestRemove,
-}: {
-  elevator: TechnicianElevator;
-  active: boolean;
-  onToggle: () => void;
-  finding: string;
-  onFindingChange: (value: string) => void;
-  saveStatus: "idle" | "saving" | "saved";
-  uploading: boolean;
-  onUpload: (files: FileList | null) => void;
-  onRequestRemove: (url: string) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const completedTasks = useMemo(
-    () => elevator.tasks.filter((t) => t.isCompleted).length,
-    [elevator.tasks]
-  );
-
-  return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-4 py-3 text-left"
+      <Dialog
+        open={!!reportElevator}
+        onOpenChange={(open) => {
+          if (!open) setReportElevator(null);
+        }}
       >
-        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-muted border border-border">
-          {elevator.internalCode}
-        </span>
-        <span className="flex-1 text-sm font-semibold truncate">
-          {elevator.elevatorName}
-        </span>
-        <span
-          className={cn(
-            "inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-            elevator.status === "COMPLETED"
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-          )}
-        >
-          {elevator.status === "COMPLETED" ? "Completado" : "Pendiente"}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-4 text-muted-foreground transition-transform",
-            active && "rotate-180"
-          )}
-        />
-      </button>
+        <DialogContent className="bg-card border-border sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="size-5" />
+              Reportar problema al administrador
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              El equipo{" "}
+              <span className="font-mono font-semibold text-foreground">
+                {reportElevator?.internalCode}
+              </span>{" "}
+              se marcó como &ldquo;Mantenimiento sin Culminar&rdquo;.
+            </DialogDescription>
+          </DialogHeader>
 
-      {active && (
-        <div className="border-t border-border px-4 py-3 space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <StickyNote className="size-3.5" />
-                Hallazgos
-              </div>
-              {saveStatus === "saving" && (
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" />
-                  Guardando...
-                </span>
-              )}
-              {saveStatus === "saved" && (
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-500">
-                  <CheckCircle2 className="size-3" />
-                  Guardado
-                </span>
-              )}
+          <div className="space-y-4 pt-1">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[13px] leading-relaxed">
+              Por favor, contacta a Henrry para reportar la situación y
+              coordinar una visita de emergencia.
             </div>
-            <textarea
-              value={finding}
-              onChange={(e) => onFindingChange(e.target.value)}
-              rows={3}
-              placeholder="Describe lo encontrado durante la intervención..."
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 resize-y"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              Se guarda automáticamente mientras escribes.
-            </p>
-          </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <Camera className="size-3.5" />
-              Evidencias ({elevator.evidencePhotoUrls?.length ?? 0})
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Phone className="size-4 text-[#0066CC]" />
+                +51 963 207 058
+              </span>
             </div>
-            {elevator.evidencePhotoUrls && elevator.evidencePhotoUrls.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {elevator.evidencePhotoUrls.map((url, idx) => (
-                  <div
-                    key={url}
-                    className="relative aspect-square w-full overflow-hidden rounded-lg border border-border"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt={`Evidencia ${idx + 1}`}
-                      className="aspect-square w-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => onRequestRemove(url)}
-                      title="Eliminar foto"
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white transition-colors hover:bg-red-600"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                onUpload(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full min-h-[44px]"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Camera className="size-4" />
-              )}
-              {uploading ? "Subiendo..." : "Agregar fotos"}
-            </Button>
-          </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <CheckCircle2 className="size-3.5" />
-              Checklist ({completedTasks}/{elevator.tasks.length})
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full min-h-[48px] font-semibold"
+                onClick={handleCopyMessage}
+              >
+                <Copy className="size-4" />
+                Copiar mensaje
+              </Button>
+              <Button
+                render={<a href="tel:+51963207058" />}
+                nativeButton={false}
+                variant="default"
+                className="w-full min-h-[48px] font-bold"
+              >
+                <Phone className="size-4" />
+                Llamar a Henrry
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full min-h-[44px]"
+                onClick={() => setReportElevator(null)}
+              >
+                <X className="size-4" />
+                Cerrar
+              </Button>
             </div>
-            {elevator.tasks.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">
-                Sin tareas registradas para este equipo.
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {elevator.tasks.map((task) => (
-                  <li
-                    key={task.id}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
-                  >
-                    {task.isCompleted ? (
-                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <Circle className="size-4 text-muted-foreground shrink-0" />
-                    )}
-                    <span
-                      className={cn(
-                        "text-xs flex-1",
-                        task.isCompleted &&
-                          "line-through text-muted-foreground/60"
-                      )}
-                    >
-                      {task.taskDescription}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -40,6 +40,7 @@ import {
   updateRouteConfig,
   resetRouteConfig,
   generateMonth,
+  transferVisitToTechnician,
 } from "../actions";
 import {
   routeStopSheetSchema,
@@ -47,6 +48,11 @@ import {
   type RouteStopSheetValues,
 } from "../schema";
 import { isContractInactive, visitKeyOfStop } from "../visits";
+import {
+  providerBadgeClassName,
+  providerBadgeTag,
+  providerTypeLabel,
+} from "@/lib/provider-type";
 import {
   ROUTE_DEFAULTS,
   formatMonthLabel,
@@ -149,6 +155,23 @@ function groupStops(stops: RouteStopWithRelations[]): StopGroup[] {
   return [...map.values()];
 }
 
+function TechnicianOptionLabel({ tech }: { tech: TechnicianOption }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{tech.fullName}</span>
+      <Badge
+        variant="outline"
+        title={`${providerTypeLabel(tech.providerType)}${
+          tech.providerCompany ? ` · ${tech.providerCompany}` : ""
+        }`}
+        className={`shrink-0 px-1 py-0 text-[9px] font-bold ${providerBadgeClassName(tech.providerType)}`}
+      >
+        {providerBadgeTag(tech.providerType)}
+      </Badge>
+    </span>
+  );
+}
+
 export function RoutesBoard({
   technicians,
   contractOptions,
@@ -171,6 +194,7 @@ export function RoutesBoard({
   const [durationInput, setDurationInput] = useState("120");
 
   const [editGroup, setEditGroup] = useState<StopGroup | null>(null);
+  const [editTechnicianId, setEditTechnicianId] = useState("");
   const [detailGroup, setDetailGroup] = useState<StopGroup | null>(null);
   const [timeInput, setTimeInput] = useState("");
   const [moveGroup, setMoveGroup] = useState<StopGroup | null>(null);
@@ -352,11 +376,40 @@ export function RoutesBoard({
         toast.error("Error", { description: durationRes.error });
         return;
       }
-      toast.success("Visita actualizada", {
-        description: `${timeRes.message} · ${durationRes.message}`,
-      });
+
+      const parts = [`${timeRes.message} · ${durationRes.message}`];
+      let transferError: string | null = null;
+      let transferWarnings: string[] = [];
+
+      if (editTechnicianId && editTechnicianId !== technicianId) {
+        const res = await transferVisitToTechnician(ids, editTechnicianId);
+        if (!res.success) {
+          transferError = res.error ?? "No se pudo cambiar el técnico.";
+        } else {
+          const targetName =
+            technicians.find((t) => t.id === editTechnicianId)?.fullName ?? "";
+          transferWarnings = res.warnings;
+          parts.push(
+            `trasladada a ${targetName} · ${res.reassignedOrders} OT(s) reasignadas`
+          );
+        }
+      }
+
       setEditGroup(null);
       await reloadRoutes();
+
+      if (transferError) {
+        toast.error("Visita actualizada con errores", {
+          description: `Hora y duración guardadas, pero: ${transferError}`,
+        });
+        return;
+      }
+      toast.success("Visita actualizada", { description: parts.join(" · ") });
+      if (transferWarnings.length > 0) {
+        toast.warning("Revisa el día del técnico destino", {
+          description: transferWarnings.join(" · "),
+        });
+      }
     });
   }
 
@@ -465,13 +518,16 @@ export function RoutesBoard({
             >
               <SelectTrigger className="w-full min-w-[220px] bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC] sm:w-[260px]">
                 <SelectValue placeholder="Selecciona un técnico">
-                  {technicians.find((t) => t.id === technicianId)?.fullName ?? null}
+                  {(() => {
+                    const t = technicians.find((x) => x.id === technicianId);
+                    return t ? <TechnicianOptionLabel tech={t} /> : null;
+                  })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {technicians.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.fullName}
+                    <TechnicianOptionLabel tech={t} />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -652,6 +708,7 @@ export function RoutesBoard({
                                   <DropdownMenuItem
                                     onClick={() => {
                                       setEditGroup(g);
+                                      setEditTechnicianId(technicianId);
                                       setTimeInput(g.plannedTime);
                                       setDurationInput(
                                         String(
@@ -872,6 +929,7 @@ export function RoutesBoard({
                 setDetailGroup(null);
                 if (!g) return;
                 setEditGroup(g);
+                setEditTechnicianId(technicianId);
                 setTimeInput(g.plannedTime);
                 setDurationInput(
                   String(
@@ -1259,7 +1317,8 @@ export function RoutesBoard({
               Editar visita
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Actualiza la hora planificada y la duración de {editGroup?.costCenterName}.
+              Actualiza la hora planificada, la duración y el técnico de{" "}
+              {editGroup?.costCenterName}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -1285,6 +1344,38 @@ export function RoutesBoard({
                 onChange={(e) => setDurationInput(e.target.value)}
                 className="h-8 text-xs"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Técnico</Label>
+              <Select
+                value={editTechnicianId}
+                onValueChange={(v) => setEditTechnicianId(v ?? "")}
+              >
+                <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                  <SelectValue placeholder="Selecciona un técnico" />
+                </SelectTrigger>
+                <SelectContent>
+                  {technicians.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <TechnicianOptionLabel tech={t} />
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editTechnicianId && editTechnicianId !== technicianId && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-500">
+                  La visita y su OT generada pasarán a{" "}
+                  <strong>
+                    {technicians.find((t) => t.id === editTechnicianId)?.fullName}
+                  </strong>{" "}
+                  (
+                  {providerTypeLabel(
+                    technicians.find((t) => t.id === editTechnicianId)
+                      ?.providerType
+                  )}
+                  ). Si la OT ya tiene ejecución registrada, no se reasignará.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter className="pt-3 gap-2">

@@ -69,6 +69,16 @@ export const ubigeoFormSchema = z.object({
 
 export type UbigeoFormValues = z.infer<typeof ubigeoFormSchema>;
 
+export const maintenanceZoneFormSchema = z.object({
+  code: z.string().optional(),
+  name: z.string().min(2).max(100),
+  orderIndex: z.coerce.number().int().min(0).optional(),
+  isActive: z.boolean(),
+  elevatorTypeId: z.string().min(1, "Selecciona el tipo de equipo"),
+});
+
+export type MaintenanceZoneFormValues = z.infer<typeof maintenanceZoneFormSchema>;
+
 export const ubigeoBulkItemSchema = z.object({
   Ubigeo: z.string().min(1, "El código de ubigeo es obligatorio"),
   Departamento: z.string().min(1, "El departamento es obligatorio"),

@@ -4,6 +4,11 @@ export const userStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 
 export const documentTypeSchema = z.enum(["DNI", "CE", "RUC", "PASSPORT"]);
 
+export const providerTypeSchema = z.enum(["INTERNAL", "EXTERNAL"]);
+
+const optionalString = (max: number) =>
+  z.string().max(max).optional().or(z.literal(""));
+
 const baseUserFields = {
   fullName: z
     .string()
@@ -20,6 +25,25 @@ const baseUserFields = {
     .max(15, "Máximo 15 caracteres"),
   specialization: z.string().max(100).optional().or(z.literal("")),
   licenseNumber: z.string().max(50).optional().or(z.literal("")),
+  // Perfil de técnico (solo aplica si el rol tiene is_field_role).
+  providerType: providerTypeSchema,
+  providerCompany: optionalString(120),
+  hasSctr: z.boolean(),
+  // Fecha de vencimiento del SCTR en ISO (YYYY-MM-DD) desde el DatePicker.
+  sctrExpiryDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de vencimiento inválida")
+    .optional()
+    .or(z.literal("")),
+  // Sueldo base (HTL) o tarifa de referencia (proveedor externo).
+  baseSalary: z
+    .string()
+    .max(12)
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), {
+      message: "Monto inválido (máximo 2 decimales)",
+    })
+    .optional(),
+  signatureUrl: z.string().max(500).optional().or(z.literal("")),
 };
 
 const passwordField = z

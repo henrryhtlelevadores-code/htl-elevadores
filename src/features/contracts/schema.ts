@@ -13,6 +13,15 @@ export const contractFormSchema = z.object({
   includesIgv: z.boolean(),
   paymentTermsDays: z.coerce.number().int().nonnegative(),
   inflationAdjustment: z.boolean(),
+  /**
+   * Frecuencia del mantenimiento en meses. Solo tiene efecto si el contrato
+   * tiene módulos rotativos; la UI la oculta cuando todos son fijos.
+   */
+  maintenanceFrequencyMonths: z.coerce
+    .number({ message: "Ingresa una frecuencia válida" })
+    .int("La frecuencia debe ser un número entero")
+    .min(1, "Mínimo 1 mes")
+    .max(12, "Máximo 12 meses"),
   slaEntrapmentMins: z.coerce.number().int().nonnegative(),
   slaMechanicalFailureMins: z.coerce.number().int().nonnegative(),
 });

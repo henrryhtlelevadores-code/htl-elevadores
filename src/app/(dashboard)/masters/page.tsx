@@ -1,15 +1,17 @@
-import { getBrands, getElevatorTypes, getModels, getServiceTypes, getUbigeos } from "@/features/masters/actions";
+import { getBrands, getElevatorTypes, getModels, getServiceTypes, getUbigeos, getMaintenanceZones, getMaintenanceElevatorTypes } from "@/features/masters/actions";
 import { MastersView } from "@/features/masters/components/masters-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function MastersPage() {
-  const [brandsData, typesData, modelsData, serviceTypesData, ubigeosData] = await Promise.all([
+  const [brandsData, typesData, modelsData, serviceTypesData, ubigeosData, maintenanceZonesData, maintenanceTypesData] = await Promise.all([
     getBrands(),
     getElevatorTypes(),
     getModels(),
     getServiceTypes(),
     getUbigeos(),
+    getMaintenanceZones(),
+    getMaintenanceElevatorTypes(),
   ]);
 
   return (
@@ -20,6 +22,8 @@ export default async function MastersPage() {
         models={modelsData}
         serviceTypes={serviceTypesData}
         ubigeos={ubigeosData}
+        maintenanceZones={maintenanceZonesData}
+        maintenanceTypes={maintenanceTypesData}
       />
     </div>
   );

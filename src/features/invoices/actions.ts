@@ -16,7 +16,7 @@ import { eq, asc, desc, isNull, count, sql, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
 import { ZodError } from "zod";
-import { invoiceFormSchema, buildPayerColumns, type InvoiceFormValues } from "./schema";
+import { invoiceFormSchema, invoiceStatusUpdateSchema, buildPayerColumns, type InvoiceFormValues } from "./schema";
 
 export interface ActionResult {
   success: boolean;
@@ -422,11 +422,50 @@ export async function createInvoice(values: InvoiceFormValues): Promise<ActionRe
         error: issue?.message ?? "Revisa los datos de la factura.",
       };
     }
-    if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
+    if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
       return {
         success: false,
         error: "La serie y número ya existen para este tipo de comprobante.",
       };
+    }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+/**
+ * Cambia los estados de una factura desde el detalle.
+ * Solo toca `sunat_status` y `payment_status`: los montos, el pagador y los
+ * conceptos no se editan por acá, así que no hay riesgo de descuadrar la
+ * factura al cambiarle el estado.
+ */
+export async function updateInvoiceStatus(
+  invoiceId: string,
+  values: { sunatStatus: string; paymentStatus: string }
+): Promise<ActionResult> {
+  try {
+    const validated = invoiceStatusUpdateSchema.parse(values);
+
+    const existing = await db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return { success: false, error: "La factura ya no existe." };
+    }
+
+    await db
+      .update(invoices)
+      .set({ ...validated, updatedAt: Math.floor(Date.now() / 1000) })
+      .where(eq(invoices.id, invoiceId));
+
+    revalidatePath("/invoices");
+    return { success: true, message: "Estados actualizados" };
+  } catch (error) {
+    console.error("Error al actualizar estados de factura:", error);
+    if (error instanceof ZodError) {
+      return { success: false, error: error.issues[0]?.message ?? "Estado inválido." };
     }
     return { success: false, error: getErrorMessage(error) };
   }

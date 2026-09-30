@@ -126,7 +126,7 @@ export interface QuotationPdfData {
   lines: QuotationPdfLine[];
 }
 
-const BRAND = "#DC2626";
+const BRAND = "#810303";
 const BRAND_SOFT = "#FEF2F2";
 const SOFT_BG = "#F3F4F6";
 const DARK = "#0F172A";
@@ -642,7 +642,6 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
 
         {data.welcomeMessage ? (
           <View wrap={false} style={styles.notesBlock}>
-            <Text style={styles.sectionTitle}>Bienvenida</Text>
             <MarkdownBlock value={data.welcomeMessage} />
           </View>
         ) : null}
