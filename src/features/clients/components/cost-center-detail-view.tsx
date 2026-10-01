@@ -6,6 +6,7 @@ import { type Client, type CostCenter, type CostCenterContact, type Ubigeo } fro
 import { updateCostCenter } from "../actions";
 import { CredentialsManager } from "./credentials-manager";
 import { ContactsTable } from "./contacts-table";
+import { CostCenterCalendar } from "./cost-center-calendar";
 import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 
-export type VenueTab = "credentials" | "contacts" | "settings";
+export type VenueTab = "credentials" | "contacts" | "settings" | "calendar";
 
 interface CostCenterDetailViewProps {
   client: Client;
@@ -192,6 +193,12 @@ export function CostCenterDetailView({
             <IconSettings className="size-3.5" />
             <span>Configuración</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="calendar"
+            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+          >
+            Calendario de OTs
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="credentials" className="outline-hidden focus:outline-none">
@@ -265,6 +272,9 @@ export function CostCenterDetailView({
               </Button>
             </div>
           </div>
+        </TabsContent>
+        <TabsContent value="calendar" className="outline-hidden focus:outline-none">
+          <CostCenterCalendar costCenterId={costCenter.id} />
         </TabsContent>
       </Tabs>
     </div>

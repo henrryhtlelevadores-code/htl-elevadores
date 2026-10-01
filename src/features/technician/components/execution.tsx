@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -79,6 +79,15 @@ export function TechnicianExecutionView({
     internalCode: string;
   } | null>(null);
   const signatureRef = useRef<SignaturePadHandle>(null);
+
+  useEffect(() => {
+    if (!signatureOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [signatureOpen]);
 
   const isCompleted = workOrder.status === "COMPLETED";
   const selectedElevator =
@@ -291,7 +300,7 @@ export function TechnicianExecutionView({
       )}
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
-        <DialogContent className="fixed inset-x-0 bottom-0 top-auto grid max-h-[92dvh] w-full max-w-[560px] translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-t-2xl border-border bg-card p-0 sm:inset-y-1/2 sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[88vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+        <DialogContent className="fixed inset-x-0 bottom-0 top-auto grid max-h-[92dvh] w-full max-w-[560px] translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-t-2xl border-border bg-card p-0 sm:inset-y-1/2 sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[88dvh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
           <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12 sm:px-6">
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <StickyNote className="size-4 text-[#0066CC]" />
@@ -390,6 +399,7 @@ export function TechnicianExecutionView({
             </div>
 
              <SignaturePad ref={signatureRef} onChange={setSignatureDataUrl} className="touch-none" />
+           </div>
           </div>
           <div className="flex shrink-0 justify-between gap-2 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6">
             <Button type="button" variant="ghost" className="min-h-11" onClick={() => setSignatureOpen(false)}>Cancelar</Button>
@@ -397,7 +407,6 @@ export function TechnicianExecutionView({
               {isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
               ✓ Finalizar OT
             </Button>
-          </div>
           </div>
         </DialogContent>
       </Dialog>

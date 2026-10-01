@@ -996,6 +996,12 @@ export async function generateMonth(
       const first = group.stops[0];
       const [hh, mm] = first.plannedTime.split(":").map(Number);
       const scheduledTime = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+      const [yyyy, monthNumber, dayNumber] = group.date.split("-").map(Number);
+      const estimatedStartAt = Math.floor(
+        Date.UTC(yyyy, monthNumber - 1, dayNumber, hh, mm) / 1000
+      ) + 5 * 60 * 60;
+      const estimatedEndAt = estimatedStartAt +
+        ROUTE_DEFAULTS.defaultStopDurationMins * group.stops.length * 60;
       const woId = generateUuid();
 
       // Prepara tareas y checklist de seguridad por equipo (misma lógica que la
@@ -1043,8 +1049,10 @@ export async function generateMonth(
           serviceTypeId: prevServiceTypeId,
           status: "PENDING",
           priority: "NORMAL",
-          scheduledDate: group.date,
-          scheduledTime,
+           scheduledDate: group.date,
+           scheduledTime,
+           estimatedDurationMins: ROUTE_DEFAULTS.defaultStopDurationMins,
+           estimatedEndAt,
         })
       );
 

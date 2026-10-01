@@ -6,6 +6,11 @@ import {
   clients,
   costCenters,
   costCenterContacts,
+  workOrders,
+  workOrderElevators,
+  elevatorUnities,
+  serviceTypes,
+  users,
   type Client,
   type CostCenter,
   type CostCenterContact,
@@ -20,13 +25,55 @@ import {
   type CostCenterFormValues,
   type ContactFormValues,
 } from "./schema";
-import { eq, asc, count, and, isNull } from "drizzle-orm";
+import { eq, asc, count, and, isNull, desc } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
 import { verify } from "@node-rs/argon2";
 
 export type ClientWithStats = Client & {
   cost_centers_count?: number;
 };
+
+export async function getCostCenterCalendarWorkOrders(
+  costCenterId: string,
+  from: string,
+  to: string,
+  serviceType = "ALL",
+  status = "ACTIVE"
+) {
+  const rows = await db
+    .select({
+      id: workOrders.id,
+      otNumber: workOrders.otNumber,
+      scheduledDate: workOrders.scheduledDate,
+      scheduledTime: workOrders.scheduledTime,
+      status: workOrders.status,
+      serviceTypeCode: serviceTypes.code,
+      serviceTypeName: serviceTypes.name,
+      serviceTypeCategory: serviceTypes.category,
+      technicianName: users.fullName,
+      elevatorInternalCode: elevatorUnities.internalCode,
+      elevatorName: elevatorUnities.name,
+    })
+    .from(workOrders)
+    .innerJoin(workOrderElevators, eq(workOrderElevators.workOrderId, workOrders.id))
+    .innerJoin(elevatorUnities, eq(elevatorUnities.id, workOrderElevators.elevatorUnityId))
+    .leftJoin(serviceTypes, eq(serviceTypes.id, workOrders.serviceTypeId))
+    .leftJoin(users, eq(users.id, workOrders.technicianId))
+    .where(and(
+      eq(elevatorUnities.costCenterId, costCenterId),
+      eq(workOrders.approvalStatus, "APPROVED"),
+      isNull(workOrders.deletedAt)
+    ))
+    .orderBy(asc(workOrders.scheduledDate), asc(workOrders.scheduledTime), desc(workOrders.createdAt));
+  const filtered = rows.filter((row) => {
+    if (!row.scheduledDate || row.scheduledDate < from || row.scheduledDate > to) return false;
+    if (serviceType !== "ALL" && (serviceType.startsWith("CORR") ? !row.serviceTypeCode?.startsWith("CORR") : serviceType.startsWith("EMER") ? !row.serviceTypeCode?.startsWith("EMER") : row.serviceTypeCode !== serviceType)) return false;
+    if (status === "ACTIVE" && (row.status === "COMPLETED" || row.status === "CANCELLED")) return false;
+    if (status !== "ALL" && status !== "ACTIVE" && row.status !== status) return false;
+    return true;
+  });
+  return [...new Map(filtered.map((row) => [row.id, row])).values()];
+}
 
 export type CostCenterCredentialStatus = {
   id: string;

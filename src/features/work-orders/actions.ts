@@ -457,6 +457,9 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
     const otNumber = `OT-${monthLabel}-${String((total ?? 0) + 1).padStart(4, "0")}`;
 
     const workOrderId = generateUuid();
+    const estimatedDurationMins = serviceType.code === "PREV"
+      ? validated.estimatedDurationMins ?? 120
+      : validated.estimatedDurationMins ?? null;
     const contractElevatorRows = serviceType.code === "PREV"
       ? await db.select({ id: contractElevators.id, elevatorUnityId: contractElevators.elevatorUnityId })
         .from(contractElevators)
@@ -480,9 +483,9 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         scheduledTime: validated.scheduledTime || null,
         description: validated.description?.trim() || null,
         supportingTechnicians: validated.supportingTechnicians?.trim() || null,
-        estimatedDurationMins: validated.estimatedDurationMins ?? null,
-        estimatedEndAt: validated.estimatedDurationMins && validated.scheduledTime
-          ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + validated.estimatedDurationMins * elevatorIds.length * 60
+        estimatedDurationMins,
+        estimatedEndAt: estimatedDurationMins && validated.scheduledTime
+          ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + estimatedDurationMins * elevatorIds.length * 60
           : null,
       }),
     ];
