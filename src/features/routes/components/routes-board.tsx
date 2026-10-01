@@ -21,17 +21,24 @@ import {
   CheckCircle2,
   CalendarClock,
   Users,
+  Link2Off,
+  ChevronDown,
+  Building2,
 } from "lucide-react";
 
 import {
   type TechnicianOption,
   type PreventiveContractOption,
+  type PreventiveContractCoverage,
+  type PreventiveContractCoverageEntry,
   type PreventiveRouteWithStops,
   type RouteStopWithRelations,
   type RouteConfigRow,
   type GenerationResult,
   getPreventiveRoutes,
   getRouteConfig,
+  getPreventiveContractOptions,
+  getPreventiveContractCoverage,
   createRouteStops,
   updateRouteStopsTime,
   updateRouteStopDuration,
@@ -102,6 +109,7 @@ interface RoutesBoardProps {
   contractOptions: PreventiveContractOption[];
   defaultRoutes: PreventiveRouteWithStops[];
   defaultConfig: RouteConfigRow;
+  defaultCoverage: PreventiveContractCoverage;
 }
 
 type StopGroup = {
@@ -176,6 +184,7 @@ export function RoutesBoard({
   contractOptions,
   defaultRoutes,
   defaultConfig,
+  defaultCoverage,
 }: RoutesBoardProps) {
   const [technicianId, setTechnicianId] = useState(technicians[0]?.id ?? "");
   const [routes, setRoutes] = useState<PreventiveRouteWithStops[]>(
@@ -184,6 +193,10 @@ export function RoutesBoard({
   const [config, setConfig] = useState<RouteConfigRow>(
     technicians[0] ? defaultConfig : { ...defaultConfig, technicianId: "" }
   );
+  const [coverage, setCoverage] = useState<PreventiveContractCoverage>(defaultCoverage);
+  const [availableContracts, setAvailableContracts] =
+    useState<PreventiveContractOption[]>(contractOptions);
+  const [isCoverageOpen, setIsCoverageOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -236,7 +249,7 @@ export function RoutesBoard({
     },
   });
 
-  const selectedContract = contractOptions.find(
+  const selectedContract = availableContracts.find(
     (c) => c.id === sheetForm.watch("contractId")
   );
   const selectedEquipmentCount = sheetForm.watch("elevatorUnityIds")?.length ?? 0;
@@ -287,9 +300,16 @@ export function RoutesBoard({
       setRoutes([]);
       return;
     }
-    const [r, c] = await Promise.all([getPreventiveRoutes(technicianId), getRouteConfig(technicianId)]);
+    const [r, c, cov, opts] = await Promise.all([
+      getPreventiveRoutes(technicianId),
+      getRouteConfig(technicianId),
+      getPreventiveContractCoverage(),
+      getPreventiveContractOptions(),
+    ]);
     setRoutes(r);
     setConfig(c);
+    setCoverage(cov);
+    setAvailableContracts(opts);
   }
 
   function handleTechnicianChange(value: string) {
@@ -306,15 +326,30 @@ export function RoutesBoard({
     });
   }
 
-  function handleAddStop(day: number) {
+  function handleAddStop(day: number, presetContractId?: string) {
     setActiveSheetDay(day);
     sheetForm.reset({
-      contractId: "",
+      contractId: presetContractId ?? "",
       plannedTime: "09:00",
       estimatedDurationMins: config.defaultStopDurationMins,
       elevatorUnityIds: [],
     });
     setIsSheetOpen(true);
+  }
+
+  /** Primer día hábil con carga disponible, para prellenar desde la cobertura. */
+  function firstFreeDay(durationMins: number): number {
+    const fits = (day: number) => {
+      const cap = dayCapacity.get(day);
+      if (!cap) return false;
+      return (dayLoads.get(day) ?? 0) + durationMins <= cap.maxMinutes;
+    };
+    const preferred = days.find(fits) ?? days.find((d) => (dayLoads.get(d) ?? 0) === 0);
+    return preferred ?? days[0] ?? 1;
+  }
+
+  function handleScheduleContract(entry: PreventiveContractCoverageEntry) {
+    handleAddStop(firstFreeDay(config.defaultStopDurationMins), entry.contractId);
   }
 
   function handleSheetSubmit(values: RouteStopSheetValues) {
@@ -566,6 +601,155 @@ export function RoutesBoard({
             Generar OTs del mes
           </Button>
         </div>
+      </div>
+
+      {/* Cobertura de contratos PREV: qué falta enlazar al tablero */}
+      <div
+        className={`rounded-lg border px-3 py-2.5 ${
+          coverage.pendingContracts > 0
+            ? "border-amber-300 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30"
+            : "border-border bg-card"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setIsCoverageOpen((v) => !v)}
+          className="flex w-full items-center gap-2 text-left"
+          aria-expanded={isCoverageOpen}
+        >
+          {coverage.pendingContracts > 0 ? (
+            <Link2Off className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          ) : (
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          )}
+          <span className="text-xs text-foreground">
+            <span className="font-semibold">Contratos PREV por enlazar: </span>
+            {coverage.totalContracts === 0 ? (
+              "no hay contratos preventivos activos"
+            ) : (
+              <>
+                <span
+                  className={
+                    coverage.pendingContracts > 0
+                      ? "font-semibold text-amber-700 dark:text-amber-300"
+                      : "font-semibold text-emerald-700 dark:text-emerald-300"
+                  }
+                >
+                  {coverage.pendingContracts}
+                </span>{" "}
+                de {coverage.totalContracts} contratos
+              </>
+            )}
+          </span>
+          {coverage.totalContracts > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              · {coverage.scheduledContracts} ya enlazados · {coverage.scheduledEquipment}/
+              {coverage.totalEquipment} equipos en el tablero
+            </span>
+          )}
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] font-medium text-[#0066CC]">
+            {isCoverageOpen ? "Ocultar" : "Ver detalle"}
+            <ChevronDown
+              className={`size-3.5 transition-transform ${isCoverageOpen ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+
+        {isCoverageOpen && (
+          <div className="mt-2.5 space-y-2.5 border-t border-border/70 pt-2.5">
+            {coverage.totalContracts === 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                No hay contratos activos con tipo de servicio preventivo (PREV).
+              </p>
+            ) : (
+              <>
+                <p className="text-[11px] text-muted-foreground">
+                  Se cuentan los contratos PREV activos que aún no tienen ninguna parada en
+                  este tablero. Al enlazarlos, sus equipos generarán OTs al correr{" "}
+                  <strong className="text-foreground">Generar OTs del mes</strong>.
+                </p>
+
+                {coverage.pending.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {coverage.pending.map((entry) => (
+                      <li
+                        key={entry.contractId}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-background px-2.5 py-1.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="truncate text-xs font-semibold text-foreground">
+                              {entry.clientName}
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {entry.contractNumber}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <Building2 className="size-3" />
+                              {entry.costCenterName}
+                            </span>
+                            <span>
+                              {entry.totalEquipment === 0
+                                ? "sin equipos vinculados al contrato"
+                                : `${entry.totalEquipment} ${
+                                    entry.totalEquipment === 1 ? "equipo" : "equipos"
+                                  } por programar`}
+                            </span>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-amber-300 px-1.5 py-0 text-[9px] font-semibold text-amber-700 dark:border-amber-900 dark:text-amber-300"
+                        >
+                          Sin enlazar
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!technicianId || isPending || entry.totalEquipment === 0}
+                          onClick={() => handleScheduleContract(entry)}
+                          title={
+                            entry.totalEquipment === 0
+                              ? "El contrato no tiene equipos vinculados"
+                              : `Agregar una parada de ${entry.costCenterName}`
+                          }
+                          className="h-7 shrink-0 gap-1 border-border text-[11px] font-semibold"
+                        >
+                          <Plus className="size-3" />
+                          Programar
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                    Todos los contratos PREV activos ya tienen al menos una parada en el tablero.
+                  </p>
+                )}
+
+                {coverage.entries.some((e) => e.scheduledEquipment > 0 && e.scheduledEquipment < e.totalEquipment) && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Hay contratos con equipos parcialmente programados:{" "}
+                    {coverage.entries
+                      .filter(
+                        (e) =>
+                          e.scheduledEquipment > 0 && e.scheduledEquipment < e.totalEquipment
+                      )
+                      .map(
+                        (e) =>
+                          `${e.contractNumber} (${e.scheduledEquipment}/${e.totalEquipment})`
+                      )
+                      .join(", ")}
+                    .
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {!technicianId ? (
@@ -1159,7 +1343,7 @@ export function RoutesBoard({
                     </FormLabel>
                     <FormControl>
                       <SearchableSelect
-                        items={contractOptions}
+                        items={availableContracts}
                         value={field.value ?? ""}
                         onValueChange={(v) => {
                           field.onChange(v);
@@ -1170,7 +1354,7 @@ export function RoutesBoard({
                         getKeywords={(c) => c.contractNumber}
                         placeholder="Busca y selecciona un contrato preventivo"
                         searchPlaceholder="Buscar contrato, cliente o sede..."
-                        emptyText="No hay contratos preventivos activos"
+                        emptyText="No hay contratos preventivos con equipos por programar"
                       />
                     </FormControl>
                     <FormMessage />

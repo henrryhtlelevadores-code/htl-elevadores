@@ -22,9 +22,10 @@ import {
   type QuotationLine,
   type QuotationLineProduct,
 } from "@/db/index";
-import { eq, isNull, desc, count, like, inArray, asc, and } from "drizzle-orm";
+import { eq, isNull, desc, count, inArray, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
+import { generateDocumentNumber } from "@/lib/document-number";
 import { deleteR2ObjectByUrl } from "@/lib/r2";
 import { quotationFormSchema, stripBlankProducts, type QuotationFormValues } from "./schema";
 import {
@@ -168,17 +169,7 @@ export async function upsertPricingConfig(input: PricingConfigInput): Promise<Ac
 // ==========================================
 
 async function nextQuotationNumber(): Promise<string> {
-  try {
-    const year = new Date().getFullYear();
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(quotations)
-      .where(like(quotations.quotationNumber, `QT-${year}-%`));
-    return `QT-${year}-${String(total + 1).padStart(4, "0")}`;
-  } catch (error) {
-    console.error("Error al generar correlativo:", error);
-    return `QT-${new Date().getFullYear()}-0001`;
-  }
+  return generateDocumentNumber("QT", String(new Date().getFullYear()));
 }
 
 // ==========================================
@@ -716,9 +707,7 @@ export async function createQuotation(
     const discountError = validateDiscountRules(validated, payload);
     if (discountError) return { success: false, error: discountError };
     const quotationId = generateUuid();
-    const quotationNumber = await nextQuotationNumber();
-
-    const statements: SqliteBatchItem[] = [
+    const insertQuotation = (quotationNumber: string): SqliteBatchItem =>
       db.insert(quotations).values({
         id: quotationId,
         quotationNumber,
@@ -739,8 +728,9 @@ export async function createQuotation(
         total: payload.total,
         showTaxBreakdown: payload.showTaxBreakdown,
         configSnapshot: payload.configSnapshot,
-      }),
-    ];
+      });
+
+    const statements: SqliteBatchItem[] = [];
 
     for (const line of payload.lines) {
       const lineId = generateUuid();
@@ -792,7 +782,21 @@ export async function createQuotation(
       }
     }
 
-    await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
+    // Número aleatorio con reintento ante colisión del índice UNIQUE.
+    const maxAttempts = 5;
+    let quotationNumber = "";
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      quotationNumber = await nextQuotationNumber();
+      try {
+        await db.batch(
+          [insertQuotation(quotationNumber), ...statements] as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]
+        );
+        break;
+      } catch (error) {
+        if (isUniqueConstraintError(error) && attempt < maxAttempts) continue;
+        throw error;
+      }
+    }
     revalidatePath("/quotations");
     return { success: true, id: quotationId, message: `Cotización ${quotationNumber} creada` };
   } catch (error) {

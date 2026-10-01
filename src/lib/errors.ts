@@ -73,6 +73,11 @@ export function getErrorMessage(error: unknown): string {
   return getErrorInfo(error).message;
 }
 
+/** `true` cuando el error es una violación de índice/constraint UNIQUE. */
+export function isUniqueConstraintError(error: unknown): boolean {
+  return getErrorInfo(error).type === "unique";
+}
+
 /**
  * Texto crudo del error, solo para logs. `getErrorMessage` a propósito oculta
  * los detalles internos, así que esto es lo que hay que registrar en consola.

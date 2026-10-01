@@ -764,12 +764,12 @@ export function WorkOrdersCalendar({
                 />
               </div>
               <FormItem>
-                <FormLabel className="text-xs font-semibold">N° de OT (automático)</FormLabel>
+                <FormLabel className="text-xs font-semibold">N° de OT (se asigna al guardar)</FormLabel>
                 <FormControl>
                   <Input
                     readOnly
                     value={otPreview}
-                    placeholder="OT-AAAA-MM-0001"
+                    placeholder="OT-AAAA-MM-XXXXXX"
                     className="bg-muted/40 border-border text-xs font-mono"
                   />
                 </FormControl>

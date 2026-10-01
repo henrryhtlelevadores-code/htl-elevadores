@@ -20,10 +20,12 @@ import {
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
+import { uniqueDocumentNumber } from "@/lib/document-number";
 import { routeStopFormSchema, routeConfigSchema, type RouteStopFormValues } from "./schema";
 import { groupStopsByVisit, isContractInactive, visitKeyOfStop } from "./visits";
 import {
   ROUTE_DEFAULTS,
+  PREVENTIVE_SERVICE_TYPE_ID,
   buildMonthSchedule,
   isValidMonth,
   nextMonthLabel,
@@ -31,7 +33,19 @@ import {
   type RouteConfigValues,
 } from "./schedule";
 import { type BatchItem } from "drizzle-orm/batch";
-import { and, asc, count, eq, inArray, isNull, like, max, ne } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  countDistinct,
+  eq,
+  inArray,
+  isNull,
+  like,
+  max,
+  ne,
+  or,
+} from "drizzle-orm";
 import { getSessionUserId } from "@/features/auth/server";
 import {
   buildPreventiveElevatorDetail,
@@ -212,6 +226,14 @@ export async function getPreventiveRoutes(
 // 3. CONTRATOS PREVENTIVOS PARA EL FORMULARIO
 // ==========================================
 
+/** Un contrato solo entra al tablero de rutas si es preventivo. */
+function isPreventiveContractFilter() {
+  return or(
+    eq(serviceTypes.code, "PREV"),
+    eq(contracts.serviceTypeId, PREVENTIVE_SERVICE_TYPE_ID)
+  );
+}
+
 export type PreventiveContractOption = {
   id: string;
   contractNumber: string;
@@ -243,7 +265,7 @@ export async function getPreventiveContractOptions(): Promise<PreventiveContract
       .where(
         and(
           eq(contracts.status, "ACTIVE"),
-          eq(serviceTypes.code, "PREV"),
+          isPreventiveContractFilter(),
           isNull(contracts.deletedAt),
           isNull(costCenters.deletedAt)
         )
@@ -272,7 +294,22 @@ export async function getPreventiveContractOptions(): Promise<PreventiveContract
       .orderBy(asc(elevatorUnities.internalCode));
 
     const equipmentByContract = new Map<string, PreventiveContractOption["equipment"]>();
+    const equipmentIds = equipmentRows.map((e) => e.id);
+    const scheduledIds =
+      equipmentIds.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await db
+                .select({ contractElevatorId: preventiveRouteStops.contractElevatorId })
+                .from(preventiveRouteStops)
+                .where(inArray(preventiveRouteStops.contractElevatorId, equipmentIds))
+            ).map((r) => r.contractElevatorId)
+          );
+
     for (const e of equipmentRows) {
+      // Un equipo ya programado en cualquier día no se vuelve a ofrecer.
+      if (scheduledIds.has(e.id)) continue;
       const list = equipmentByContract.get(e.contractId) ?? [];
       list.push({
         id: e.id,
@@ -283,13 +320,150 @@ export async function getPreventiveContractOptions(): Promise<PreventiveContract
       equipmentByContract.set(e.contractId, list);
     }
 
-    return contractRows.map((c) => ({
-      ...c,
-      equipment: equipmentByContract.get(c.id) ?? [],
-    }));
+    // Solo se ofrecen contratos que todavía tienen algún equipo sin programar.
+    return contractRows
+      .map((c) => ({
+        ...c,
+        equipment: equipmentByContract.get(c.id) ?? [],
+      }))
+      .filter((c) => c.equipment.length > 0);
   } catch (error) {
     console.error("Error al obtener contratos preventivos:", error);
     return [];
+  }
+}
+
+// ==========================================
+// 3.2 COBERTURA DE CONTRATOS PREVENTIVOS
+// ==========================================
+
+export type PreventiveContractCoverageEntry = {
+  contractId: string;
+  contractNumber: string;
+  costCenterId: string;
+  costCenterName: string;
+  clientId: string;
+  clientName: string;
+  totalEquipment: number;
+  scheduledEquipment: number;
+  /** Visitas (días hábiles) donde ya está enlazado. */
+  scheduledDays: number;
+};
+
+export type PreventiveContractCoverage = {
+  totalContracts: number;
+  totalEquipment: number;
+  scheduledContracts: number;
+  scheduledEquipment: number;
+  /** Contratos sin ninguna parada en el tablero. */
+  pendingContracts: number;
+  /** Contratos pendientes que además no tienen equipos vincular. */
+  pendingWithoutEquipment: number;
+  entries: PreventiveContractCoverageEntry[];
+  pending: PreventiveContractCoverageEntry[];
+};
+
+/**
+ * Compara los contratos PREV activos contra las paradas ya programadas en
+ * cualquier ruta, para saber qué clientes/contratos falta enlazar al tablero.
+ */
+export async function getPreventiveContractCoverage(): Promise<PreventiveContractCoverage> {
+  const empty: PreventiveContractCoverage = {
+    totalContracts: 0,
+    totalEquipment: 0,
+    scheduledContracts: 0,
+    scheduledEquipment: 0,
+    pendingContracts: 0,
+    pendingWithoutEquipment: 0,
+    entries: [],
+    pending: [],
+  };
+
+  try {
+    const prevRows = await db
+      .select({
+        contractId: contracts.id,
+        contractNumber: contracts.contractNumber,
+        status: contracts.status,
+        costCenterId: costCenters.id,
+        costCenterName: costCenters.name,
+        clientId: clients.id,
+        clientName: clients.legalName,
+        totalEquipment: count(contractElevators.id),
+      })
+      .from(contracts)
+      .innerJoin(serviceTypes, eq(contracts.serviceTypeId, serviceTypes.id))
+      .innerJoin(costCenters, eq(contracts.costCenterId, costCenters.id))
+      .innerJoin(clients, eq(costCenters.clientId, clients.id))
+      .leftJoin(contractElevators, eq(contractElevators.contractId, contracts.id))
+      .where(
+        and(
+          eq(contracts.status, "ACTIVE"),
+          isPreventiveContractFilter(),
+          isNull(contracts.deletedAt),
+          isNull(costCenters.deletedAt)
+        )
+      )
+      .groupBy(
+        contracts.id,
+        contracts.contractNumber,
+        contracts.status,
+        costCenters.id,
+        costCenters.name,
+        clients.id,
+        clients.legalName
+      )
+      .orderBy(asc(clients.legalName), asc(costCenters.name), asc(contracts.contractNumber));
+
+    if (prevRows.length === 0) return empty;
+
+    const contractIds = prevRows.map((r) => r.contractId);
+    const linkedRows = await db
+      .select({
+        contractId: contractElevators.contractId,
+        scheduledEquipment: countDistinct(preventiveRouteStops.id),
+        scheduledDays: countDistinct(preventiveRouteStops.routeId),
+      })
+      .from(contractElevators)
+      .innerJoin(
+        preventiveRouteStops,
+        eq(preventiveRouteStops.contractElevatorId, contractElevators.id)
+      )
+      .where(inArray(contractElevators.contractId, contractIds))
+      .groupBy(contractElevators.contractId);
+
+    const linkedByContract = new Map(linkedRows.map((r) => [r.contractId, r]));
+
+    const entries: PreventiveContractCoverageEntry[] = prevRows.map((r) => {
+      const linked = linkedByContract.get(r.contractId);
+      return {
+        contractId: r.contractId,
+        contractNumber: r.contractNumber,
+        costCenterId: r.costCenterId,
+        costCenterName: r.costCenterName,
+        clientId: r.clientId,
+        clientName: r.clientName,
+        totalEquipment: r.totalEquipment,
+        scheduledEquipment: linked?.scheduledEquipment ?? 0,
+        scheduledDays: linked?.scheduledDays ?? 0,
+      };
+    });
+
+    const pending = entries.filter((e) => e.scheduledEquipment === 0);
+
+    return {
+      totalContracts: entries.length,
+      totalEquipment: entries.reduce((acc, e) => acc + e.totalEquipment, 0),
+      scheduledContracts: entries.length - pending.length,
+      scheduledEquipment: entries.reduce((acc, e) => acc + e.scheduledEquipment, 0),
+      pendingContracts: pending.length,
+      pendingWithoutEquipment: pending.filter((e) => e.totalEquipment === 0).length,
+      entries,
+      pending,
+    };
+  } catch (error) {
+    console.error("Error al obtener cobertura de contratos preventivos:", error);
+    return empty;
   }
 }
 
@@ -593,6 +767,20 @@ export async function createRouteStops(data: RouteStopFormValues) {
       return {
         success: false,
         error: `El Día ${validated.businessDayNumber} está fuera del rango configurado (1-${config.totalDays}).`,
+      };
+    }
+
+    // Solo contratos PREV admiten paradas en el tablero de rutas preventivas.
+    const [preventiveContract] = await db
+      .select({ id: contracts.id })
+      .from(contracts)
+      .innerJoin(serviceTypes, eq(contracts.serviceTypeId, serviceTypes.id))
+      .where(and(eq(contracts.id, validated.contractId), isPreventiveContractFilter()))
+      .limit(1);
+    if (!preventiveContract) {
+      return {
+        success: false,
+        error: "El contrato seleccionado no es de tipo preventivo (PREV).",
       };
     }
 
@@ -976,17 +1164,16 @@ export async function generateMonth(
       return { success: true, month, created: 0, skipped, errors };
     }
 
-    // Secuencia por mes basada en el sufijo más alto existente (no en COUNT:
-    // si se liberan OTs, COUNT repetiría números).
-    const existingNumbers = await db
-      .select({ otNumber: workOrders.otNumber })
-      .from(workOrders)
-      .where(like(workOrders.otNumber, `OT-${month}-%`));
-    let seq =
-      existingNumbers.reduce((max, row) => {
-        const match = /(\d+)$/.exec(row.otNumber);
-        return match ? Math.max(max, Number(match[1])) : max;
-      }, 0) + 1;
+    // Números de OT aleatorios; se evita colisión dentro de la misma corrida
+    // (el índice UNIQUE es la red de seguridad para el resto).
+    const usedOtNumbers = new Set(
+      (
+        await db
+          .select({ otNumber: workOrders.otNumber })
+          .from(workOrders)
+          .where(like(workOrders.otNumber, `OT-${month}-%`))
+      ).map((row) => row.otNumber)
+    );
 
     const now = Math.floor(Date.now() / 1000);
     const stmts: BatchItem<"sqlite">[] = [];
@@ -1043,7 +1230,7 @@ export async function generateMonth(
       stmts.push(
         db.insert(workOrders).values({
           id: woId,
-          otNumber: `OT-${month}-${String(seq).padStart(4, "0")}`,
+          otNumber: uniqueDocumentNumber("OT", month, usedOtNumbers),
           costCenterId: first.costCenterId,
           technicianId,
           serviceTypeId: prevServiceTypeId,
@@ -1078,7 +1265,6 @@ export async function generateMonth(
         );
       }
 
-      seq++;
       created++;
     }
 

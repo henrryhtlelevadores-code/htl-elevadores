@@ -26,8 +26,9 @@ import {
   type WorkOrderElevator,
   type WorkOrderTask,
 } from "@/db/index";
-import { getErrorMessage, getErrorDetail } from "@/lib/errors";
+import { getErrorMessage, getErrorDetail, isUniqueConstraintError } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
+import { generateDocumentNumber } from "@/lib/document-number";
 import {
   workOrderFormSchema,
   workOrderElevatorFormSchema,
@@ -103,11 +104,8 @@ export async function getNextOtNumber(isoDate: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return { otNumber: "" };
     const [y, m] = isoDate.split("-").map(Number);
     const monthLabel = `${y}-${String(m).padStart(2, "0")}`;
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(workOrders)
-      .where(like(workOrders.otNumber, `OT-${monthLabel}-%`));
-    return { otNumber: `OT-${monthLabel}-${String((total ?? 0) + 1).padStart(4, "0")}` };
+    // Número aleatorio: es solo una vista previa, se regenera al guardar.
+    return { otNumber: generateDocumentNumber("OT", monthLabel) };
   } catch (error) {
     console.error("Error al generar número de OT:", error);
     return { otNumber: "" };
@@ -450,12 +448,6 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
       }
     }
 
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(workOrders)
-      .where(like(workOrders.otNumber, `OT-${monthLabel}-%`));
-    const otNumber = `OT-${monthLabel}-${String((total ?? 0) + 1).padStart(4, "0")}`;
-
     const workOrderId = generateUuid();
     const estimatedDurationMins = serviceType.code === "PREV"
       ? validated.estimatedDurationMins ?? 120
@@ -470,7 +462,7 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
       return { success: false, error: "Cada equipo preventivo debe estar vinculado a un contrato activo." };
     }
     const contractElevatorByUnity = new Map(contractElevatorRows.map((row) => [row.elevatorUnityId, row.id]));
-    const stmts: BatchItem<"sqlite">[] = [
+    const insertWorkOrder = (otNumber: string): BatchItem<"sqlite"> =>
       db.insert(workOrders).values({
         id: workOrderId,
         otNumber,
@@ -487,8 +479,9 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         estimatedEndAt: estimatedDurationMins && validated.scheduledTime
           ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + estimatedDurationMins * elevatorIds.length * 60
           : null,
-      }),
-    ];
+      });
+
+    const stmts: BatchItem<"sqlite">[] = [];
     const workOrderElevatorRows: Array<{
       id: string;
       elevatorUnityId: string;
@@ -521,14 +514,27 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         stmts.push(...detail.statements);
       }
     }
-    await db.batch(stmts as unknown as Parameters<typeof db.batch>[0]);
+
+    // Número aleatorio con reintento ante colisión del índice UNIQUE.
+    const maxAttempts = 5;
+    let otNumber = "";
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      otNumber = generateDocumentNumber("OT", monthLabel);
+      try {
+        await db.batch([insertWorkOrder(otNumber), ...stmts] as unknown as Parameters<typeof db.batch>[0]);
+        break;
+      } catch (error) {
+        if (isUniqueConstraintError(error) && attempt < maxAttempts) continue;
+        throw error;
+      }
+    }
 
     revalidatePath("/work-orders");
     return { success: true, message: `OT ${otNumber} creada correctamente` };
   } catch (error) {
     console.error("Error al crear orden de trabajo:", error);
-    if (getErrorMessage(error).includes("UNIQUE constraint failed")) {
-      return { success: false, error: "El número de OT ya existe. Intenta nuevamente." };
+    if (isUniqueConstraintError(error)) {
+      return { success: false, error: "No se pudo asignar un número de OT único. Intenta nuevamente." };
     }
     console.error("Detalle de creación de OT:", getErrorDetail(error));
     return { success: false, error: `${getErrorMessage(error)}${error instanceof Error ? ` Detalle: ${error.message}` : ""}` };

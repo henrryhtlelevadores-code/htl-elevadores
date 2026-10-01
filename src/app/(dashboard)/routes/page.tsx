@@ -2,6 +2,7 @@ import {
   getTechnicians,
   getPreventiveRoutes,
   getPreventiveContractOptions,
+  getPreventiveContractCoverage,
   getRouteConfig,
 } from "@/features/routes/actions";
 import { RoutesBoard } from "@/features/routes/components/routes-board";
@@ -9,9 +10,10 @@ import { RoutesBoard } from "@/features/routes/components/routes-board";
 export const dynamic = "force-dynamic";
 
 export default async function RoutesPage() {
-  const [technicians, contractOptions] = await Promise.all([
+  const [technicians, contractOptions, coverage] = await Promise.all([
     getTechnicians(),
     getPreventiveContractOptions(),
+    getPreventiveContractCoverage(),
   ]);
 
   const technicianId = technicians[0]?.id ?? "";
@@ -26,6 +28,7 @@ export default async function RoutesPage() {
       contractOptions={contractOptions}
       defaultRoutes={defaultRoutes}
       defaultConfig={defaultConfig}
+      defaultCoverage={coverage}
     />
   );
 }

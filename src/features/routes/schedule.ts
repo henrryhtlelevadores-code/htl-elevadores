@@ -6,6 +6,12 @@ export const ROUTE_DEFAULTS = {
   defaultStopDurationMins: 120,
 } as const;
 
+/**
+ * Id del tipo de servicio preventivo. Se acepta además del código "PREV" para
+ * que la plantilla de rutas nunca enlace contratos de otro tipo de servicio.
+ */
+export const PREVENTIVE_SERVICE_TYPE_ID = "63CB43BF-E6F3-4F2A-BC8D-CAFD600C6A77";
+
 export type RouteConfigValues = {
   technicianId: string;
   totalDays: number;

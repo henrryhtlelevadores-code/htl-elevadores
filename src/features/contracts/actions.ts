@@ -17,15 +17,16 @@ import {
   type Contract,
   type ContractElevator,
 } from "@/db/index";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
+import { generateDocumentNumber } from "@/lib/document-number";
 import {
   contractFormSchema,
   contractElevatorFormSchema,
   type ContractFormValues,
   type ContractElevatorFormValues,
 } from "./schema";
-import { eq, asc, desc, isNull, isNotNull, and, or, gte, inArray, like, count } from "drizzle-orm";
+import { eq, asc, desc, isNull, isNotNull, and, or, gte, inArray } from "drizzle-orm";
 import { preventiveRouteStops, workOrders, workOrderElevators } from "@/db/index";
 
 export type ContractWithRelations = Contract & {
@@ -38,23 +39,12 @@ const toUnix = (iso: string): number => {
   return Math.floor(Date.UTC(year, month - 1, day) / 1000);
 };
 
-function buildContractNumber(currSeq: number): string {
-  const year = new Date().getFullYear();
-  return `CT-${year}-${String(currSeq).padStart(4, "0")}`;
+function buildContractNumber(): string {
+  return generateDocumentNumber("CT", String(new Date().getFullYear()));
 }
 
 async function nextContractNumber(): Promise<string> {
-  try {
-    const year = new Date().getFullYear();
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(contracts)
-      .where(and(isNull(contracts.deletedAt), like(contracts.contractNumber, `CT-${year}-%`)));
-    return buildContractNumber(total + 1);
-  } catch (error) {
-    console.error("Error al generar número de contrato:", error);
-    return buildContractNumber(1);
-  }
+  return buildContractNumber();
 }
 
 export async function getContracts(): Promise<ContractWithRelations[]> {
@@ -101,26 +91,40 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
 export async function createContract(data: ContractFormValues) {
   try {
     const validated = contractFormSchema.parse(data);
-    const contractNumber = await nextContractNumber();
+    const contractId = generateUuid();
+    const insertContract = (contractNumber: string) =>
+      db.insert(contracts).values({
+        id: contractId,
+        contractNumber,
+        costCenterId: validated.costCenterId,
+        status: validated.status || "ACTIVE",
+        serviceTypeId: validated.serviceTypeId,
+        startDate: toUnix(validated.startDate),
+        endDate: validated.endDate ? toUnix(validated.endDate) : null,
+        autoRenewal: validated.autoRenewal,
+        noticePeriodDays: validated.noticePeriodDays ?? 30,
+        currency: validated.currency || "PEN",
+        baseAmount: validated.baseAmount,
+        includesIgv: validated.includesIgv,
+        paymentTermsDays: validated.paymentTermsDays ?? 5,
+        inflationAdjustment: validated.inflationAdjustment,
+        slaEntrapmentMins: validated.slaEntrapmentMins ?? 45,
+        slaMechanicalFailureMins: validated.slaMechanicalFailureMins ?? 180,
+      });
 
-    await db.insert(contracts).values({
-      id: generateUuid(),
-      contractNumber,
-      costCenterId: validated.costCenterId,
-      status: validated.status || "ACTIVE",
-      serviceTypeId: validated.serviceTypeId,
-      startDate: toUnix(validated.startDate),
-      endDate: validated.endDate ? toUnix(validated.endDate) : null,
-      autoRenewal: validated.autoRenewal,
-      noticePeriodDays: validated.noticePeriodDays ?? 30,
-      currency: validated.currency || "PEN",
-      baseAmount: validated.baseAmount,
-      includesIgv: validated.includesIgv,
-      paymentTermsDays: validated.paymentTermsDays ?? 5,
-      inflationAdjustment: validated.inflationAdjustment,
-      slaEntrapmentMins: validated.slaEntrapmentMins ?? 45,
-      slaMechanicalFailureMins: validated.slaMechanicalFailureMins ?? 180,
-    });
+    // Número aleatorio con reintento ante colisión del índice UNIQUE.
+    const maxAttempts = 5;
+    let contractNumber = "";
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      contractNumber = await nextContractNumber();
+      try {
+        await insertContract(contractNumber);
+        break;
+      } catch (error) {
+        if (isUniqueConstraintError(error) && attempt < maxAttempts) continue;
+        throw error;
+      }
+    }
 
     revalidatePath("/contracts");
     return { success: true, message: `Contrato ${contractNumber} registrado correctamente` };
