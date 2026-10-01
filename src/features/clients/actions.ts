@@ -33,6 +33,11 @@ export type ClientWithStats = Client & {
   cost_centers_count?: number;
 };
 
+export type CostCenterCalendarEquipment = {
+  internalCode: string;
+  name: string;
+};
+
 export async function getCostCenterCalendarWorkOrders(
   costCenterId: string,
   from: string,
@@ -61,7 +66,6 @@ export async function getCostCenterCalendarWorkOrders(
     .leftJoin(users, eq(users.id, workOrders.technicianId))
     .where(and(
       eq(elevatorUnities.costCenterId, costCenterId),
-      eq(workOrders.approvalStatus, "APPROVED"),
       isNull(workOrders.deletedAt)
     ))
     .orderBy(asc(workOrders.scheduledDate), asc(workOrders.scheduledTime), desc(workOrders.createdAt));
@@ -72,7 +76,21 @@ export async function getCostCenterCalendarWorkOrders(
     if (status !== "ALL" && status !== "ACTIVE" && row.status !== status) return false;
     return true;
   });
-  return [...new Map(filtered.map((row) => [row.id, row])).values()];
+  // Una fila por par OT/equipo: se colapsan en un registro por OT acumulando
+  // todos los equipos, en vez de conservar solo el último.
+  const byWorkOrder = new Map<string, (typeof filtered)[number] & { equipments: CostCenterCalendarEquipment[] }>();
+  for (const row of filtered) {
+    const existing = byWorkOrder.get(row.id);
+    const equipment: CostCenterCalendarEquipment = { internalCode: row.elevatorInternalCode, name: row.elevatorName };
+    if (!existing) {
+      byWorkOrder.set(row.id, { ...row, equipments: [equipment] });
+      continue;
+    }
+    if (!existing.equipments.some((item) => item.internalCode === equipment.internalCode)) {
+      existing.equipments.push(equipment);
+    }
+  }
+  return [...byWorkOrder.values()];
 }
 
 export type CostCenterCredentialStatus = {

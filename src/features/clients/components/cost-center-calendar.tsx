@@ -3,10 +3,28 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { getCostCenterCalendarWorkOrders } from "../actions";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import {
+  IconCalendar,
+  IconCalendarOff,
+  IconClock,
+  IconElevator,
+  IconLoader2,
+  IconTool,
+  IconUser,
+} from "@tabler/icons-react";
 
 type CalendarOrder = Awaited<ReturnType<typeof getCostCenterCalendarWorkOrders>>[number];
 type Range = "current-month" | "next-month" | "all";
+
+const RANGES = [["current-month", "Este mes"], ["next-month", "Próximo mes"], ["all", "Todas"]] as const;
+
+const SECTIONS = [
+  ["PREVENTIVE", "Preventivo", "#16A34A"],
+  ["CORRECTIVE", "Correctivo", "#2563EB"],
+  ["EMERGENCY", "Emergencia", "#DC2626"],
+  ["MODERNIZATION", "Modernización", "#7C3AED"],
+  ["PROJECT", "Proyecto", "#EA580C"],
+] as const;
 
 function formatDate(date: string | null) {
   if (!date) return "Fecha no programada";
@@ -32,8 +50,9 @@ function serviceGroup(order: CalendarOrder) {
   return "PROJECT";
 }
 
-function groupColor(group: string) {
-  return { PREVENTIVE: "#16A34A", CORRECTIVE: "#2563EB", EMERGENCY: "#DC2626", MODERNIZATION: "#7C3AED", PROJECT: "#EA580C" }[group] ?? "#6B7280";
+function equipmentLabel(order: CalendarOrder) {
+  if (order.equipments.length === 0) return "Sin equipo asignado";
+  return order.equipments.map((item) => `${item.internalCode} ${item.name}`.trim()).join(" · ");
 }
 
 export function CostCenterCalendar({ costCenterId }: { costCenterId: string }) {
@@ -52,34 +71,85 @@ export function CostCenterCalendar({ costCenterId }: { costCenterId: string }) {
     return groups;
   }, {}), [orders]);
 
-  const sections = [
-    ["PREVENTIVE", "Preventivo"],
-    ["CORRECTIVE", "Correctivo"],
-    ["EMERGENCY", "Emergencia"],
-    ["MODERNIZATION", "Modernización"],
-    ["PROJECT", "Proyecto"],
-  ] as const;
-
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-2">
-        {([["current-month", "Este mes"], ["next-month", "Próximo mes"], ["all", "Todas"]] as const).map(([value, label]) => (
+        {RANGES.map(([value, label]) => (
           <Button key={value} type="button" size="sm" variant={range === value ? "default" : "outline"} onClick={() => setRange(value)} className="min-h-10 text-xs">
             {label}
           </Button>
         ))}
       </div>
 
-      {isPending ? <div className="flex justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div> : orders.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">No hay órdenes de trabajo pendientes.</div>
-      ) : sections.map(([key, title]) => {
-        const items = grouped[key] ?? [];
-        if (items.length === 0) return null;
-        const color = groupColor(key);
-        return <section key={key} className="space-y-2"><h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color }}><span className="size-2 rounded-full" style={{ backgroundColor: color }} />{title} ({items.length})</h2><div className="space-y-2">{items.map((order) => <article key={order.id} className="rounded-xl border border-border bg-card p-4 shadow-xs" style={{ borderLeftColor: color, borderLeftWidth: 4 }}><div className="flex items-start justify-between gap-3"><div><span className="rounded border border-border bg-muted px-2 py-1 font-mono text-xs font-bold">{order.otNumber}</span><p className="mt-2 text-xs font-semibold text-foreground">📅 {formatDate(order.scheduledDate)} · {order.scheduledTime ?? "Sin hora"}</p></div><span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">{order.status === "IN_PROGRESS" ? "En curso" : "Pendiente"}</span></div><p className="mt-2 text-xs text-muted-foreground">🏢 Centro de costo actual</p><p className="mt-1 text-xs text-muted-foreground">🔧 Equipo asignado</p>{order.technicianName && <p className="mt-1 text-xs text-muted-foreground">👤 {order.technicianName}</p>}</article>)}</div></section>;
-      })}
+      {isPending ? (
+        <div className="flex justify-center py-12">
+          <IconLoader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+          <IconCalendarOff className="size-6 text-muted-foreground/70" />
+          No hay órdenes de trabajo pendientes.
+        </div>
+      ) : (
+        SECTIONS.map(([key, title, color]) => {
+          const items = grouped[key] ?? [];
+          if (items.length === 0) return null;
+          return (
+            <section key={key} className="space-y-2">
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color }}>
+                <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+                {title} ({items.length})
+              </h2>
+              <div className="space-y-2">
+                {items.map((order) => {
+                  const details = [
+                    { key: "service", icon: IconTool, text: order.serviceTypeName ?? "Sin tipo de servicio" },
+                    { key: "equipment", icon: IconElevator, text: equipmentLabel(order) },
+                    ...(order.technicianName ? [{ key: "technician", icon: IconUser, text: order.technicianName }] : []),
+                  ];
+                  return (
+                    <article key={order.id} className="rounded-xl border border-border bg-card p-4 shadow-xs" style={{ borderLeftColor: color, borderLeftWidth: 4 }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="rounded border border-border bg-muted px-2 py-1 font-mono text-xs font-bold">{order.otNumber}</span>
+                          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <IconCalendar className="size-3.5 shrink-0 text-muted-foreground" />
+                              {formatDate(order.scheduledDate)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <IconClock className="size-3.5 shrink-0 text-muted-foreground" />
+                              {order.scheduledTime ?? "Sin hora"}
+                            </span>
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                          {order.status === "IN_PROGRESS" ? "En curso" : "Pendiente"}
+                        </span>
+                      </div>
+                      {details.map(({ key, icon: Icon, text }) => (
+                        <p key={key} className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                          <Icon className="mt-px size-3.5 shrink-0" />
+                          <span className="min-w-0 break-words">{text}</span>
+                        </p>
+                      ))}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })
+      )}
 
-      <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground"><span className="text-emerald-600">● Preventivo</span><span className="text-blue-600">● Correctivo</span><span className="text-red-600">● Emergencia</span><span className="text-violet-600">● Modernización</span><span className="text-orange-600">● Proyecto</span></div>
+      <div className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground">
+        {SECTIONS.map(([, title, color]) => (
+          <span key={title} className="inline-flex items-center gap-1.5">
+            <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+            {title}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
