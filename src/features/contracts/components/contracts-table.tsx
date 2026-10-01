@@ -113,6 +113,7 @@ function formatDate(ts: number | null): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 

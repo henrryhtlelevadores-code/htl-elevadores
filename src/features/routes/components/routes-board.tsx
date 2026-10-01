@@ -39,7 +39,7 @@ import {
   deleteRouteStops,
   updateRouteConfig,
   resetRouteConfig,
-  generateMonth,
+  generateMonthForAllTechnicians,
   transferVisitToTechnician,
 } from "../actions";
 import {
@@ -56,7 +56,6 @@ import {
 import {
   ROUTE_DEFAULTS,
   formatMonthLabel,
-  nextMonthLabel,
   resolveDayCapacity,
 } from "../schedule";
 
@@ -202,7 +201,18 @@ export function RoutesBoard({
   const [deleteGroup, setDeleteGroup] = useState<StopGroup | null>(null);
 
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
-  const [generateMonthInput, setGenerateMonthInput] = useState(nextMonthLabel());
+  const [generateMonthInput, setGenerateMonthInput] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const generationMonthOptions = useMemo(() => {
+    const now = new Date();
+    const options: string[] = [];
+    for (let month = now.getMonth(); month < 12; month++) {
+      options.push(`${now.getFullYear()}-${String(month + 1).padStart(2, "0")}`);
+    }
+    return options;
+  }, []);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
 
   const sheetForm = useForm<RouteStopSheetValues>({
@@ -449,7 +459,7 @@ export function RoutesBoard({
 
   function handleGenerate() {
     startTransition(async () => {
-      const res = await generateMonth(technicianId, generateMonthInput);
+      const res = await generateMonthForAllTechnicians(generateMonthInput);
       if (res.error) {
         toast.error("Error", { description: res.error });
         return;
@@ -470,7 +480,7 @@ export function RoutesBoard({
 
   function openGenerateDialog() {
     setGenerationResult(null);
-    setGenerateMonthInput(nextMonthLabel());
+    setGenerateMonthInput(generationMonthOptions[0] ?? "");
     setIsGenerateOpen(true);
   }
 
@@ -1498,11 +1508,8 @@ export function RoutesBoard({
               Generar OTs del mes
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Se crearán las órdenes de trabajo preventivas de{" "}
-              <strong className="text-foreground">
-                {technicians.find((t) => t.id === technicianId)?.fullName}
-              </strong>{" "}
-              a partir de la plantilla. Las paradas ya generadas para ese mes se omiten.
+              Se crearán las órdenes de trabajo preventivas de todos los técnicos con rutas activas.
+              Las paradas y OTs ya existentes para ese mes se omiten.
             </DialogDescription>
           </DialogHeader>
 
@@ -1510,14 +1517,17 @@ export function RoutesBoard({
             <Label className="text-xs font-semibold" htmlFor="generateMonth">
               Mes de generación
             </Label>
-            <Input
+            <select
               id="generateMonth"
-              type="month"
               value={generateMonthInput}
               onChange={(e) => setGenerateMonthInput(e.target.value)}
               disabled={!!generationResult}
-              className="h-8 text-xs"
-            />
+              className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+            >
+              {generationMonthOptions.map((month) => (
+                <option key={month} value={month}>{formatMonthLabel(month)}</option>
+              ))}
+            </select>
             {isValidMonthInput(generateMonthInput) && (
               <p className="text-[10px] text-muted-foreground">
                 {formatMonthLabel(generateMonthInput)} · {config.totalDays} días hábiles

@@ -5,7 +5,7 @@ import { Popover } from "@base-ui/react/popover";
 import { CalendarIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { Calendar } from "@/components/ui/calendar";
-import { formatLong, parseIso, toIso, type IsoDate } from "@/lib/date";
+import { formatLong, parseIso, type IsoDate } from "@/lib/date";
 
 export interface DatePickerProps {
   value: string;

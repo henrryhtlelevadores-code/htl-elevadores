@@ -94,6 +94,14 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pendiente",
+  IN_PROGRESS: "En curso",
+  REVIEW: "En revisión",
+  COMPLETED: "Completada",
+  CANCELLED: "Cancelada",
+};
+
 const PRIORITY_STYLES: Record<string, string> = {
   HIGH: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
   NORMAL: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20",
@@ -182,6 +190,7 @@ export function WorkOrdersCalendar({
   const [viewingWorkOrder, setViewingWorkOrder] = useState<WorkOrderWithRelations | null>(null);
   const [viewingDay, setViewingDay] = useState<{ iso: string; label: string } | null>(null);
   const [deletingWorkOrder, setDeletingWorkOrder] = useState<WorkOrderWithRelations | null>(null);
+  const [technicianFilter, setTechnicianFilter] = useState("all");
 
   const form = useForm<WorkOrderFormValues>({
     resolver: zodResolver(workOrderFormSchema),
@@ -218,9 +227,16 @@ export function WorkOrdersCalendar({
     return LEGACY_TYPE_LABELS[type] ?? type;
   };
 
+  const filteredWorkOrders = useMemo(
+    () => technicianFilter === "all"
+      ? initialWorkOrders
+      : initialWorkOrders.filter((workOrder) => workOrder.technicianId === technicianFilter),
+    [initialWorkOrders, technicianFilter]
+  );
+
   const woByDayKey = useMemo(() => {
     const map = new Map<string, WorkOrderWithRelations[]>();
-    for (const wo of initialWorkOrders) {
+    for (const wo of filteredWorkOrders) {
       if (!wo.scheduledDate) continue;
       map.set(wo.scheduledDate, [...(map.get(wo.scheduledDate) ?? []), wo]);
     }
@@ -232,7 +248,7 @@ export function WorkOrdersCalendar({
       )
     );
     return map;
-  }, [initialWorkOrders]);
+  }, [filteredWorkOrders]);
 
   const calCells = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -300,7 +316,7 @@ export function WorkOrdersCalendar({
       const res = await updateWorkOrderStatus(workOrder.id, status);
       if (res.success) {
         toast.success("Estado actualizado", {
-          description: `La OT ${workOrder.otNumber} cambió a ${status.replace("_", " ").toLowerCase()}.`,
+          description: `La OT ${workOrder.otNumber} cambió a ${STATUS_LABELS[status] ?? status}.`,
         });
         router.refresh();
       } else {
@@ -423,7 +439,7 @@ export function WorkOrdersCalendar({
           return (
             <div className="flex flex-wrap items-center gap-1">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${style}`}>
-                {status.replace("_", " ")}
+                {STATUS_LABELS[status] ?? status}
               </span>
               {row.original.approvalStatus !== "APPROVED" && (
                 <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
@@ -510,8 +526,8 @@ export function WorkOrdersCalendar({
 
   const viewingDayList = useMemo(() => {
     if (!viewingDay) return [];
-    return initialWorkOrders.filter((wo) => wo.scheduledDate === viewingDay.iso);
-  }, [viewingDay, initialWorkOrders]);
+    return filteredWorkOrders.filter((wo) => wo.scheduledDate === viewingDay.iso);
+  }, [viewingDay, filteredWorkOrders]);
 
   const elevatorsByWorkOrder = useMemo(() => {
     const map = new Map<string, number>();
@@ -551,13 +567,15 @@ export function WorkOrdersCalendar({
           </button>
         </div>
 
-        <Button
-          onClick={() => openCreate()}
-          className="bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold text-xs h-9 px-4 gap-2 shadow-xs shrink-0"
-        >
-          <Plus className="size-4" />
-          Nueva OT
-        </Button>
+        <div className="flex items-center gap-2">
+          <select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)} className="h-9 max-w-[220px] rounded-md border border-border bg-card px-3 text-xs" aria-label="Filtrar por técnico de campo">
+            <option value="all">Todos los técnicos</option>
+            {formData.technicians.map((technician) => <option key={technician.id} value={technician.id}>{technician.fullName}</option>)}
+          </select>
+          <Button onClick={() => openCreate()} className="bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold text-xs h-9 px-4 gap-2 shadow-xs shrink-0">
+            <Plus className="size-4" /> Nueva OT
+          </Button>
+        </div>
       </div>
 
       {view === "calendar" ? (
@@ -689,7 +707,7 @@ export function WorkOrdersCalendar({
       ) : (
         <DataTable
           columns={columns}
-          data={initialWorkOrders}
+          data={filteredWorkOrders}
           searchPlaceholder="Buscar por N° OT, cliente, centro de costo o técnico..."
         />
       )}
@@ -948,7 +966,7 @@ export function WorkOrdersCalendar({
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="supportingTechnicians" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Técnicos de apoyo</FormLabel><FormControl><Input {...field} value={field.value ?? ""} placeholder="Si deseas colocar técnicos adicionales" className="text-xs" /></FormControl></FormItem>} />
-                <FormField control={form.control} name="estimatedDurationMins" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Duración estimada (min)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)} className="text-xs" /></FormControl></FormItem>} />
+                <FormField control={form.control} name="estimatedDurationMins" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Duración estimada por Equipo (min)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)} className="text-xs" /></FormControl></FormItem>} />
               </div>
 
               <FormField
@@ -1072,7 +1090,7 @@ export function WorkOrdersCalendar({
                     <span
                       className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${statusStyle}`}
                     >
-                      {status.replace("_", " ")}
+                      {STATUS_LABELS[status] ?? status}
                     </span>
                   </div>
 

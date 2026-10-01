@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 interface WorkOrderDocumentPageProps {
   params: Promise<{ costCenterId: string; workOrderId: string }>;
+  searchParams?: Promise<{ elevatorId?: string }>;
 }
 
 export const metadata: Metadata = {
@@ -16,16 +17,18 @@ export const metadata: Metadata = {
 
 export default async function WorkOrderDocumentPage({
   params,
+  searchParams,
 }: WorkOrderDocumentPageProps) {
   const resolved = await params;
   const { costCenterId, workOrderId } = resolved;
+  const elevatorId = (await searchParams)?.elevatorId;
 
   const session = await getPortalSessionCostCenterId();
   if (!session || session !== costCenterId) {
     redirect(`/portal/${costCenterId}/login`);
   }
 
-  const data = await getPortalWorkOrderDocument(costCenterId, workOrderId);
+  const data = await getPortalWorkOrderDocument(costCenterId, workOrderId, elevatorId);
   if (!data) {
     notFound();
   }

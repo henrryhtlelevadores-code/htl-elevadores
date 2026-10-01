@@ -89,6 +89,21 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}min`;
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pendiente",
+  IN_PROGRESS: "En curso",
+  REVIEW: "En revisión",
+  COMPLETED: "Completada",
+  CANCELLED: "Cancelada",
+};
+
+const ELEVATOR_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pendiente",
+  IN_PROGRESS: "En curso",
+  COMPLETED: "Completado",
+  UNCOMPLETED_MAINTENANCE: "Mant. sin culminar",
+};
+
 export function WorkOrderDetail({
   workOrder,
   workOrderElevators,
@@ -171,7 +186,7 @@ export function WorkOrderDetail({
             ["Programada", formatDate(workOrder.scheduledDate ?? null, workOrder.scheduledTime ?? null)],
             ["Duración", workOrder.estimatedDurationMins ? `${workOrder.estimatedDurationMins} min/equipo` : "—"],
             ["Fin estimado", workOrder.estimatedEndAt ? formatDateTime(workOrder.estimatedEndAt) : "—"],
-            ["Estado", (workOrder.status ?? "").replace("_", " ")],
+            ["Estado", STATUS_LABELS[workOrder.status ?? ""] ?? workOrder.status ?? "—"],
           ].map(([label, value]) => (
             <div key={String(label)} className="min-w-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -232,7 +247,7 @@ export function WorkOrderDetail({
                         ELEVATOR_STATUS_STYLES[elevator.status || "PENDING"] || ELEVATOR_STATUS_STYLES.PENDING
                       }`}
                     >
-                      {(elevator.status || "PENDING").replace("_", " ")}
+                      {ELEVATOR_STATUS_LABELS[elevator.status || "PENDING"] ?? elevator.status ?? "Pendiente"}
                     </span>
                   </div>
 

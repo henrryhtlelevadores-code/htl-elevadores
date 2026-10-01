@@ -33,7 +33,10 @@ export type ContractWithRelations = Contract & {
   service_type_name?: string | null;
 };
 
-const toUnix = (iso: string): number => Math.floor(new Date(iso).getTime() / 1000);
+const toUnix = (iso: string): number => {
+  const [year, month, day] = iso.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 1000);
+};
 
 function buildContractNumber(currSeq: number): string {
   const year = new Date().getFullYear();

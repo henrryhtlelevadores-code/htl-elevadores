@@ -46,31 +46,33 @@ function SheetContent({
   return (
     <SheetPortal>
       <SheetBackdrop />
-      <DrawerPrimitive.Popup
-        data-slot="sheet-content"
-        className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col gap-4 bg-popover p-4 text-sm text-popover-foreground shadow-lg outline-none duration-200 border-l border-border data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DrawerPrimitive.Close
-            data-slot="sheet-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2"
-                size="icon-sm"
-              />
-            }
-          >
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DrawerPrimitive.Close>
-        )}
-      </DrawerPrimitive.Popup>
+      <DrawerPrimitive.Viewport>
+        <DrawerPrimitive.Popup
+          data-slot="sheet-content"
+          className={cn(
+            "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col gap-4 bg-popover p-4 text-sm text-popover-foreground shadow-lg outline-none duration-200 border-l border-border data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DrawerPrimitive.Close
+              data-slot="sheet-close"
+              render={
+                <Button
+                  variant="ghost"
+                  className="absolute top-2 right-2"
+                  size="icon-sm"
+                />
+              }
+            >
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DrawerPrimitive.Close>
+          )}
+        </DrawerPrimitive.Popup>
+      </DrawerPrimitive.Viewport>
     </SheetPortal>
   )
 }

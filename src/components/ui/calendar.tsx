@@ -85,17 +85,25 @@ export function Calendar({
   const [cursor, setCursor] = React.useState<Date>(
     () => initialMonth ?? selected ?? today
   );
+  const previousValueRef = React.useRef(value);
 
-  // Sync the visible month when the selected date lives outside it.
-  if (
-    view === "days" &&
-    selected &&
-    !isSameDay(selected, cursor) &&
-    (selected.getFullYear() !== cursor.getFullYear() ||
-      selected.getMonth() !== cursor.getMonth())
-  ) {
-    setCursor(startOfMonth(selected.getFullYear(), selected.getMonth()));
-  }
+  // Sync external value changes without overriding year/month navigation.
+  React.useEffect(() => {
+    if (previousValueRef.current === value) return;
+    previousValueRef.current = value;
+    if (!selected) return;
+    if (
+      selected.getFullYear() !== cursor.getFullYear() ||
+      selected.getMonth() !== cursor.getMonth()
+    ) {
+      const frame = requestAnimationFrame(() =>
+        setCursor(startOfMonth(selected.getFullYear(), selected.getMonth()))
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+    // cursor is intentionally read to avoid changing the user's in-progress navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, value]);
 
   const daysRef = useFocusManagement(view === "days");
 

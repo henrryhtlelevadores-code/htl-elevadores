@@ -67,7 +67,7 @@ export function DateCarousel({
               {count > 0 ? (
                 <span
                   className={cn(
-                    "absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[9px] font-black",
+                    "absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full p-0 text-[9px] font-black leading-none",
                     isSelected
                       ? "bg-white text-[#0066CC]"
                       : "bg-[#0066CC] text-white"

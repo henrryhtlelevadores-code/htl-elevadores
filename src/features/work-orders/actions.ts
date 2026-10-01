@@ -44,6 +44,12 @@ import {
   parseChecklistItems,
 } from "@/features/safety/checklist-content";
 
+function scheduledTimestamp(date: string, time: string): number {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day, hours, minutes) / 1000) + 5 * 60 * 60;
+}
+
 export type WorkOrderWithRelations = WorkOrder & {
   cost_center_name?: string | null;
   client_name?: string | null;
@@ -253,7 +259,17 @@ export async function buildPreventiveElevatorDetail({
     scheduled.getUTCMonth() - startDate.getUTCMonth();
   const frequencyMonths = Math.max(1, context.frequencyMonths ?? 1);
   if (monthsSinceStart < 0 || monthsSinceStart % frequencyMonths !== 0) {
-    errors.push("Al equipo no le corresponde mantenimiento según la frecuencia del contrato.");
+    const startLabel = startDate.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    errors.push(
+      monthsSinceStart < 0
+        ? `El mantenimiento del equipo inicia el ${startLabel}; la fecha programada es anterior al inicio del contrato.`
+        : `Al equipo no le corresponde mantenimiento en este mes según la frecuencia mensual del contrato.`
+    );
     return { statements, errors };
   }
 
@@ -466,7 +482,7 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         supportingTechnicians: validated.supportingTechnicians?.trim() || null,
         estimatedDurationMins: validated.estimatedDurationMins ?? null,
         estimatedEndAt: validated.estimatedDurationMins && validated.scheduledTime
-          ? Math.floor(new Date(`${validated.scheduledDate}T${validated.scheduledTime}`).getTime() / 1000) + validated.estimatedDurationMins * 60
+          ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + validated.estimatedDurationMins * elevatorIds.length * 60
           : null,
       }),
     ];
@@ -561,7 +577,7 @@ export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormVal
       const duration = data.estimatedDurationMins ?? row?.estimatedDurationMins;
       const equipment = await db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, id));
       updateData.estimatedEndAt = date && time && duration
-        ? Math.floor(new Date(`${date}T${time}`).getTime() / 1000) + duration * equipment.length * 60
+        ? scheduledTimestamp(date, time) + duration * equipment.length * 60
         : null;
     }
 

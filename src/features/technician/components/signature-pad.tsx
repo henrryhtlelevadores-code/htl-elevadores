@@ -19,10 +19,11 @@ export interface SignaturePadHandle {
 
 interface SignaturePadProps {
   className?: string;
+  onChange?: (dataUrl: string | null) => void;
 }
 
 const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
-  function SignaturePad({ className }, ref) {
+  function SignaturePad({ className, onChange }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const drawingRef = useRef(false);
@@ -82,7 +83,8 @@ const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
       ctx.lineTo(point.x, point.y);
       ctx.stroke();
       lastPointRef.current = point;
-      if (!hasInk) setHasInk(true);
+       if (!hasInk) setHasInk(true);
+       onChange?.(canvas.toDataURL("image/png"));
     };
 
     const end = (event: React.PointerEvent) => {
@@ -101,7 +103,8 @@ const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
       ctx.restore();
       sizeCanvas();
       setHasInk(false);
-    }, [sizeCanvas]);
+      onChange?.(null);
+    }, [onChange, sizeCanvas]);
 
     useImperativeHandle(
       ref,

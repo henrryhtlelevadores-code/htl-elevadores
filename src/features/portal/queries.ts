@@ -106,6 +106,70 @@ export interface PortalQuotationItem {
   lineCount: number;
 }
 
+export interface PortalEquipmentHistoryItem {
+  id: string;
+  workOrderElevatorId: string;
+  otNumber: string;
+  status: string | null;
+  serviceTypeName: string | null;
+  completedAt: number | null;
+  scheduledDate: string | null;
+  technicianName: string | null;
+}
+
+export async function getPortalEquipmentHistory(
+  costCenterId: string,
+  elevatorId: string
+): Promise<{ equipment: PortalEquipmentItem | null; orders: PortalEquipmentHistoryItem[] }> {
+  const [equipment] = await db
+    .select({
+      id: elevatorUnities.id,
+      name: elevatorUnities.name,
+      internalCode: elevatorUnities.internalCode,
+      brandName: brands.name,
+      modelName: models.name,
+      elevatorTypeName: elevatorTypes.name,
+      stops: elevatorUnities.stops,
+      floors: elevatorUnities.floors,
+      status: elevatorUnities.status,
+      lastVisitDate: sql<number | null>`NULL`,
+      nextVisitDate: sql<number | null>`NULL`,
+    })
+    .from(elevatorUnities)
+    .leftJoin(brands, eq(elevatorUnities.brandId, brands.id))
+    .leftJoin(models, eq(elevatorUnities.modelId, models.id))
+    .leftJoin(elevatorTypes, eq(elevatorUnities.elevatorTypeId, elevatorTypes.id))
+    .where(and(eq(elevatorUnities.id, elevatorId), eq(elevatorUnities.costCenterId, costCenterId), isNull(elevatorUnities.deletedAt)))
+    .limit(1);
+
+  if (!equipment) return { equipment: null, orders: [] };
+
+  const orders = await db
+    .select({
+      id: workOrders.id,
+      workOrderElevatorId: workOrderElevators.id,
+      otNumber: workOrders.otNumber,
+      status: workOrders.status,
+      serviceTypeName: serviceTypes.name,
+      completedAt: workOrders.completedAt,
+      scheduledDate: workOrders.scheduledDate,
+      technicianName: users.fullName,
+    })
+    .from(workOrderElevators)
+    .innerJoin(workOrders, eq(workOrderElevators.workOrderId, workOrders.id))
+    .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
+    .leftJoin(users, eq(workOrders.technicianId, users.id))
+    .where(and(
+      eq(workOrderElevators.elevatorUnityId, elevatorId),
+      eq(workOrders.costCenterId, costCenterId),
+      eq(workOrders.approvalStatus, "APPROVED"),
+      isNull(workOrders.deletedAt)
+    ))
+    .orderBy(desc(workOrders.completedAt), desc(workOrders.createdAt));
+
+  return { equipment, orders };
+}
+
 export interface PortalDashboardData {
   costCenter: {
     id: string;
@@ -338,7 +402,8 @@ export interface PortalWorkOrderDocument {
 
 export async function getPortalWorkOrderDocument(
   costCenterId: string,
-  workOrderId: string
+  workOrderId: string,
+  elevatorId?: string
 ): Promise<PortalWorkOrderDocument | null> {
   try {
     const woRows = await db
@@ -400,7 +465,11 @@ export async function getPortalWorkOrderDocument(
       .leftJoin(brands, eq(elevatorUnities.brandId, brands.id))
       .leftJoin(models, eq(elevatorUnities.modelId, models.id))
       .leftJoin(elevatorTypes, eq(elevatorUnities.elevatorTypeId, elevatorTypes.id))
-      .where(eq(workOrderElevators.workOrderId, workOrderId))
+      .where(
+        elevatorId
+          ? and(eq(workOrderElevators.workOrderId, workOrderId), eq(workOrderElevators.id, elevatorId))
+          : eq(workOrderElevators.workOrderId, workOrderId)
+      )
       .orderBy(asc(elevatorUnities.internalCode));
 
     const taskRows = await db

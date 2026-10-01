@@ -10,10 +10,8 @@ import {
   Loader2,
   MapPin,
   Navigation,
-  Phone,
   Play,
   Tag,
-  UserRound,
 } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -147,7 +145,6 @@ export function TechnicianOrderPreview({
   const typeKey = typeColorKey(serviceType?.code ?? null);
   const status = workOrder.status || "PENDING";
   const costCenter = workOrder.costCenter;
-  const contact = costCenter?.contact ?? null;
 
   const isEmergency =
     serviceType?.category === "EMERGENCIA" ||
@@ -253,36 +250,6 @@ export function TechnicianOrderPreview({
             {costCenter.address}
             {costCenter.district ? `, ${costCenter.district}` : ""}
           </p>
-        </Section>
-      )}
-
-      {/* Contacto en sitio (solo si existe) */}
-      {contact && (
-        <Section
-          icon={<UserRound className="size-4" />}
-          title="Contacto en sitio"
-          action={
-            contact.phone && (
-              <Button
-                render={<Link href={`tel:${contact.phone}`} />}
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                className="min-h-10 gap-1.5 font-semibold"
-              >
-                <Phone className="size-3.5" />
-                Llamar
-              </Button>
-            )
-          }
-        >
-          <p className="text-sm font-semibold">{contact.fullName}</p>
-          {contact.role && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{contact.role}</p>
-          )}
-          {contact.phone && (
-            <p className="mt-0.5 text-xs font-semibold">{contact.phone}</p>
-          )}
         </Section>
       )}
 

@@ -70,13 +70,10 @@ export function TechnicianExecutionView({
   );
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [clientName, setClientName] = useState("");
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [elevatorStatuses, setElevatorStatuses] = useState<
     Record<string, ElevatorFinalStatus>
-  >(() =>
-    Object.fromEntries(
-      workOrder.elevators.map((e) => [e.id, "OPERATIVE"])
-    )
-  );
+  >({});
   const [reportElevator, setReportElevator] = useState<{
     id: string;
     internalCode: string;
@@ -92,6 +89,12 @@ export function TechnicianExecutionView({
   const allComplete = workOrder.elevators.every(
     (e) => e.status === "COMPLETED"
   );
+  const missingStatusCount = workOrder.elevators.filter(
+    (elevator) => !elevatorStatuses[elevator.id]
+  ).length;
+  const isFormValid =
+    missingStatusCount === 0 && clientName.trim().length > 0 &&
+    Boolean(signatureDataUrl);
 
   function handleStart() {
     startTransition(async () => {
@@ -108,6 +111,8 @@ export function TechnicianExecutionView({
   }
 
   function handleFinalize() {
+    setSignatureDataUrl(null);
+    signatureRef.current?.clear();
     setSignatureOpen(true);
   }
 
@@ -140,8 +145,8 @@ export function TechnicianExecutionView({
   }
 
   function handleComplete() {
-    const signatureDataUrl = signatureRef.current?.getDataUrl();
-    if (!signatureDataUrl) {
+    const signature = signatureRef.current?.getDataUrl();
+    if (!signature) {
       toast.error("Firma requerida", {
         description: "El cliente debe firmar en el recuadro.",
       });
@@ -151,7 +156,7 @@ export function TechnicianExecutionView({
       const res = await runSync("completeWorkOrder", {
         workOrderId: workOrder.id,
         clientName,
-        signatureDataUrl,
+         signatureDataUrl: signature,
         elevatorStatuses,
       });
       if (res.success) {
@@ -286,8 +291,8 @@ export function TechnicianExecutionView({
       )}
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="fixed inset-x-0 bottom-0 top-auto grid max-h-[92dvh] w-full max-w-[560px] translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-t-2xl border-border bg-card p-0 sm:inset-y-1/2 sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[88vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12 sm:px-6">
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <StickyNote className="size-4 text-[#0066CC]" />
               Cierre de la orden
@@ -299,7 +304,13 @@ export function TechnicianExecutionView({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 pt-1">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+            <div className="mb-4 rounded-xl border border-border bg-muted/30 px-3 py-3">
+              <p className="font-mono text-sm font-bold">{workOrder.otNumber}</p>
+              <p className="mt-1 text-sm font-semibold">{workOrder.cost_center_name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Indica el estado final de cada equipo y solicita la firma del responsable del cliente.</p>
+            </div>
+            <div className="space-y-3 pt-1">
             <div className="space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Estado final de los equipos
@@ -307,7 +318,7 @@ export function TechnicianExecutionView({
               {workOrder.elevators.map((elevator) => (
                 <div
                   key={elevator.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2"
+                  className="space-y-3 rounded-xl border border-border bg-background p-3"
                 >
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-bold truncate">
@@ -317,7 +328,7 @@ export function TechnicianExecutionView({
                       {elevator.elevatorName}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-0.5 rounded-lg border border-border overflow-hidden">
+                   <div className="grid grid-cols-1 gap-1.5 min-[400px]:grid-cols-3">
                     {(["OPERATIVE", "OUT_OF_SERVICE", "UNCOMPLETED_MAINTENANCE"] as const).map(
                       (status) => (
                         <button
@@ -330,7 +341,7 @@ export function TechnicianExecutionView({
                             })
                           }
                           className={cn(
-                            "px-2.5 py-1.5 text-[11px] font-bold transition-colors",
+                            "min-h-11 rounded-lg border px-2 py-2 text-[11px] font-bold transition-colors",
                             elevatorStatuses[elevator.id] === status
                               ? status === "OPERATIVE"
                                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
@@ -339,6 +350,7 @@ export function TechnicianExecutionView({
                                   : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                               : "text-muted-foreground hover:bg-muted"
                           )}
+                          aria-pressed={elevatorStatuses[elevator.id] === status}
                         >
                           {status === "OPERATIVE"
                             ? "Operativo"
@@ -352,6 +364,14 @@ export function TechnicianExecutionView({
                 </div>
               ))}
             </div>
+
+            {!isFormValid && (
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                {missingStatusCount > 0 && <p>⚠ Faltan {missingStatusCount} equipos por marcar estado final.</p>}
+                {!clientName.trim() && <p>⚠ Falta el nombre del firmante.</p>}
+                {!signatureDataUrl && <p>⚠ Falta la firma del cliente.</p>}
+              </div>
+            )}
 
             <div>
               <label
@@ -369,32 +389,15 @@ export function TechnicianExecutionView({
               />
             </div>
 
-            <SignaturePad ref={signatureRef} />
-
-            <div className="flex gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1 min-h-[48px]"
-                onClick={() => setSignatureOpen(false)}
-              >
-                <X className="size-4" />
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                className="flex-1 min-h-[48px] font-bold"
-                onClick={handleComplete}
-                disabled={isPending}
-              >
-                {isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <CheckCheck className="size-4" />
-                )}
-                Guardar
-              </Button>
-            </div>
+             <SignaturePad ref={signatureRef} onChange={setSignatureDataUrl} className="touch-none" />
+          </div>
+          <div className="flex shrink-0 justify-between gap-2 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6">
+            <Button type="button" variant="ghost" className="min-h-11" onClick={() => setSignatureOpen(false)}>Cancelar</Button>
+            <Button type="button" className="min-h-11 font-bold" onClick={handleComplete} disabled={isPending || !isFormValid}>
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
+              ✓ Finalizar OT
+            </Button>
+          </div>
           </div>
         </DialogContent>
       </Dialog>

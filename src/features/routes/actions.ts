@@ -31,7 +31,7 @@ import {
   type RouteConfigValues,
 } from "./schedule";
 import { type BatchItem } from "drizzle-orm/batch";
-import { and, asc, count, eq, inArray, isNull, like, max } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, like, max, ne } from "drizzle-orm";
 import { getSessionUserId } from "@/features/auth/server";
 import {
   buildPreventiveElevatorDetail,
@@ -861,8 +861,25 @@ export async function generateMonth(
           continue;
         }
 
+        const existingElevators = await db
+          .select({ elevatorUnityId: workOrderElevators.elevatorUnityId })
+          .from(workOrderElevators)
+          .innerJoin(workOrders, eq(workOrderElevators.workOrderId, workOrders.id))
+          .where(and(
+            inArray(workOrderElevators.elevatorUnityId, dueStops.map((stop) => stop.elevatorUnityId)),
+            eq(workOrders.scheduledDate, date),
+            eq(workOrders.serviceTypeId, prevServiceTypeId),
+            ne(workOrders.status, "CANCELLED")
+          ));
+        const existingIds = new Set(existingElevators.map((row) => row.elevatorUnityId));
+        const newStops = dueStops.filter((stop) => !existingIds.has(stop.elevatorUnityId));
+        if (newStops.length === 0) {
+          skipped += dueStops.length;
+          continue;
+        }
+
         // Cualquier equipo con contrato caído invalida la visita completa.
-        const inactive = dueStops.filter((s) => isContractInactive(s));
+        const inactive = newStops.filter((s) => isContractInactive(s));
         if (inactive.length > 0) {
           errors.push({
             stopId: first.id,
@@ -878,7 +895,7 @@ export async function generateMonth(
         }
 
         // Todos los equipos de una visita comparten la misma hora programada.
-        const times = new Set(dueStops.map((s) => s.plannedTime));
+        const times = new Set(newStops.map((s) => s.plannedTime));
         if (times.size > 1) {
           errors.push({
             stopId: first.id,
@@ -891,7 +908,7 @@ export async function generateMonth(
           continue;
         }
 
-        pendingGroups.push({ key, stops: dueStops, day: route.businessDayNumber, date });
+        pendingGroups.push({ key, stops: newStops, day: route.businessDayNumber, date });
       }
     }
 
@@ -1248,4 +1265,24 @@ export async function transferVisitToTechnician(
     console.error("Error al trasladar visita a otro técnico:", error);
     return { ...empty, error: getErrorMessage(error) };
   }
+}
+
+export async function generateMonthForAllTechnicians(
+  month: string = nextMonthLabel()
+): Promise<GenerationResult> {
+  const technicians = await db
+    .selectDistinct({ technicianId: preventiveRoutes.technicianId })
+    .from(preventiveRoutes)
+    .where(eq(preventiveRoutes.isActive, true));
+  const results = await Promise.all(
+    technicians.map((row) => generateMonth(row.technicianId, month))
+  );
+  return {
+    success: results.every((result) => result.success),
+    month,
+    created: results.reduce((sum, result) => sum + result.created, 0),
+    skipped: results.reduce((sum, result) => sum + result.skipped, 0),
+    errors: results.flatMap((result) => result.errors),
+    error: results.find((result) => result.error)?.error,
+  };
 }
