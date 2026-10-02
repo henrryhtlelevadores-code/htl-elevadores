@@ -14,6 +14,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogClose,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -21,9 +23,8 @@ import {
   ClipboardList,
   Cpu,
   ChevronDown,
-  ChevronLeft,
+  ListChecks,
   MapPin,
-  Search,
   X,
 } from "lucide-react";
 
@@ -142,33 +143,34 @@ export function WorkOrderDetail({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
-        className="bg-card border-border sm:max-w-[900px] text-foreground shadow-lg max-h-[92dvh] overflow-y-auto"
+        className="flex max-sm:m-0 max-sm:h-screen max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none flex-col gap-0 bg-card p-0 text-foreground shadow-lg sm:max-w-[900px] sm:rounded-lg"
       >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 bg-card"
-        >
-          <ChevronLeft className="size-3" />
-          Cerrar
-        </button>
-
-        <DialogHeader>
-          <DialogTitle className="text-base font-bold flex items-center gap-2">
-            <ClipboardList className="size-4 text-[#0066CC]" />
-            {workOrder.otNumber}
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            {workOrder.client_name} — {workOrder.cost_center_name}
-            {workOrder.technician_name ? ` — Técnico: ${workOrder.technician_name}` : ""}
-          </DialogDescription>
-          <div className="flex flex-wrap justify-end gap-2">
-            {canDelete && <Button size="sm" variant="destructive" onClick={() => setDeleteConfirmOpen(true)}>Eliminar OT</Button>}
-            {!editing ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Editar</Button> : <>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
-              <Button size="sm" onClick={async () => { const result = await updateWorkOrder(workOrder.id, { ...draft, priority: draft.priority as "LOW" | "NORMAL" | "HIGH" | "EMERGENCY" }); if (result.success) { setEditing(false); onClose(); } }}>Guardar</Button>
-            </>}
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <ClipboardList className="size-4 shrink-0 text-[#0066CC]" />
+              <DialogTitle className="truncate text-sm font-mono">
+                {workOrder.otNumber}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="hidden truncate text-xs text-muted-foreground sm:block">
+              {workOrder.client_name} — {workOrder.cost_center_name}
+              {workOrder.technician_name ? ` — Técnico: ${workOrder.technician_name}` : ""}
+            </DialogDescription>
           </div>
+          <DialogClose
+            render={<Button variant="ghost" size="sm" className="ml-2 min-h-11 shrink-0 px-3" aria-label="Cerrar detalle" />}
+          >
+            <X className="size-4" />
+            <span className="sr-only sm:not-sr-only sm:ml-1">Cerrar</span>
+          </DialogClose>
         </DialogHeader>
+
+        <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain">
+          <div className="border-b border-border bg-muted/30 px-4 py-3 sm:hidden">
+            <p className="line-clamp-2 text-sm font-medium">{workOrder.client_name} — {workOrder.cost_center_name}</p>
+            {workOrder.technician_name && <p className="mt-1 text-xs text-muted-foreground">Técnico: {workOrder.technician_name}</p>}
+          </div>
 
           {editing && <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
           <label className="space-y-1 text-xs font-semibold">Fecha de inicio<DatePicker value={draft.scheduledDate} onChange={(value) => setDraft({ ...draft, scheduledDate: value })} /></label>
@@ -179,7 +181,7 @@ export function WorkOrderDetail({
           {!isPreventive && <label className="col-span-2 space-y-1 text-xs font-semibold">Descripción del problema<Textarea className="text-xs" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Descripción del problema" /></label>}
           </div>}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+        <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4 sm:gap-3">
           {[
             ["Tipo", typeLabel],
             ["Prioridad", priorityLabel],
@@ -215,39 +217,30 @@ export function WorkOrderDetail({
               const isOpen = tasksActiveId === elevator.id;
               const completedCount = tasks.filter((t) => t.isCompleted).length;
               return (
-                <div key={elevator.id} className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => loadTasks(elevator.id)}
-                      className="shrink-0 text-muted-foreground hover:bg-muted"
-                       title={isOpen ? "Cerrar tareas" : "Ver y gestionar tareas de este equipo"}
-                    >
-                       {isOpen ? <X className="size-3.5" /> : <Search className="size-3.5" />}
-                    </Button>
-                    <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
+                <div key={elevator.id} className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="flex items-start gap-3 p-3 sm:p-4">
+                    <span className="shrink-0 rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">
                       {elevator.internal_code}
                     </span>
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <Cpu className="size-3.5 text-[#0066CC] shrink-0" />
-                      <span className="text-xs font-semibold truncate">{elevator.elevator_name}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm font-semibold leading-tight">{elevator.elevator_name}</p>
                     </div>
-                    <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <MapPin className="size-3" />
-                      <span className="truncate max-w-[150px]">{elevator.cost_center_name}</span>
-                    </div>
-                    {isOpen && tasks.length > 0 && (
-                      <span className="text-[10px] font-mono text-muted-foreground shrink-0">
-                        {completedCount}/{tasks.length}
-                      </span>
-                    )}
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                      className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
                         ELEVATOR_STATUS_STYLES[elevator.status || "PENDING"] || ELEVATOR_STATUS_STYLES.PENDING
                       }`}
                     >
                       {ELEVATOR_STATUS_LABELS[elevator.status || "PENDING"] ?? elevator.status ?? "Pendiente"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 px-3 pb-2 text-xs text-muted-foreground sm:px-4">
+                    <span className="flex min-w-0 items-center gap-1 truncate">
+                      <MapPin className="size-3 shrink-0" />
+                      <span className="truncate">{elevator.cost_center_name}</span>
+                    </span>
+                    <span className="shrink-0 font-medium">
+                      {isOpen ? `${completedCount}/${tasks.length}` : "Tareas"}
                     </span>
                   </div>
 
@@ -291,11 +284,26 @@ export function WorkOrderDetail({
                     </div>
                   ) : null}
 
-                   {!isOpen && <p className="border-t border-border px-3 py-2 text-[11px] text-[#0066CC]">Haz clic en el icono de búsqueda para ver y agregar las tareas de este equipo.</p>}
+                   <button
+                     type="button"
+                     onClick={() => loadTasks(elevator.id)}
+                     className="flex min-h-11 w-full items-center justify-between border-t border-border bg-muted/30 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-muted/50 active:bg-muted sm:px-4"
+                   >
+                     <span className="flex items-center gap-2">
+                       <ListChecks className="size-4" />
+                       {isOpen ? "Ocultar tareas" : "Ver tareas"}
+                     </span>
+                     <ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                   </button>
 
                    {/* Tareas del equipo */}
-                  {isOpen && (
-                    <div className="border-t border-border bg-muted/30 px-3 py-3 space-y-2">
+                   {isOpen && (
+                     <div className="border-t border-border bg-muted/10">
+                       <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2 sm:px-4">
+                         <span className="text-xs font-medium uppercase text-muted-foreground">Tareas de este equipo</span>
+                         <span className="text-xs font-semibold">{completedCount}/{tasks.length}</span>
+                       </div>
+                       <div className="space-y-2 px-3 py-3 sm:px-4">
                       {tasks.length === 0 ? (
                         <p className="text-center text-[11px] text-muted-foreground py-2">
                           Sin tareas registradas para este equipo.
@@ -332,7 +340,7 @@ export function WorkOrderDetail({
                                       <span className="inline-flex items-center rounded border border-[#0066CC]/30 bg-[#0066CC]/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#0066CC] dark:text-[#4d9aff]">
                                         {groupTasks[0]?.module_code ?? "Sin módulo"}
                                       </span>
-                                      <span className="flex-1 min-w-0 truncate text-[10px] font-semibold text-muted-foreground">
+                                       <span className="min-w-0 flex-1 break-words text-[10px] font-semibold text-muted-foreground">
                                         {groupTasks[0]?.module_name}
                                       </span>
                                       <span className="text-[10px] font-mono text-muted-foreground/60">
@@ -349,23 +357,25 @@ export function WorkOrderDetail({
                                         {groupTasks.map((task) => (
                                           <li
                                             key={task.id}
-                                            className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5"
+                                             className="flex items-start gap-2 rounded-lg border border-border bg-card px-2.5 py-2.5"
                                           >
                                             <Checkbox checked={!!task.isCompleted} onCheckedChange={async (checked) => { await toggleWorkOrderTask(task.id, checked === true); setTasks((current) => current.map((t) => t.id === task.id ? { ...t, isCompleted: checked === true } : t)); }} />
-                                            <span
-                                              className={`text-xs flex-1 ${
-                                                task.isCompleted
-                                                  ? "line-through text-muted-foreground/60"
-                                                  : "text-foreground"
-                                              }`}
-                                            >
-                                              {task.taskDescription}
-                                              {task.isCritical && (
-                                                <span className="ml-1.5 text-[9px] font-bold uppercase text-red-500 border border-red-500/30 rounded px-1 py-0.5 bg-red-500/10">
-                                                  Crítica
-                                                </span>
-                                              )}
-                                            </span>
+                                             <div className="min-w-0 flex-1">
+                                               <p
+                                                 className={`break-words text-sm leading-snug ${
+                                                 task.isCompleted
+                                                   ? "line-through text-muted-foreground/60"
+                                                   : "text-foreground"
+                                                 }`}
+                                               >
+                                                 {task.taskDescription}
+                                               </p>
+                                               {task.isCritical && (
+                                                 <span className="mt-1 inline-block rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-500">
+                                                   Crítica
+                                                 </span>
+                                               )}
+                                             </div>
                                           </li>
                                         ))}
                                       </ul>
@@ -382,31 +392,34 @@ export function WorkOrderDetail({
                           {tasks.map((task) => (
                             <li
                               key={task.id}
-                              className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5"
+                             className="flex items-start gap-2 rounded-lg border border-border bg-card px-2.5 py-2.5"
                             >
                               <Checkbox checked={!!task.isCompleted} onCheckedChange={async (checked) => { await toggleWorkOrderTask(task.id, checked === true); setTasks((current) => current.map((t) => t.id === task.id ? { ...t, isCompleted: checked === true } : t)); }} />
-                              <span
-                                className={`text-xs flex-1 ${
-                                  task.isCompleted
-                                    ? "line-through text-muted-foreground/60"
-                                    : "text-foreground"
-                                }`}
-                              >
-                                {task.taskDescription}
-                                {task.isCritical && (
-                                  <span className="ml-1.5 text-[9px] font-bold uppercase text-red-500 border border-red-500/30 rounded px-1 py-0.5 bg-red-500/10">
-                                    Crítica
-                                  </span>
-                                )}
-                              </span>
+                               <div className="min-w-0 flex-1">
+                                 <p
+                                   className={`break-words text-sm leading-snug ${
+                                   task.isCompleted
+                                     ? "line-through text-muted-foreground/60"
+                                     : "text-foreground"
+                                   }`}
+                                 >
+                                   {task.taskDescription}
+                                 </p>
+                                 {task.isCritical && (
+                                   <span className="mt-1 inline-block rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-500">
+                                     Crítica
+                                   </span>
+                                 )}
+                               </div>
                               {!isPreventive && <Button variant="ghost" size="icon-xs" onClick={async () => { await deleteWorkOrderTask(task.id); setTasks((current) => current.filter((t) => t.id !== task.id)); }}>×</Button>}
                             </li>
                           ))}
                         </ul>
                       )}
-                      {!isPreventive && isOpen && <div className="flex gap-2 pt-2"><Input value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder="Nueva tarea" className="text-xs" /><Button size="sm" onClick={async () => { if (!newTask.trim()) return; const result = await createWorkOrderTask({ workOrderElevatorId: elevator.id, taskDescription: newTask, isCritical: false, requiresPhoto: false, observations: "" }); if (result.success) { setNewTask(""); getWorkOrderTasks(elevator.id).then(setTasks); } }}>+ Agregar tarea</Button></div>}
-                    </div>
-                  )}
+                        {!isPreventive && isOpen && <div className="flex flex-col gap-2 pt-2 sm:flex-row"><Input value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder="Nueva tarea" className="min-h-11 text-xs" /><Button size="sm" className="min-h-11 w-full sm:w-auto" onClick={async () => { if (!newTask.trim()) return; const result = await createWorkOrderTask({ workOrderElevatorId: elevator.id, taskDescription: newTask, isCritical: false, requiresPhoto: false, observations: "" }); if (result.success) { setNewTask(""); getWorkOrderTasks(elevator.id).then(setTasks); } }}>+ Agregar tarea</Button></div>}
+                     </div>
+                     </div>
+                   )}
                 </div>
               );
             })}
@@ -418,6 +431,15 @@ export function WorkOrderDetail({
           <summary className="cursor-pointer text-xs font-semibold">Técnicos de apoyo</summary>
           <p className="mt-2 text-xs text-muted-foreground">{workOrder.supportingTechnicians || "Ninguno"}</p>
         </details>
+        </div>
+
+        <DialogFooter className="mx-0 mb-0 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-background px-4 py-3 sm:flex-row sm:justify-end">
+          {canDelete && <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="destructive" onClick={() => setDeleteConfirmOpen(true)}>Eliminar OT</Button>}
+          {!editing ? <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="outline" onClick={() => setEditing(true)}>Editar</Button> : <>
+            <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
+            <Button className="min-h-11 w-full sm:w-auto" size="sm" onClick={async () => { const result = await updateWorkOrder(workOrder.id, { ...draft, priority: draft.priority as "LOW" | "NORMAL" | "HIGH" | "EMERGENCY" }); if (result.success) { setEditing(false); onClose(); } }}>Guardar</Button>
+          </>}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 

@@ -546,11 +546,11 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
       <Dialog open={!!viewing} onOpenChange={(open) => !open && closeDetail()}>
         <DialogContent
           showCloseButton={false}
-          className="bg-card border-border sm:max-w-[840px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto"
+          className="w-[calc(100%-1rem)] max-w-[840px] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground shadow-lg sm:max-h-[92vh] sm:p-4"
         >
           <button
             onClick={closeDetail}
-            className="absolute top-3 right-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 bg-card"
+            className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <ChevronLeft className="size-3" />
             Cerrar
@@ -559,19 +559,17 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
           {viewing && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base font-bold flex items-center gap-2">
-                  <span className="flex min-w-0 items-center gap-2">
+                <DialogTitle className="flex flex-col items-start gap-2 pr-16 text-base font-bold sm:flex-row sm:items-center sm:pr-24">
+                  <span className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                     <ReceiptText className="size-4 shrink-0 text-[#0066CC]" />
-                    <span className="truncate">{documentLabel}</span>
+                    <span className="break-words">{documentLabel}</span>
                     {viewing.number && (
-                      <span className="truncate font-mono text-sm text-foreground">
+                      <span className="break-all font-mono text-sm text-foreground">
                         {viewing.series}-{viewing.number}
                       </span>
                     )}
                   </span>
-                  {/* `pr-[104px]` reserva el ancho del botón Cerrar, que es
-                      absolute: sin esto los badges se meten debajo. */}
-                  <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-[104px]">
+                  <span className="flex max-w-full flex-wrap items-center gap-1.5">
                     {!viewing.number && (
                       <Badge
                         variant="outline"
@@ -745,7 +743,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
                 ) : (
                   <div className="rounded-xl border border-border overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
+                      <table className="w-full min-w-[560px] text-xs">
                         <thead className="bg-muted/50 border-b border-border">
                           <tr>
                             <th className="text-left font-semibold text-muted-foreground px-3 py-2">
