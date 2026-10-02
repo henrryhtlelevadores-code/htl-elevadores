@@ -22,6 +22,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FortexLogo } from "@/components/fortex-logo";
 
 const navItems = [
   {
@@ -111,30 +112,30 @@ export function DashboardSidebar({
         collapsed ? "md:w-16" : "md:w-64"
       )}
     >
-      {/* HTL Brand Header */}
-      <div className="flex h-16 items-center justify-between px-4 border-b border-border">
+      {/* Fortex Brand Header */}
+      <div
+        className={cn(
+          "flex h-16 items-center justify-between border-b border-border",
+          collapsed ? "px-2" : "px-4"
+        )}
+      >
         {!collapsed && (
-          <Link href="/" className="flex items-center gap-3 overflow-hidden">
-            {/* HTL Blue Icon Badge */}
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#0066CC] text-white font-extrabold shadow-sm">
-              <span className="text-base tracking-tighter">H</span>
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-bold tracking-tight text-foreground truncate">
-                HTL Elevadores
-              </span>
-              <span className="text-[10px] text-muted-foreground truncate font-medium uppercase tracking-wider">
-                Portal Privado
-              </span>
-            </div>
+          <Link
+            href="/"
+            className="flex min-w-0 items-center overflow-hidden"
+            title="Fortex Digital Solutions"
+          >
+            <FortexLogo className="h-8" maxWidth={160} priority />
           </Link>
         )}
 
         {collapsed && (
-          <Link href="/" className="mx-auto">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-[#0066CC] text-white font-extrabold shadow-sm">
-              <span className="text-base tracking-tighter">H</span>
-            </div>
+          <Link
+            href="/"
+            className="flex items-center"
+            title="Fortex Digital Solutions"
+          >
+            <FortexLogo maxWidth={44} />
           </Link>
         )}
 

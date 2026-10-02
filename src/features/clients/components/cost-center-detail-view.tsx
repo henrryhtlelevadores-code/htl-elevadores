@@ -170,36 +170,38 @@ export function CostCenterDetailView({
       </div>
 
       {/* Tabs internas de la sede */}
-      <Tabs value={tab} onValueChange={(v) => onTabChange(v as VenueTab)} className="space-y-4">
-        <TabsList className="bg-card border border-border p-1 h-10 rounded-lg shadow-xs">
-          <TabsTrigger
-            value="credentials"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
-          >
-            <IconKey className="size-3.5" />
-            <span>Credenciales y Acceso</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="contacts"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
-          >
-            <IconUsers className="size-3.5" />
-            <span>Contactos ({contacts.length})</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
-          >
-            <IconSettings className="size-3.5" />
-            <span>Configuración</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="calendar"
-            className="data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
-          >
-            Calendario de OTs
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={tab} onValueChange={(v) => onTabChange(v as VenueTab)} className="min-w-0 space-y-4">
+        <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex h-auto w-max flex-nowrap justify-start gap-1 bg-card border border-border p-1 rounded-lg shadow-xs">
+            <TabsTrigger
+              value="credentials"
+              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+            >
+              <IconKey className="size-3.5" />
+              <span className="whitespace-nowrap">Credenciales y Acceso</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="contacts"
+              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+            >
+              <IconUsers className="size-3.5" />
+              <span className="whitespace-nowrap">Contactos ({contacts.length})</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="settings"
+              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+            >
+              <IconSettings className="size-3.5" />
+              <span className="whitespace-nowrap">Configuración</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="calendar"
+              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+            >
+              <span className="whitespace-nowrap">Calendario de OTs</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="credentials" className="outline-hidden focus:outline-none">
           <CredentialsManager costCenter={costCenter} />

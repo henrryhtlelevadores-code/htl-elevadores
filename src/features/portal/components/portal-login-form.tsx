@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { portalLoginAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FortexLogo } from "@/components/fortex-logo";
 import {
   Form,
   FormControl,
@@ -84,10 +85,8 @@ export function PortalLoginForm({
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-            <Building2 className="h-8 w-8" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight mt-4 text-center">
+          <FortexLogo maxWidth={180} priority />
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mt-6 text-center">
             Portal del Edificio
           </h1>
           <p className="text-muted-foreground text-sm mt-2 text-center">{costCenterName}</p>
