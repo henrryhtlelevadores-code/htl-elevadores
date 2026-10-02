@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { loginAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EmailInput } from "@/components/ui/email-input";
 import { FortexLogo } from "@/components/fortex-logo";
 import {
   Form,
@@ -157,17 +158,22 @@ export function LoginForm({ next = "/" }: { next?: string }) {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Correo electrónico</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          type="email"
-                          autoComplete="email"
-                          placeholder="example@htl-elevadores.com"
-                          className="bg-background border-border text-sm pl-9 h-11 focus-visible:ring-1 focus-visible:ring-[#0066CC]"
-                          {...field}
-                        />
-                      </div>
+                      <EmailInput
+                        leadingIcon={<Mail className="size-4" />}
+                        placeholder="tu.nombre"
+                        className="focus-visible:ring-[#0066CC]"
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
+                    {field.value && (
+                      <p className="mt-1 text-xs text-muted-foreground sm:hidden">
+                        Se usará: {field.value}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
