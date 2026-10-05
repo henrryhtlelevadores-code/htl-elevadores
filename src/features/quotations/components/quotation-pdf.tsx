@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 16,
     fontFamily: PDF_FONT,
-    color: BRAND,
+    color: DARK,
     letterSpacing: 1.2,
     textAlign: "right",
   },
@@ -257,8 +257,8 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   lineDescription: {
-    fontSize: 8,
-    color: MUTED,
+    fontSize: 10,
+    color: DARK,
     marginTop: 2,
   },
   lineBody: {
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1.5,
     borderTopColor: BRAND,
     fontFamily: PDF_FONT,
-    color: BRAND,
+    color: DARK,
     fontSize: 10,
     fontWeight: "bold",
   },
@@ -435,7 +435,6 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 }
 
 function CalculatedLine({ line }: { line: QuotationPdfLine }) {
-  const isOverride = line.lineOverridePrice != null && Number(line.lineOverridePrice) > 0;
   return (
     <View style={styles.lineBody}>
       {line.products.length > 0 ? (
@@ -488,33 +487,13 @@ function CalculatedLine({ line }: { line: QuotationPdfLine }) {
           </View>
         </>
       ) : null}
-      <View style={{ marginTop: 6 }}>
-        <View style={styles.subRow}>
-          <Text style={styles.subLabel}>Subtotal línea</Text>
-          <Text style={styles.subValue}>{money(line.subtotal)}</Text>
-        </View>
-        <View style={styles.subRow}>
-           <Text style={styles.subLabel}>Precio de venta</Text>
-          <Text           style={[styles.subValue, isOverride ? { fontFamily: PDF_FONT, color: BRAND } : {}]}>
-            {money(isOverride ? line.lineOverridePrice ?? 0 : line.clientPrice)}
-          </Text>
-        </View>
-      </View>
     </View>
   );
 }
 
-function ManualLine({ line }: { line: QuotationPdfLine }) {
-  return (
-    <View style={styles.lineBody}>
-      <View style={[styles.subRow, { marginBottom: 4 }]}>
-         <Text style={styles.subLabel}>Precio de venta</Text>
-        <Text style={[styles.subValue, { fontFamily: PDF_FONT, color: BRAND }]}> 
-          {money(line.manualPrice ?? line.clientPrice)}
-        </Text>
-      </View>
-    </View>
-  );
+function ManualLine(_props: { line: QuotationPdfLine }) {
+  void _props;
+  return null;
 }
 
 function Totals({ data }: { data: QuotationPdfData }) {
@@ -523,7 +502,7 @@ function Totals({ data }: { data: QuotationPdfData }) {
       <View style={styles.totalsOuter} wrap={false}>
         <View style={styles.totalsBox}>
           <View style={styles.grandRow}>
-            <Text>TOTAL</Text>
+             <Text>TOTAL (Se incluye el IGV)</Text>
             <Text>{money(data.total)}</Text>
           </View>
         </View>

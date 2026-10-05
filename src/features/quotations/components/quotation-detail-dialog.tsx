@@ -214,10 +214,6 @@ export function QuotationDetailDialog({
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold">{money(line.clientPrice)}</div>
-                       <div className="text-[10px] text-muted-foreground">Precio de venta</div>
-                    </div>
                   </div>
 
                   {line.products.length > 0 ? (
