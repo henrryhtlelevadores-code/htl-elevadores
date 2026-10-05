@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { cn } from "cn";
-import { type TechnicianElevatorPhoto } from "../queries";
+import { type TechnicianElevatorPhoto } from "../server/queries";
 
 const TAG_SECTIONS: Array<{ tag: string; label: string }> = [
   { tag: "BEFORE", label: "Antes" },

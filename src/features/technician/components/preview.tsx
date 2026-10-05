@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   type TechnicianWorkOrderExecution,
-} from "../queries";
+} from "../server/queries";
 import {
   AlertTriangle,
   CalendarDays,

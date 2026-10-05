@@ -14,7 +14,7 @@ import {
   updateElevatorFindings,
   updateWorkOrderTask,
   type ActionState,
-} from "../actions";
+} from "../server/actions";
 
 /**
  * Sincronización offline del flujo del técnico.

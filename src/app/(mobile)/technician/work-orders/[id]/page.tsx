@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   getTechnicianContext,
   getTechnicianWorkOrderExecution,
-} from "@/features/technician/queries";
+} from "@/features/technician/server/queries";
 import { TechnicianExecutionView } from "@/features/technician/components/execution";
 import { remainingUntilLabel } from "@/features/technician/lib/dates";
 

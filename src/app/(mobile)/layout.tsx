@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getTechnicianContext } from "@/features/technician/queries";
+import { getTechnicianContext } from "@/features/technician/server/queries";
 
 export const dynamic = "force-dynamic";
 

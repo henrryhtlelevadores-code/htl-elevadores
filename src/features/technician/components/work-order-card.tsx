@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   type TechnicianWorkOrder,
-} from "../queries";
+} from "../server/queries";
 import {
   Clock,
   MapPin,

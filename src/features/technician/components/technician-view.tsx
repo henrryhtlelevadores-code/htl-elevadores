@@ -4,7 +4,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { TechnicianWorkOrder, TechnicianEmergency } from "../queries";
+import type { TechnicianWorkOrder, TechnicianEmergency } from "../server/queries";
 import { toISODate, nextFourteenDays, getDateLabel, formatShortHuman } from "../lib/dates";
 import { DateCarousel } from "./date-carousel";
 import { TypeFilters, type TypeFilterOption } from "./type-filters";

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { type TechnicianElevator } from "../queries";
+import { type TechnicianElevator } from "../server/queries";
 
 const SAFETY_LABEL: Record<string, string> = {
   COMPLETED: "Completada",

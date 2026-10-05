@@ -2,7 +2,7 @@ import {
   getTechnicianContext,
   getTechnicianWorkOrders,
   getTechnicianEmergencies,
-} from "@/features/technician/queries";
+} from "@/features/technician/server/queries";
 import { TechnicianView } from "@/features/technician/components/technician-view";
 
 export const dynamic = "force-dynamic";

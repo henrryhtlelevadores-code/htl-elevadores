@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   type TechnicianElevator,
   type TechnicianSafetyItem,
-} from "../queries";
+} from "../server/queries";
 import { runSync } from "../lib/sync-client";
 
 const RESPONSES = [

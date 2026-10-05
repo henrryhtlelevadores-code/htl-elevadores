@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, Play } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { type TechnicianEmergency } from "../queries";
+import { type TechnicianEmergency } from "../server/queries";
 
 function formatRemaining(remainingMs: number): string {
   if (remainingMs <= 0) return "Vencida";

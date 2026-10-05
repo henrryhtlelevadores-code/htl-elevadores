@@ -28,10 +28,10 @@ import {
 import {
   type TechnicianElevator,
   type TechnicianTask,
-} from "../queries";
+} from "../server/queries";
 import {
   type ElevatorFinishMode,
-} from "../actions";
+} from "../server/actions";
 import { runSync } from "../lib/sync-client";
 import { PhotoGallery } from "./photo-gallery";
 import { PhotoModal } from "./photo-modal";
