@@ -216,7 +216,7 @@ export function QuotationDetailDialog({
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-bold">{money(line.clientPrice)}</div>
-                      <div className="text-[10px] text-muted-foreground">precio venta (+IGV)</div>
+                       <div className="text-[10px] text-muted-foreground">Precio de venta</div>
                     </div>
                   </div>
 
@@ -328,7 +328,7 @@ export function QuotationDetailDialog({
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-muted-foreground">Base</div>
+                 <div className="text-[10px] text-muted-foreground">Base imponible</div>
                   <div className="text-sm font-semibold">{money(detail.taxableBase)}</div>
                 </div>
                 <div>
@@ -341,7 +341,7 @@ export function QuotationDetailDialog({
                   <DollarSign className="size-4" />
                   Total
                 </span>
-                <span className="text-base font-bold text-[#0066CC]">{money(detail.total)}</span>
+                 <span className="text-sm font-semibold text-[#0066CC]">{money(detail.total)}</span>
               </div>
             </div>
 

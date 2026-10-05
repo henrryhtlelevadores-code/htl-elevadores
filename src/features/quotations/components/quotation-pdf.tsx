@@ -336,7 +336,8 @@ const styles = StyleSheet.create({
     borderTopColor: BRAND,
     fontFamily: PDF_FONT,
     color: BRAND,
-    fontSize: 13,
+    fontSize: 10,
+    fontWeight: "bold",
   },
   termsBlock: {
     backgroundColor: SOFT_BG,
@@ -411,6 +412,7 @@ const styles = StyleSheet.create({
     color: DARK,
   },
   closingText: { fontSize: 10, marginBottom: 2 },
+  closingSignoff: { fontSize: 10, marginTop: 8, marginBottom: 2 },
   closingCompany: { fontSize: 12, fontFamily: PDF_FONT, fontWeight: "bold", marginTop: 6, marginBottom: 10 },
   signature: { width: 150, height: 54, objectFit: "contain", objectPosition: "left center", marginBottom: 6 },
   signerName: { fontSize: 10, fontFamily: PDF_FONT, fontWeight: "bold" },
@@ -492,7 +494,7 @@ function CalculatedLine({ line }: { line: QuotationPdfLine }) {
           <Text style={styles.subValue}>{money(line.subtotal)}</Text>
         </View>
         <View style={styles.subRow}>
-          <Text style={styles.subLabel}>Precio de venta (c/IGV)</Text>
+           <Text style={styles.subLabel}>Precio de venta</Text>
           <Text           style={[styles.subValue, isOverride ? { fontFamily: PDF_FONT, color: BRAND } : {}]}>
             {money(isOverride ? line.lineOverridePrice ?? 0 : line.clientPrice)}
           </Text>
@@ -506,7 +508,7 @@ function ManualLine({ line }: { line: QuotationPdfLine }) {
   return (
     <View style={styles.lineBody}>
       <View style={[styles.subRow, { marginBottom: 4 }]}>
-        <Text style={styles.subLabel}>Precio de venta (c/IGV)</Text>
+         <Text style={styles.subLabel}>Precio de venta</Text>
         <Text style={[styles.subValue, { fontFamily: PDF_FONT, color: BRAND }]}> 
           {money(line.manualPrice ?? line.clientPrice)}
         </Text>
@@ -692,7 +694,12 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
         ) : null}
 
         <View style={styles.closing} wrap={false}>
-          <Text style={styles.closingText}>Atentamente,</Text>
+          <Text style={styles.closingText}>
+            Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios.
+          </Text>
+          <Text style={styles.closingText}>Sin otro particular, me despido.</Text>
+          <Text style={styles.closingText}>Saludos.</Text>
+          <Text style={styles.closingSignoff}>Atentamente,</Text>
           <Text style={styles.closingCompany}>HTL ELEVADORES S.A.C.</Text>
           <Image src={data.signatureUrl} style={styles.signature} />
           <Text style={styles.signerName}>Henrry Abner Diaz Cueva</Text>
