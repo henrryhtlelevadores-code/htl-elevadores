@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogDescription,
   DialogClose,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -143,36 +142,38 @@ export function WorkOrderDetail({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
-        className="flex max-sm:m-0 max-sm:h-screen max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none flex-col gap-0 bg-card p-0 text-foreground shadow-lg sm:max-w-[900px] sm:rounded-lg"
+        className="flex max-h-[100dvh] flex-col gap-0 overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl max-sm:m-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none sm:max-h-[90dvh] sm:max-w-3xl sm:rounded-lg"
       >
-        <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b border-border px-4 py-3">
-          <div className="min-w-0">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <ClipboardList className="size-4 shrink-0 text-primary" />
             <div className="flex min-w-0 items-center gap-2">
-              <ClipboardList className="size-4 shrink-0 text-[#0066CC]" />
               <DialogTitle className="truncate text-sm font-mono">
                 {workOrder.otNumber}
               </DialogTitle>
             </div>
-            <DialogDescription className="hidden truncate text-xs text-muted-foreground sm:block">
-              {workOrder.client_name} — {workOrder.cost_center_name}
-              {workOrder.technician_name ? ` — Técnico: ${workOrder.technician_name}` : ""}
-            </DialogDescription>
           </div>
           <DialogClose
-            render={<Button variant="ghost" size="sm" className="ml-2 min-h-11 shrink-0 px-3" aria-label="Cerrar detalle" />}
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-9 shrink-0"
+                aria-label="Cerrar detalle"
+              />
+            }
           >
             <X className="size-4" />
-            <span className="sr-only sm:not-sr-only sm:ml-1">Cerrar</span>
           </DialogClose>
-        </DialogHeader>
+        </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain">
-          <div className="border-b border-border bg-muted/30 px-4 py-3 sm:hidden">
+        <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-contain py-4">
+          <div className="px-4">
             <p className="line-clamp-2 text-sm font-medium">{workOrder.client_name} — {workOrder.cost_center_name}</p>
-            {workOrder.technician_name && <p className="mt-1 text-xs text-muted-foreground">Técnico: {workOrder.technician_name}</p>}
+            {workOrder.technician_name && <p className="mt-0.5 text-xs text-muted-foreground">{workOrder.technician_name}</p>}
           </div>
 
-          {editing && <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
+          {editing && <div className="mx-4 grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
           <label className="space-y-1 text-xs font-semibold">Fecha de inicio<DatePicker value={draft.scheduledDate} onChange={(value) => setDraft({ ...draft, scheduledDate: value })} /></label>
           <label className="space-y-1 text-xs font-semibold">Hora de inicio<TimePicker value={draft.scheduledTime} onChange={(value) => setDraft({ ...draft, scheduledTime: value })} /></label>
           <label className="space-y-1 text-xs font-semibold">Prioridad<select className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}><option value="LOW">Baja</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="EMERGENCY">Emergencia</option></select></label>
@@ -181,7 +182,7 @@ export function WorkOrderDetail({
           {!isPreventive && <label className="col-span-2 space-y-1 text-xs font-semibold">Descripción del problema<Textarea className="text-xs" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Descripción del problema" /></label>}
           </div>}
 
-        <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 px-4 sm:grid-cols-4 sm:gap-3">
           {[
             ["Tipo", typeLabel],
             ["Prioridad", priorityLabel],
@@ -190,35 +191,35 @@ export function WorkOrderDetail({
             ["Fin estimado", workOrder.estimatedEndAt ? formatDateTime(workOrder.estimatedEndAt) : "—"],
             ["Estado", STATUS_LABELS[workOrder.status ?? ""] ?? workOrder.status ?? "—"],
           ].map(([label, value]) => (
-            <div key={String(label)} className="min-w-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <div key={String(label)} className="min-w-0 rounded-lg border border-border bg-card p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {label}
               </div>
-              <div className="text-sm font-bold break-words">{value}</div>
+              <div className="mt-1 break-words text-sm font-semibold leading-tight">{value}</div>
             </div>
           ))}
         </div>
 
-        {workOrder.description && <details open className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-xs font-semibold">Descripción del problema</summary><p className="mt-2 text-xs whitespace-pre-wrap">{workOrder.description}</p></details>}
+        {workOrder.description && <details open className="mx-4 rounded-lg border border-border p-3"><summary className="cursor-pointer text-xs font-semibold">Descripción del problema</summary><p className="mt-2 whitespace-pre-wrap text-xs">{workOrder.description}</p></details>}
 
         {/* Listado read-only de equipos de la OT */}
         {workOrderElevators.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 py-10 text-center">
+          <div className="mx-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 py-10 text-center">
             <Cpu className="size-8 text-muted-foreground/40 mb-2" />
             <p className="text-xs text-muted-foreground font-semibold">
               No hay equipos asignados a esta OT
             </p>
           </div>
         ) : (
-          <details open className="space-y-2">
+          <details open className="space-y-2 px-4 pt-1">
             <summary className="mb-2 cursor-pointer text-xs font-semibold">Equipos afectados ({workOrderElevators.length})</summary>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {workOrderElevators.map((elevator) => {
               const isOpen = tasksActiveId === elevator.id;
               const completedCount = tasks.filter((t) => t.isCompleted).length;
               return (
                 <div key={elevator.id} className="overflow-hidden rounded-lg border border-border bg-card">
-                  <div className="flex items-start gap-3 p-3 sm:p-4">
+                  <div className="flex items-start gap-2 p-3">
                     <span className="shrink-0 rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">
                       {elevator.internal_code}
                     </span>
@@ -234,13 +235,13 @@ export function WorkOrderDetail({
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 px-3 pb-2 text-xs text-muted-foreground sm:px-4">
-                    <span className="flex min-w-0 items-center gap-1 truncate">
+                   <div className="flex items-center justify-between gap-2 px-3 pb-3 text-xs text-muted-foreground">
+                     <span className="flex min-w-0 items-center gap-1">
                       <MapPin className="size-3 shrink-0" />
-                      <span className="truncate">{elevator.cost_center_name}</span>
+                       <span className="truncate">{elevator.cost_center_name}</span>
                     </span>
                     <span className="shrink-0 font-medium">
-                      {isOpen ? `${completedCount}/${tasks.length}` : "Tareas"}
+                         {isOpen ? `${completedCount}/${tasks.length}` : `${workOrderElevators.length} tareas`}
                     </span>
                   </div>
 
@@ -287,7 +288,7 @@ export function WorkOrderDetail({
                    <button
                      type="button"
                      onClick={() => loadTasks(elevator.id)}
-                     className="flex min-h-11 w-full items-center justify-between border-t border-border bg-muted/30 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-muted/50 active:bg-muted sm:px-4"
+                      className="flex min-h-11 w-full items-center justify-between border-t border-border bg-muted/30 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-muted/50 active:bg-muted"
                    >
                      <span className="flex items-center gap-2">
                        <ListChecks className="size-4" />
@@ -427,19 +428,20 @@ export function WorkOrderDetail({
           </details>
         )}
 
-        <details open className="rounded-xl border border-border p-3">
+        <details open className="mx-4 rounded-xl border border-border p-3">
           <summary className="cursor-pointer text-xs font-semibold">Técnicos de apoyo</summary>
           <p className="mt-2 text-xs text-muted-foreground">{workOrder.supportingTechnicians || "Ninguno"}</p>
         </details>
+        <div className="h-4" />
         </div>
 
-        <DialogFooter className="mx-0 mb-0 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-background px-4 py-3 sm:flex-row sm:justify-end">
+        <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-background px-4 py-3 sm:flex-row sm:justify-end">
           {canDelete && <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="destructive" onClick={() => setDeleteConfirmOpen(true)}>Eliminar OT</Button>}
           {!editing ? <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="outline" onClick={() => setEditing(true)}>Editar</Button> : <>
             <Button className="min-h-11 w-full sm:w-auto" size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             <Button className="min-h-11 w-full sm:w-auto" size="sm" onClick={async () => { const result = await updateWorkOrder(workOrder.id, { ...draft, priority: draft.priority as "LOW" | "NORMAL" | "HIGH" | "EMERGENCY" }); if (result.success) { setEditing(false); onClose(); } }}>Guardar</Button>
           </>}
-        </DialogFooter>
+        </footer>
       </DialogContent>
     </Dialog>
 
