@@ -17,7 +17,7 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { buildEvidenceKey, uploadToR2 } from "@/lib/r2";
 import { generateUuid } from "@/lib/uuid";
-import { eq, asc, desc, and, isNull } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
@@ -96,6 +96,55 @@ export interface ActionResult {
   message?: string;
   error?: string;
   urls?: string[];
+}
+
+export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null }> };
+
+export async function getPendingManualReportOrders(): Promise<ManualReportOrder[]> {
+  const rows = await db.select({ id: workOrders.id, otNumber: workOrders.otNumber, clientId: clients.id, clientName: clients.legalName, costCenterId: workOrders.costCenterId, costCenterName: costCenters.name, serviceTypeId: workOrders.serviceTypeId, serviceTypeName: serviceTypes.name, scheduledDate: workOrders.scheduledDate, scheduledTime: workOrders.scheduledTime, description: workOrders.description })
+    .from(workOrders).innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id)).innerJoin(clients, eq(costCenters.clientId, clients.id)).leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
+    .where(and(eq(workOrders.status, "PENDING"), isNull(workOrders.deletedAt))).orderBy(desc(workOrders.createdAt));
+  const elevators = await db.select({ id: workOrderElevators.id, workOrderId: workOrderElevators.workOrderId, name: elevatorUnities.name, internalCode: elevatorUnities.internalCode }).from(workOrderElevators).innerJoin(elevatorUnities, eq(workOrderElevators.elevatorUnityId, elevatorUnities.id));
+  const byOrder = new Map<string, ManualReportOrder["elevators"]>(); for (const e of elevators) { const list = byOrder.get(e.workOrderId) ?? []; list.push({ id: e.id, name: e.name, internalCode: e.internalCode }); byOrder.set(e.workOrderId, list); }
+  return rows.map((r) => ({ ...r, elevators: byOrder.get(r.id) ?? [] }));
+}
+
+function peruTimestamp(date: string | null, time: string): number | null {
+  if (!date || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const value = Date.parse(`${date}T${time}:00-05:00`);
+  return Number.isNaN(value) ? null : value;
+}
+
+export async function completeManualReport(data: { workOrderId: string; date: string | null; startTime: string; endTime: string; number: string; notes: string; findings: Record<string, string>; signerName: string; signatureDataUrl: string }): Promise<ActionResult> {
+  try {
+    const startedAt = peruTimestamp(data.date, data.startTime);
+    const completedAt = peruTimestamp(data.date, data.endTime);
+    if (!data.workOrderId || !data.signatureDataUrl || !data.signerName.trim() || !startedAt || !completedAt) return { success: false, error: "Horas, nombre del firmante y firma son obligatorios." };
+    if (completedAt <= startedAt) return { success: false, error: "La hora de fin debe ser posterior a la hora de inicio." };
+    const row = await db.select({ status: workOrders.status }).from(workOrders).where(eq(workOrders.id, data.workOrderId)).limit(1);
+    if (row[0]?.status !== "PENDING") return { success: false, error: "La OT ya no está pendiente." };
+    const signatureUrl = await uploadToR2(buildEvidenceKey(data.workOrderId, "manual", 1, "png"), decodeDataUrl(data.signatureDataUrl), "image/png");
+    const now = Date.now();
+    await db.update(workOrders).set({ status: "COMPLETED", completedAt, startedAt, closingNotes: data.notes.trim() || null, clientSignatureUrl: signatureUrl, clientSignerName: data.signerName.trim(), filledByAdmin: true, manualReportNumber: data.number.trim().slice(0, 100), approvalStatus: "PENDING", approvedBy: null, approvedAt: null }).where(eq(workOrders.id, data.workOrderId));
+    const es = await db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, data.workOrderId));
+    if (es.length) { await db.update(workOrderElevators).set({ status: "COMPLETED", finalStatus: "OPERATIVE", completedAt }).where(inArray(workOrderElevators.id, es.map((e) => e.id))); await db.update(workOrderTasks).set({ isCompleted: true, status: "COMPLETED", completedAt }).where(inArray(workOrderTasks.workOrderElevatorId, es.map((e) => e.id))); for (const elevator of es) { await db.update(workOrderElevators).set({ finding: data.findings[elevator.id]?.trim() || null }).where(eq(workOrderElevators.id, elevator.id)); } }
+    revalidatePath("/reports"); return { success: true, message: "Informe manual guardado y OT aprobada." };
+  } catch (error) { return { success: false, error: getErrorMessage(error) }; }
+}
+
+export async function updateClientSignature(data: { workOrderId: string; signerName: string; signatureDataUrl?: string }): Promise<ActionResult> {
+  try {
+    if (!data.signerName.trim()) return { success: false, error: "El nombre del firmante es obligatorio." };
+    const update: { clientSignerName: string; clientSignatureUrl?: string } = { clientSignerName: data.signerName.trim() };
+    if (data.signatureDataUrl) {
+      update.clientSignatureUrl = await uploadToR2(buildEvidenceKey(data.workOrderId, "manual-update", Date.now(), "png"), decodeDataUrl(data.signatureDataUrl), "image/png");
+    }
+    await db.update(workOrders).set(update).where(eq(workOrders.id, data.workOrderId));
+    revalidatePath("/reports");
+    return { success: true, message: "Datos de firma actualizados." };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  }
 }
 
 function decodeDataUrl(dataUrl: string): Uint8Array {

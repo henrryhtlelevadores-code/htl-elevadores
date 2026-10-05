@@ -1,14 +1,17 @@
-import { getCompletedWorkOrders, getReportsFilterData } from "@/features/reports/actions";
+import { getCompletedWorkOrders, getReportsFilterData, getPendingManualReportOrders } from "@/features/reports/actions";
 import { InformesView } from "@/features/reports/components/informes-view";
 import { FileText } from "lucide-react";
 import { getSessionUser } from "@/features/auth/server";
+import { getServiceTypes } from "@/features/work-orders/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const [workOrders, filterData, currentUser] = await Promise.all([
+  const [workOrders, filterData, pendingOrders, serviceTypes, currentUser] = await Promise.all([
     getCompletedWorkOrders(),
     getReportsFilterData(),
+    getPendingManualReportOrders(),
+    getServiceTypes(),
     getSessionUser(),
   ]);
 
@@ -35,6 +38,8 @@ export default async function ReportsPage() {
           id: currentUser?.id ?? "",
           fullName: currentUser?.fullName ?? null,
         }}
+        pendingOrders={pendingOrders}
+        serviceTypes={serviceTypes}
       />
     </div>
   );

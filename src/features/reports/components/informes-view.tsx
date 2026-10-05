@@ -13,12 +13,17 @@ import {
   updateWorkOrderClosingNotes,
   updateTaskObservation,
   addEvidencePhotos,
-  removeEvidencePhoto,
+   removeEvidencePhoto,
+   updateClientSignature,
+  completeManualReport,
+  type ManualReportOrder,
 } from "../actions";
+import { type ServiceTypeOption } from "@/features/work-orders/actions";
 import { DataTable } from "@/components/ui/data-table";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +62,8 @@ interface InformesViewProps {
     client_name: string;
   }>;
   currentUser: { id: string; fullName: string | null };
+  serviceTypes: ServiceTypeOption[];
+  pendingOrders: ManualReportOrder[];
 }
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
@@ -124,6 +131,8 @@ export function InformesView({
   clients,
   costCenters,
   currentUser,
+  pendingOrders,
+  serviceTypes,
 }: InformesViewProps) {
   const router = useRouter();
   const [data, setData] = useState<CompletedWorkOrderReport[]>(workOrders);
@@ -141,6 +150,52 @@ export function InformesView({
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [approvalDate, setApprovalDate] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
+  const [signerDraft, setSignerDraft] = useState("");
+  const [signatureDraft, setSignatureDraft] = useState("");
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualStep, setManualStep] = useState(1);
+  const [manualOrder, setManualOrder] = useState<ManualReportOrder | null>(null);
+  const [manualClientId, setManualClientId] = useState("");
+  const [manualCostCenterId, setManualCostCenterId] = useState("");
+  const [manualServiceTypeId, setManualServiceTypeId] = useState("");
+  const [manualNumber, setManualNumber] = useState("");
+  const [manualSigner, setManualSigner] = useState("");
+  const [manualNotes, setManualNotes] = useState("");
+  const [manualFindings, setManualFindings] = useState<Record<string, string>>({});
+  const [manualSignature, setManualSignature] = useState("");
+  const [manualStartTime, setManualStartTime] = useState("");
+  const [manualEndTime, setManualEndTime] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
+
+  const manualCostCenters = useMemo(
+    () => costCenters.filter((center) => center.clientId === manualClientId),
+    [costCenters, manualClientId]
+  );
+  const manualPendingOrders = useMemo(
+    () => {
+      if (!manualClientId || !manualCostCenterId) return [];
+      return pendingOrders.filter((order) =>
+        order.clientId === manualClientId &&
+        order.costCenterId === manualCostCenterId &&
+        (!manualServiceTypeId || order.serviceTypeId === manualServiceTypeId)
+      );
+    },
+    [pendingOrders, manualClientId, manualCostCenterId, manualServiceTypeId, serviceTypes]
+  );
+
+  function readSignature(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader(); reader.onload = () => setManualSignature(String(reader.result)); reader.readAsDataURL(file);
+  }
+
+  async function saveManual() {
+    if (!manualOrder) return; setManualSaving(true);
+    const result = await completeManualReport({ workOrderId: manualOrder.id, date: manualOrder.scheduledDate, startTime: manualStartTime, endTime: manualEndTime, number: manualNumber, notes: manualNotes, findings: manualFindings, signerName: manualSigner, signatureDataUrl: manualSignature });
+    setManualSaving(false);
+    if (!result.success) { toast.error("No se pudo guardar", { description: result.error }); return; }
+    toast.success(result.message); setManualOpen(false); setManualStep(1); setManualOrder(null); router.refresh();
+  }
 
   const filteredCostCenters = useMemo(
     () =>
@@ -187,7 +242,20 @@ export function InformesView({
       for (const t of ev.tasks) obs[t.id] = t.observations ?? "";
     }
     setTaskObsDraft(obs);
+    setSignerDraft(wo.clientSignerName ?? "");
+    setSignatureDraft("");
   }, []);
+
+  async function handleSaveSignature() {
+    if (!viewing) return;
+    setSavingSignature(true);
+    const result = await updateClientSignature({ workOrderId: viewing.id, signerName: signerDraft, signatureDataUrl: signatureDraft || undefined });
+    setSavingSignature(false);
+    if (!result.success) { toast.error("No se pudo actualizar", { description: result.error }); return; }
+    patchWorkOrder(viewing.id, (wo) => ({ ...wo, clientSignerName: signerDraft.trim() || null, clientSignatureUrl: signatureDraft ? wo.clientSignatureUrl : wo.clientSignatureUrl }));
+    toast.success(result.message);
+    router.refresh();
+  }
 
   async function handleSaveNotes() {
     if (!viewing) return;
@@ -497,6 +565,9 @@ export function InformesView({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => { setManualOpen(true); setManualStep(1); }} className="gap-2"><FileText className="size-4" />Informe Manual</Button>
+      </div>
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-1 flex-wrap">
@@ -625,8 +696,8 @@ export function InformesView({
               </div>
 
               {/* Firma del cliente */}
-              {(viewing.clientSignatureUrl || viewing.clientSignerName) && (
-                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex items-center gap-4">
+              {(
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex flex-wrap items-center gap-4">
                   {viewing.clientSignatureUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -635,13 +706,13 @@ export function InformesView({
                       className="h-16 w-40 object-contain bg-white border border-border rounded-lg"
                     />
                   )}
-                  <div>
+                  <div className="min-w-[220px] flex-1 space-y-2">
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Firma del cliente
                     </div>
-                    <div className="text-xs font-bold">
-                      {viewing.clientSignerName || "Sin nombre registrado"}
-                    </div>
+                    <Input value={signerDraft} onChange={(event) => setSignerDraft(event.target.value)} placeholder="Nombre del cliente" className="h-8 text-xs" />
+                    <Input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setSignatureDraft(String(reader.result)); reader.readAsDataURL(file); }} className="h-8 text-xs" />
+                    <Button size="xs" variant="outline" onClick={handleSaveSignature} disabled={savingSignature || !signerDraft.trim()}>{savingSignature ? "Guardando..." : "Actualizar firma"}</Button>
                   </div>
                 </div>
               )}
@@ -764,6 +835,18 @@ export function InformesView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+       <Dialog open={manualOpen} onOpenChange={(open) => { setManualOpen(open); if (open) { setManualStep(1); setManualOrder(null); setManualClientId(""); setManualCostCenterId(""); setManualServiceTypeId(""); } }}>
+         {manualStep === 1 ? <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl min-w-0 bg-card text-foreground sm:w-full">
+           <DialogHeader><DialogTitle>Informe Manual</DialogTitle><DialogDescription className="sr-only">Selecciona la OT que deseas completar manualmente</DialogDescription></DialogHeader>
+           <div className="space-y-4 py-2"><div className="grid min-w-0 gap-3 sm:grid-cols-2"><SearchableSelect className="w-full min-w-0" items={clients} value={manualClientId} onValueChange={(value) => { setManualClientId(value); setManualCostCenterId(""); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(client) => client.id} getLabel={(client) => client.legalName} placeholder="Cliente *" searchPlaceholder="Buscar cliente..." emptyText="No hay clientes" /><SearchableSelect className="w-full min-w-0" items={manualCostCenters} value={manualCostCenterId} onValueChange={(value) => { setManualCostCenterId(value); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(center) => center.id} getLabel={(center) => center.name} getKeywords={(center) => center.client_name} placeholder="Centro de costos *" searchPlaceholder="Buscar centro..." emptyText="Selecciona un cliente primero" disabled={!manualClientId} /></div><SearchableSelect className="w-full min-w-0" items={serviceTypes} value={manualServiceTypeId} onValueChange={(value) => { setManualServiceTypeId(value); setManualOrder(null); }} getValue={(type) => type.id} getLabel={(type) => type.name} placeholder="Tipo de servicio (Todos)" searchPlaceholder="Buscar servicio..." emptyText="No hay tipos de servicio" disabled={!manualCostCenterId} /><div className="border-t pt-4"><p className="mb-3 text-sm font-medium">OTs pendientes ({manualPendingOrders.length})</p>{!manualClientId || !manualCostCenterId ? <p className="text-sm text-muted-foreground">Selecciona un cliente y un centro de costos para consultar las OTs pendientes.</p> : manualPendingOrders.length === 0 ? <p className="text-sm text-muted-foreground">No hay OTs pendientes para esta selección.</p> : <div className="space-y-2">{manualPendingOrders.map((o) => <label key={o.id} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors", manualOrder?.id === o.id ? "border-primary bg-primary/5" : "hover:bg-muted/50")}><input type="radio" name="manual-order" checked={manualOrder?.id === o.id} onChange={() => setManualOrder(o)} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><span className="font-mono text-sm font-semibold">{o.otNumber}</span><span className="shrink-0 text-xs text-muted-foreground">{formatDayTime(o.scheduledDate, o.scheduledTime)}</span></div><p className="mt-1 text-xs text-muted-foreground">🔧 {o.elevators.length} equipo(s): {o.elevators.map((e) => e.internalCode).filter(Boolean).join(", ")}</p><p className="mt-0.5 text-xs text-muted-foreground">{o.serviceTypeName ?? "Sin tipo de servicio"}</p></div></label>)}</div>}</div></div>
+           <DialogFooter><Button variant="ghost" onClick={() => setManualOpen(false)}>Cancelar</Button><Button disabled={!manualOrder} onClick={() => setManualStep(2)}>Continuar</Button></DialogFooter>
+         </DialogContent> : <DialogContent showCloseButton={false} className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-3xl min-w-0 flex-col gap-0 overflow-hidden bg-card p-0 text-foreground max-sm:m-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none">
+           <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">Informe Manual · Paso 2 de 2</p><p className="truncate font-mono text-sm font-semibold">{manualOrder?.otNumber}</p></div><Button variant="ghost" size="icon" onClick={() => setManualOpen(false)}><X className="size-4" /></Button></header>
+           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del firmante *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><label className="block rounded-lg border border-dashed p-3 text-xs">Firma del cliente *<Input className="mt-2" type="file" accept="image/*" onChange={(e) => readSignature(e.target.files?.[0])} />{manualSignature && <span className="text-emerald-600">Firma cargada</span>}</label></div></section></div></div>
+           <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-4 py-3"><Button variant="ghost" onClick={() => setManualStep(1)}>Volver</Button><Button disabled={manualSaving || !manualSigner || !manualSignature || !manualStartTime || !manualEndTime} onClick={saveManual}>{manualSaving ? <Loader2 className="animate-spin" /> : "Guardar y aprobar"}</Button></footer>
+         </DialogContent>}
+       </Dialog>
     </div>
   );
 }

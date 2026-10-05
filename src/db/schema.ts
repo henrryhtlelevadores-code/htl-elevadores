@@ -293,6 +293,9 @@ export const workOrders = sqliteTable("work_orders", {
   description: text("description"),
   clientSignatureUrl: text("client_signature_url"),
   clientSignerName: text("client_signer_name"),
+  filledByAdmin: integer("filled_by_admin", { mode: "boolean" }).default(false),
+  manualReportNumber: text("manual_report_number"),
+  manualReportPhotoUrl: text("manual_report_photo_url"),
 
   createdAt: integer("created_at").default(unixNow()),
   deletedAt: integer("deleted_at"),
