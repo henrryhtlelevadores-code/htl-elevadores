@@ -44,7 +44,7 @@ const quotationLineSchema = z.object({
   description: z
     .string()
     .min(2, "La descripción es obligatoria")
-    .max(300, "Máximo 300 caracteres"),
+    .max(1000, "Máximo 1000 caracteres"),
   totalHours: nonNegativeNumber("Las horas"),
   hourlyCost: nonNegativeNumber("El costo/hora"),
   lineMode: z.enum(["CALCULATED", "MANUAL_PRICE"]).default("CALCULATED"),
