@@ -76,12 +76,8 @@ async function buildQuotationPdfData(
     validityDays: quotation.validityDays ?? 15,
     images: images.map((image) => ({ url: image.url, caption: image.caption, isReferenceOnly: image.isReferenceOnly })),
     lines: quotation.lines.map((line) => ({
-      equipment:
-        line.elevator_internal_code || line.elevator_name
-          ? [line.elevator_internal_code, line.elevator_name]
-              .filter(Boolean)
-              .join(" — ")
-          : null,
+      // La cabecera de la cotización identifica cada equipo únicamente por su código.
+      equipment: line.elevator_internal_code || null,
       description: line.description ?? "",
       lineMode: line.lineMode ?? "CALCULATED",
       lineModeReason: line.lineModeReason,

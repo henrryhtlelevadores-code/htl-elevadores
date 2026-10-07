@@ -265,6 +265,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
+  lineFinalPrice: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 3,
+    fontSize: 9.5,
+    fontFamily: PDF_FONT,
+    color: DARK,
+  },
   tableHeader: {
     flexDirection: "row",
     backgroundColor: BRAND,
@@ -631,17 +639,23 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
         <Text style={styles.sectionTitle}>Detalle de Cotización</Text>
         {data.lines.map((line, index) => {
           const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";
-          return (
-            <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
+           return (
+             <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
               <View style={styles.lineHead} wrap={false}>
-                {line.equipment ? (
-                  <Text style={styles.lineEquipment}>Equipo: {line.equipment}</Text>
-                ) : null}
-                <Text style={styles.lineDescription}>{line.description}</Text>
-              </View>
-              {isManual ? <ManualLine line={line} /> : <CalculatedLine line={line} />}
-            </View>
-          );
+                 {line.equipment ? (
+                   <Text style={styles.lineEquipment}>Equipo: {line.equipment}</Text>
+                 ) : null}
+                 <Text style={styles.lineDescription}>{line.description}</Text>
+                 <View style={styles.lineFinalPrice} wrap={false}>
+                   <Text>
+                     {line.manualPriceIncludesIgv ? "Precio por Equipo (Incluye IGV):" : "Precio por Equipo:"}
+                   </Text>
+                   <Text>{money(line.clientPrice)}</Text>
+                 </View>
+               </View>
+               {isManual ? <ManualLine line={line} /> : <CalculatedLine line={line} />}
+             </View>
+           );
         })}
         </View>
 
