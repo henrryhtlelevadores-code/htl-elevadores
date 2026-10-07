@@ -579,9 +579,13 @@ function MarkdownBlock({ value }: { value: string | null }) {
 }
 
 export function QuotationPDF({ data }: { data: QuotationPdfData }) {
-  const equipmentCodes = data.lines
-    .map((l) => l.equipment)
-    .filter((e): e is string => !!e);
+  const equipmentCodes = Array.from(
+    new Set(
+      data.lines
+        .map((l) => l.equipment)
+        .filter((e): e is string => !!e),
+    ),
+  );
   const equipmentLabel =
     equipmentCodes.length > 0 ? equipmentCodes.join(" / ") : "—";
 
