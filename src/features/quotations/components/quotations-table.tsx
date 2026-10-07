@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -33,10 +34,12 @@ import {
   Plus,
   Settings2,
   Trash2,
+  Info,
 } from "lucide-react";
 import { QuotationCreateDialog } from "./quotation-create-dialog";
 import { QuotationDetailDialog } from "./quotation-detail-dialog";
 import { PricingConfigDialog } from "./pricing-config-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface QuotationsTableProps {
   initialQuotations: QuotationWithRelations[];
@@ -86,6 +89,15 @@ function openPdf(url: string, filename: string) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+function ActionTooltip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function QuotationsTable({
@@ -182,6 +194,7 @@ export function QuotationsTable({
       {
         accessorKey: "quotationNumber",
         header: "N°",
+        size: 120,
         cell: ({ row }) => (
           <span className="font-mono font-semibold text-xs">{row.original.quotationNumber}</span>
         ),
@@ -189,6 +202,7 @@ export function QuotationsTable({
       {
         accessorKey: "client_name",
         header: "Cliente",
+        size: 180,
         cell: ({ row }) => (
           <span className="text-xs font-medium">{row.original.client_name ?? "—"}</span>
         ),
@@ -281,7 +295,7 @@ export function QuotationsTable({
         accessorKey: "total",
         header: "Total",
         cell: ({ row }) => (
-          <span className="text-xs font-bold">{money(row.original.total)}</span>
+          <span className="block text-right text-xs font-bold">{money(row.original.total)}</span>
         ),
       },
       {
@@ -334,43 +348,10 @@ export function QuotationsTable({
         header: "",
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-7 h-7 text-muted-foreground hover:text-foreground"
-              title="Ver detalle"
-              onClick={() => handleView(row.original.id)}
-            >
-              <Eye className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-7 h-7 text-muted-foreground hover:text-foreground"
-              title="Editar"
-              onClick={() => handleEdit(row.original.id)}
-            >
-              <Pencil className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-7 h-7 text-muted-foreground hover:text-foreground"
-              title="Descargar PDF"
-              disabled={isPending}
-              onClick={() => handleDownload(row.original)}
-            >
-              <Download className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-7 h-7 text-muted-foreground hover:text-destructive"
-              title="Eliminar"
-              onClick={() => handleDelete(row.original)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
+            <ActionTooltip label="Ver detalle"><Button variant="ghost" size="sm" aria-label="Ver detalle" className="size-7 h-7 text-muted-foreground hover:text-foreground" onClick={() => handleView(row.original.id)}><Eye className="size-3.5" /></Button></ActionTooltip>
+            <ActionTooltip label="Editar"><Button variant="ghost" size="sm" aria-label="Editar" className="size-7 h-7 text-muted-foreground hover:text-foreground" onClick={() => handleEdit(row.original.id)}><Pencil className="size-3.5" /></Button></ActionTooltip>
+            <ActionTooltip label="Descargar PDF"><Button variant="ghost" size="sm" aria-label="Descargar PDF" className="size-7 h-7 text-muted-foreground hover:text-foreground" disabled={isPending} onClick={() => handleDownload(row.original)}><Download className="size-3.5" /></Button></ActionTooltip>
+            <ActionTooltip label="Eliminar"><Button variant="ghost" size="sm" aria-label="Eliminar" className="size-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(row.original)}><Trash2 className="size-3.5" /></Button></ActionTooltip>
           </div>
         ),
       },
@@ -385,7 +366,6 @@ export function QuotationsTable({
         columns={columns}
         data={initialQuotations}
         searchPlaceholder="Buscar por N°, cliente o sede..."
-        searchKey="quotationNumber"
         emptyState={
           <div className="py-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
             <Calculator className="size-8 text-muted-foreground/40" />
@@ -393,11 +373,11 @@ export function QuotationsTable({
           </div>
         }
         extraActions={
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
             <Button
               variant="outline"
               size="sm"
-              className="text-xs gap-1.5"
+              className="w-full gap-1.5 text-xs sm:w-auto"
               onClick={() => {
                 setConfigSession((s) => s + 1);
                 setConfigOpen(true);
@@ -409,15 +389,48 @@ export function QuotationsTable({
               <span className="text-muted-foreground">·</span>{" "}
               Comisión {Math.round(pricingRules.commissionRate * 100)}%
             </Button>
-            <Button size="sm" className="text-xs gap-1.5" onClick={handleNew}>
+            <Button size="sm" className="w-full gap-1.5 text-xs sm:w-auto" onClick={handleNew}>
               <Plus className="size-3.5" />
               Nueva cotización
             </Button>
           </div>
         }
+        mobileCard={(row) => {
+          const q = row.original;
+          const status = q.status ?? "DRAFT";
+          return (
+            <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-sm font-semibold">{q.quotationNumber}</div>
+                  <div className="mt-1 truncate text-sm font-semibold">{q.client_name ?? "—"}</div>
+                </div>
+                <Badge variant="outline" className={`shrink-0 border text-[10px] font-bold ${STATUS_STYLES[status] ?? ""}`}>
+                  {STATUS_LABELS[status] ?? status}
+                </Badge>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div><dt className="text-muted-foreground">Sede</dt><dd className="truncate font-medium">{q.cost_center_name ?? "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Emisión</dt><dd className="font-medium">{formatDate(q.issueDate)}</dd></div>
+                <div><dt className="text-muted-foreground">Asesor</dt><dd className="truncate font-medium">{q.advisor_name ?? "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Líneas</dt><dd className="font-medium">{q.lineCount}</dd></div>
+              </dl>
+              <div className="mt-3 flex min-w-0 items-center justify-between gap-3 overflow-hidden border-t border-border pt-3">
+                <span className="flex items-center gap-1 text-xs font-semibold">Total <span title="Precio final de la cotización"><Info className="size-3.5 text-muted-foreground" /></span></span>
+                <span className="shrink-0 whitespace-nowrap text-right text-base font-bold">{money(q.total)}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-1 border-t border-border pt-3">
+                <Button variant="ghost" size="sm" className="h-11 min-w-11 p-3 text-muted-foreground" aria-label="Ver detalle" onClick={() => handleView(q.id)}><Eye className="size-4" /></Button>
+                <Button variant="ghost" size="sm" className="h-11 min-w-11 p-3 text-muted-foreground" aria-label="Editar" onClick={() => handleEdit(q.id)}><Pencil className="size-4" /></Button>
+                <Button variant="ghost" size="sm" className="h-11 min-w-11 p-3 text-muted-foreground" aria-label="Descargar PDF" disabled={isPending} onClick={() => handleDownload(q)}><Download className="size-4" /></Button>
+                <Button variant="ghost" size="sm" className="h-11 min-w-11 p-3 text-muted-foreground hover:text-destructive" aria-label="Eliminar" onClick={() => handleDelete(q)}><Trash2 className="size-4" /></Button>
+              </div>
+            </article>
+          );
+        }}
       />
 
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="hidden items-center gap-1.5 text-[11px] text-muted-foreground md:flex">
         <AlertTriangle className="size-3.5 text-amber-500" />
         <span>
           El precio de venta se calcula automáticamente (materiales + mano de obra +{" "}

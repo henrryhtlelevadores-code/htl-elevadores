@@ -10,6 +10,7 @@ import {
   View,
   StyleSheet,
   Image,
+  Link,
   Font,
 } from "@react-pdf/renderer";
 
@@ -118,6 +119,7 @@ export interface QuotationPdfData {
   igv: number;
   total: number;
   welcomeMessage: string | null;
+  closeMessage: string | null;
   paymentTerms: string | null;
   executionTime: string | null;
   workingHours: string | null;
@@ -426,11 +428,11 @@ const styles = StyleSheet.create({
   signerName: { fontSize: 10, fontFamily: PDF_FONT, fontWeight: "bold" },
   signerRole: { fontSize: 9, color: "#4B5563" },
   bankPage: { fontFamily: PDF_FONT, color: DARK, fontSize: 10, lineHeight: 1.5 },
-  bankTitle: { fontSize: 18, fontFamily: PDF_FONT, fontWeight: "bold", color: BRAND, borderBottomWidth: 3, borderBottomColor: BRAND, paddingBottom: 8, marginBottom: 20 },
+  bankTitle: { fontSize: 18, fontFamily: PDF_FONT, color: BRAND, paddingBottom: 8, marginBottom: 20 },
   bankIntro: { fontSize: 10, marginBottom: 10 },
-  bankSection: { fontSize: 12, fontFamily: PDF_FONT, fontWeight: "bold", color: BRAND, marginTop: 18, marginBottom: 8 },
+  bankSection: { fontSize: 12, fontFamily: PDF_FONT, color: BRAND, marginTop: 18, marginBottom: 8 },
   bankCard: { backgroundColor: SOFT_BG, borderLeftWidth: 4, borderLeftColor: BRAND, padding: 12, borderRadius: 4, marginBottom: 10 },
-  bankName: { fontFamily: PDF_FONT, fontWeight: "bold", marginBottom: 6 },
+  bankName: { fontFamily: PDF_FONT, marginBottom: 6 },
 });
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -606,7 +608,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
         <View style={styles.companyBlock}>
           <View style={styles.companyCol}>
             <Text style={styles.companyLine}>Cal. Laurel Rosa Mz. G1 Lote 14</Text>
-            <Text style={styles.companyLine}>www.htl-elevadores.com</Text>
+            <Link src="https://htl-elevadores.com/" style={[styles.companyLine, { textDecoration: "none" }]}>www.htl-elevadores.com</Link>
             <Text style={styles.companyLine}>Celular: +51 963 207 058</Text>
             <Text style={styles.companyLine}>
               Asesor de Servicio: {data.advisorName ?? "—"}
@@ -615,7 +617,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
           <View style={styles.metaBox}>
             <MetaRow label="FECHA" value={data.issueDate} />
             <MetaRow label="COTIZACIÓN N°" value={data.quotationNumber} />
-            <MetaRow label="EQUIPO" value={equipmentLabel} />
+            <MetaRow label={equipmentCodes.length > 1 ? "EQUIPOS" : "EQUIPO"} value={equipmentLabel} />
             <MetaRow label="VÁLIDO HASTA" value={data.validUntil} />
           </View>
         </View>
@@ -692,7 +694,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
 
         <View style={styles.closing} wrap={false}>
           <Text style={styles.closingText}>
-            Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios.
+            {data.closeMessage || "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios. Sin otro particular, me despido."}
           </Text>
           <Text style={styles.closingText}>Sin otro particular, me despido.</Text>
           <Text style={styles.closingText}>Saludos.</Text>

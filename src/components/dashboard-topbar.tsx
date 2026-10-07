@@ -67,11 +67,11 @@ export function DashboardTopbar({
         </Button>
         <Link
           href="/"
-          className="truncate font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="hidden truncate font-medium text-muted-foreground transition-colors hover:text-foreground md:inline"
         >
           HTL Elevadores
         </Link>
-        <ChevronRight className="size-3 text-muted-foreground/60" />
+        <ChevronRight className="hidden size-3 text-muted-foreground/60 md:inline" />
         <span className="truncate font-semibold text-foreground">{currentTitle}</span>
       </div>
 

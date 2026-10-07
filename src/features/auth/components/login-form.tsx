@@ -85,7 +85,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
           </p>
         </div>
 
-        <div className="relative space-y-6">
+        <div className="absolute left-10 right-10 top-1/2 -translate-y-1/2 space-y-6">
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight">
             Gestión técnica de transporte vertical.
           </h1>
@@ -121,10 +121,10 @@ export function LoginForm({ next = "/" }: { next?: string }) {
       </aside>
 
       {/* Panel del formulario */}
-      <main className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
-        <div className="w-full max-w-sm">
+      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 lg:py-10">
+        <div className="w-full max-w-sm lg:rounded-2xl lg:border lg:border-border/70 lg:bg-card lg:p-8 lg:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           {/* Marca compacta (móvil) */}
-          <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
+          <div className="mb-5 flex flex-col items-center gap-2 lg:hidden">
             <FortexLogo maxWidth={150} priority />
             <p className="text-center text-[11px] text-muted-foreground font-medium">
               Creado por{" "}
@@ -161,7 +161,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
                       <EmailInput
                         leadingIcon={<Mail className="size-4" />}
                         placeholder="tu.nombre"
-                        className="focus-visible:ring-[#0066CC]"
+                         className="h-12 focus-visible:ring-[#0066CC]"
                         value={field.value}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -188,17 +188,17 @@ export function LoginForm({ next = "/" }: { next?: string }) {
                     <FormControl>
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
+                         <Input
                           type={showPassword ? "text" : "password"}
                           autoComplete="current-password"
                           placeholder="••••••••"
-                          className="bg-background border-border text-sm pl-9 pr-9 h-11 font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                           className="h-12 border-border bg-background pl-9 pr-9 font-mono text-sm focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                           {...field}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                           className="absolute right-2 top-1/2 flex size-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                         >
                           {showPassword ? (
@@ -218,7 +218,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
                 type="submit"
                 size="lg"
                 disabled={isPending}
-                className="w-full h-11 mt-2 bg-[#0066CC] hover:bg-[#0055AA] text-white font-semibold gap-2 shadow-md"
+                 className="mt-2 h-12 w-full gap-2 bg-[#0066CC] font-semibold text-white shadow-md transition-opacity hover:bg-[#0055AA] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isPending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -231,8 +231,12 @@ export function LoginForm({ next = "/" }: { next?: string }) {
             </form>
           </Form>
 
-          <p className="mt-8 text-center text-[11px] text-muted-foreground">
-            ¿No puedes acceder? Contacta al administrador del sistema.
+           <p className="mt-6 text-center text-[11px] text-muted-foreground">
+             ¿No puedes acceder?{" "}
+             <a className="font-semibold text-blue-600 underline-offset-2 hover:underline" href="mailto:administrador@htl-elevadores.com">
+               Contacta al administrador
+             </a>
+             .
           </p>
         </div>
       </main>

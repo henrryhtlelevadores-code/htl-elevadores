@@ -560,6 +560,7 @@ export const quotations = sqliteTable("quotations", {
   igv: real("igv").default(0),
   total: real("total").default(0),
   welcomeMessage: text("welcome_message"),
+  closeMessage: text("close_message"),
   paymentTerms: text("payment_terms"),
   executionTime: text("execution_time"),
   workingHours: text("working_hours"),

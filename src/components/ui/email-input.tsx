@@ -93,11 +93,11 @@ export function EmailInput({
         {...props}
       />
 
-      {/* En móvil el sufijo se oculta: el formulario muestra el correo completo. */}
+      {/* El sufijo permanece visible también en pantallas móviles. */}
       <span
         aria-hidden="true"
         className={cn(
-          "hidden select-none items-center rounded-r-lg border border-l-0 border-input bg-muted px-3 text-sm text-muted-foreground sm:flex",
+          "flex min-w-fit select-none items-center rounded-r-lg border border-l-0 border-input bg-gray-50 px-2 text-xs text-muted-foreground dark:bg-muted sm:px-3 sm:text-sm",
           suffixClassName
         )}
       >

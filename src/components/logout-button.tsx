@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { logoutAction } from "@/features/auth/actions";
 import { Button } from "@/components/ui/button";
-import { LogOut, Loader2 } from "lucide-react";
+import { CheckCircle2, LogOut, Loader2 } from "lucide-react";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -16,6 +16,8 @@ export function LogoutButton() {
       await logoutAction();
       toast.success("Sesión cerrada", {
         description: "Vuelve pronto.",
+        icon: <CheckCircle2 className="size-5 text-emerald-600" />,
+        className: "p-4 shadow-lg",
       });
       router.push("/login");
       router.refresh();

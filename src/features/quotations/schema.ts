@@ -76,6 +76,7 @@ export const quotationFormSchema = z
     targetTotal: nonNegativeNumber("El precio final"),
     targetTotalIncludesIgv: z.boolean().default(true),
     showTaxBreakdown: z.boolean().default(true),
+    closeMessage: z.string().max(5000, "El mensaje de cierre es demasiado largo").optional().or(z.literal("")),
     lines: z.array(quotationLineSchema).min(1, "Agrega al menos un equipo o servicio"),
   })
   .superRefine((data, ctx) => {

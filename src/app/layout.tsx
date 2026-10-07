@@ -55,7 +55,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange={false}
         >
-          <TooltipProvider delay={150}>
+          <TooltipProvider delay={200}>
             {children}
             <Toaster richColors position="top-right" />
           </TooltipProvider>

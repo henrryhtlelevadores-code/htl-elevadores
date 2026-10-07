@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  type Row,
   type SortingState,
   flexRender,
   getCoreRowModel,
@@ -40,6 +41,7 @@ interface DataTableProps<TData, TValue> {
   extraActions?: React.ReactNode;
   hideSearch?: boolean;
   emptyState?: React.ReactNode;
+  mobileCard?: (row: Row<TData>) => React.ReactNode;
 }
 
 export function DataTable<TData, TValue>({
@@ -50,6 +52,7 @@ export function DataTable<TData, TValue>({
   extraActions,
   hideSearch = false,
   emptyState,
+  mobileCard,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -86,7 +89,7 @@ export function DataTable<TData, TValue>({
       {(!hideSearch || extraActions) && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {!hideSearch && (
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
@@ -128,8 +131,16 @@ export function DataTable<TData, TValue>({
       )}
 
       {/* Table Container */}
-      <div className="rounded-xl border border-border bg-card overflow-x-auto shadow-xs">
-        <Table>
+      {mobileCard ? (
+        <div className="grid gap-3 md:hidden">
+          {table.getRowModel().rows.length > 0
+            ? table.getRowModel().rows.map((row) => <React.Fragment key={row.id}>{mobileCard(row)}</React.Fragment>)
+            : emptyState}
+        </div>
+      ) : null}
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-xs md:block">
+        <Table className="min-w-[1200px]">
           <TableHeader className="bg-muted/50 border-b border-border">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
@@ -137,7 +148,7 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                      className="text-xs font-semibold text-muted-foreground select-none py-3"
+                       className={`select-none py-3 text-xs font-semibold text-muted-foreground ${header.column.id === "quotationNumber" ? "sticky left-0 z-20 w-[120px] min-w-[120px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : header.column.id === "client_name" ? "sticky left-[120px] z-20 w-[180px] min-w-[180px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : header.column.id === "actions" ? "sticky right-0 z-20 bg-white dark:bg-gray-900" : ""}`}
                       style={{ width: header.column.getSize() }}
                     >
                       {header.isPlaceholder
@@ -163,7 +174,7 @@ export function DataTable<TData, TValue>({
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className="py-2.5 text-xs"
+                       className={`py-2.5 text-xs ${cell.column.id === "quotationNumber" ? "sticky left-0 z-10 w-[120px] min-w-[120px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : cell.column.id === "client_name" ? "sticky left-[120px] z-10 w-[180px] min-w-[180px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : cell.column.id === "actions" ? "sticky right-0 z-10 bg-white dark:bg-gray-900" : ""}`}
                       style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

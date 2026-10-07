@@ -47,6 +47,7 @@ async function buildQuotationPdfData(
     throw new Error("Cotización no encontrada");
   }
   const images = await getQuotationImages(quotationId);
+  const validityDays = Math.max(1, Math.round(Number(quotation.validityDays) || 15));
 
   return {
     logoUrl: resolveLogoUrl(),
@@ -60,7 +61,7 @@ async function buildQuotationPdfData(
     advisorName: quotation.advisor_name,
     status: quotation.status ?? "DRAFT",
     issueDate: dateEs(quotation.issueDate),
-    validUntil: dateEs(quotation.validUntil),
+    validUntil: dateEs((quotation.issueDate ?? 0) + validityDays * 86400),
     discountMode: (quotation.discountMode ?? "PERCENT") as string,
     showTaxBreakdown: quotation.showTaxBreakdown ?? true,
     discountRate: quotation.discountRate ?? 0,
@@ -70,10 +71,11 @@ async function buildQuotationPdfData(
     igv: quotation.igv ?? 0,
     total: quotation.total ?? 0,
     welcomeMessage: quotation.welcomeMessage,
+    closeMessage: quotation.closeMessage,
     paymentTerms: quotation.paymentTerms,
     executionTime: quotation.executionTime,
     workingHours: quotation.workingHours,
-    validityDays: quotation.validityDays ?? 15,
+    validityDays,
     images: images.map((image) => ({ url: image.url, caption: image.caption, isReferenceOnly: image.isReferenceOnly })),
     lines: quotation.lines.map((line) => ({
       // La cabecera de la cotización identifica cada equipo únicamente por su código.

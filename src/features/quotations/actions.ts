@@ -205,6 +205,7 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         igv: quotations.igv,
         total: quotations.total,
         welcomeMessage: quotations.welcomeMessage,
+        closeMessage: quotations.closeMessage,
         paymentTerms: quotations.paymentTerms,
         executionTime: quotations.executionTime,
         workingHours: quotations.workingHours,
@@ -318,6 +319,7 @@ export async function getQuotationById(id: string): Promise<QuotationDetail | nu
         igv: quotations.igv,
         total: quotations.total,
         welcomeMessage: quotations.welcomeMessage,
+        closeMessage: quotations.closeMessage,
         paymentTerms: quotations.paymentTerms,
         executionTime: quotations.executionTime,
         workingHours: quotations.workingHours,
@@ -930,6 +932,7 @@ export async function updateQuotationDocument(
   id: string,
   input: {
     welcomeMessage?: string;
+    closeMessage?: string;
     paymentTerms?: string;
     executionTime?: string;
     workingHours?: string;
@@ -942,6 +945,7 @@ export async function updateQuotationDocument(
       .update(quotations)
       .set({
         welcomeMessage: input.welcomeMessage?.trim() || null,
+        closeMessage: input.closeMessage?.trim() || null,
         paymentTerms: input.paymentTerms?.trim() || null,
         executionTime: input.executionTime?.trim() || null,
         workingHours: input.workingHours?.trim() || null,
