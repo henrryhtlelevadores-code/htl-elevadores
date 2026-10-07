@@ -654,7 +654,13 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                  <Text style={styles.lineDescription}>{line.description}</Text>
                  <View style={styles.lineFinalPrice} wrap={false}>
                    <Text>
-                     {line.manualPriceIncludesIgv ? "Precio por Equipo (Incluye IGV):" : "Precio por Equipo:"}
+                     {line.equipment
+                       ? line.manualPriceIncludesIgv
+                         ? "Precio por Equipo (Incluye IGV):"
+                         : "Precio por Equipo:"
+                       : line.manualPriceIncludesIgv
+                         ? "Precio por Servicio (Incluye IGV):"
+                         : "Precio por Servicio:"}
                    </Text>
                    <Text>{money(line.clientPrice)}</Text>
                  </View>
