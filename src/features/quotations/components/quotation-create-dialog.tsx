@@ -55,6 +55,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Info,
   Loader2,
   Pill,
   Plus,
@@ -373,6 +374,8 @@ export function QuotationCreateDialog({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const [step, setStep] = useState(0);
+  const [showPricingInfo, setShowPricingInfo] = useState(false);
+  const [expandedProviders, setExpandedProviders] = useState<Record<number, boolean>>({});
 
   type FormInput = z.input<typeof quotationFormSchema>;
   type FormOutput = z.output<typeof quotationFormSchema>;
@@ -613,16 +616,26 @@ export function QuotationCreateDialog({
             <FileText className="size-4 text-[#0066CC]" />
             {editingDetail ? `Editar cotización ${editingDetail.quotationNumber}` : "Nueva cotización"}
           </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
+           <DialogDescription className="hidden text-xs text-muted-foreground sm:block">
             Precio de venta calculado con: materiales + mano de obra + gastos generales (
             {Math.round(options.pricing.overheadRateQuote * 100)}%) + comisión (
             {Math.round(options.pricing.commissionRate * 100)}%) + margen (
             {Math.round(options.pricing.profitRate * 100)}%), más IGV (
             {Math.round(options.pricing.igvRate * 100)}%).
-          </DialogDescription>
+           </DialogDescription>
+           <button type="button" className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground sm:hidden" onClick={() => setShowPricingInfo((value) => !value)}>
+             <Info className="size-3.5" /> ¿Cómo se calcula el precio?
+           </button>
+           {showPricingInfo ? <p className="text-[11px] leading-4 text-muted-foreground sm:hidden">Materiales + mano de obra + gastos generales + comisión + margen + IGV.</p> : null}
         </DialogHeader>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1">
+        <div className="mb-1 flex items-center justify-between px-1 pt-1">
+          <div className="flex items-center gap-2 md:hidden">
+            <span className="flex size-7 items-center justify-center rounded-full bg-[#0066CC] text-xs font-bold text-white">{step + 1}</span>
+            <span className="text-sm font-semibold text-foreground">{STEPS[step]?.title}</span>
+          </div>
+          <span className="text-xs font-medium text-muted-foreground md:hidden">Paso {step + 1} de {STEPS.length}</span>
+          <div className="hidden w-full items-center gap-1.5 md:flex">
           {STEPS.map((s, i) => {
             const done = step > i;
             const active = step === i;
@@ -664,6 +677,7 @@ export function QuotationCreateDialog({
               </div>
             );
           })}
+          </div>
         </div>
 
         <Form {...form}>
@@ -964,10 +978,11 @@ export function QuotationCreateDialog({
                           render={({ field: f }) => (
                             <FormItem>
                               <FormControl>
-                                <Input
-                                  placeholder="Descripción del servicio (ej: Cambio de tarjeta)"
-                                  {...f}
-                                  className="bg-background border-border text-xs"
+                                 <Textarea
+                                   rows={2}
+                                   placeholder="Descripción del servicio (ej: Cambio de tarjeta)"
+                                   {...f}
+                                    className="min-h-[96px] resize-y bg-background border-border text-xs"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -1041,19 +1056,28 @@ export function QuotationCreateDialog({
                         </div>
 
                         <div className="rounded-md border border-dashed border-border bg-muted/20 p-2.5 space-y-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Proveedor (opcional)
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            Completa ambos campos para que la línea sea un pass-through; si los
-                            dejas vacíos es un precio fijo.
-                          </p>
-                          <div className="grid grid-cols-12 gap-2 items-start">
+                           <label className="flex cursor-pointer items-center justify-between gap-3 text-xs font-semibold">
+                             <span>
+                               <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Proveedor externo</span>
+                               <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">Opcional para cálculo pass-through</span>
+                             </span>
+                             <Checkbox
+                               checked={expandedProviders[index] ?? Boolean(currentLines?.[index]?.supplierName || Number(currentLines?.[index]?.supplierCost) > 0)}
+                               onCheckedChange={(value) => {
+                                 setExpandedProviders((current) => ({ ...current, [index]: value === true }));
+                                 if (value !== true) {
+                                   form.setValue(`lines.${index}.supplierName`, "");
+                                   form.setValue(`lines.${index}.supplierCost`, "");
+                                 }
+                               }}
+                             />
+                           </label>
+                           {(expandedProviders[index] ?? Boolean(currentLines?.[index]?.supplierName || Number(currentLines?.[index]?.supplierCost) > 0)) && <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
                             <FormField
                               control={form.control}
                               name={`lines.${index}.supplierName`}
                               render={({ field: f }) => (
-                                <FormItem className="col-span-6 sm:col-span-6">
+                                 <FormItem>
                                   <FormLabel className="text-[10px] text-muted-foreground">
                                     Proveedor
                                   </FormLabel>
@@ -1072,7 +1096,7 @@ export function QuotationCreateDialog({
                               control={form.control}
                               name={`lines.${index}.supplierCost`}
                               render={({ field: f }) => (
-                                <FormItem className="col-span-6 sm:col-span-6">
+                                 <FormItem>
                                   <FormLabel className="text-[10px] text-muted-foreground">
                                     Costo del proveedor (S/)
                                   </FormLabel>
@@ -1088,11 +1112,11 @@ export function QuotationCreateDialog({
                                 </FormItem>
                               )}
                             />
-                          </div>
+                           </div>}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 text-right text-[11px]">
-                          <div>
+                        <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-gray-50/70 p-3 text-right text-[11px] dark:bg-gray-800/50">
+                          <div className="text-left">
                             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
                               Valor cliente
                             </div>
@@ -1100,7 +1124,7 @@ export function QuotationCreateDialog({
                               {money(summary.byLine.get(index)?.clientValue ?? 0)}
                             </div>
                           </div>
-                          <div>
+                          <div className="text-left">
                             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
                               IGV {Math.round(options.pricing.igvRate * 100)}%
                             </div>
@@ -1108,11 +1132,11 @@ export function QuotationCreateDialog({
                               {money(summary.byLine.get(index)?.igv ?? 0)}
                             </div>
                           </div>
-                          <div>
+                          <div className="col-span-2 flex items-center justify-between border-t border-border pt-3">
                             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
                               Total
                             </div>
-                            <div className="text-sm font-bold">
+                             <div className="text-base font-extrabold text-[#0066CC]">
                               {money(summary.byLine.get(index)?.clientPrice ?? 0)}
                             </div>
                           </div>
@@ -1177,10 +1201,11 @@ export function QuotationCreateDialog({
                           render={({ field: f }) => (
                             <FormItem>
                               <FormControl>
-                                <Input
-                                  placeholder="Descripción del servicio (ej: Mantenimiento preventivo semestral)"
-                                  {...f}
-                                  className="bg-background border-border text-xs"
+                                 <Textarea
+                                   rows={2}
+                                   placeholder="Descripción del servicio (ej: Mantenimiento preventivo semestral)"
+                                   {...f}
+                                   className="min-h-[96px] resize-y bg-background border-border text-xs"
                                 />
                               </FormControl>
                               <FormMessage />
@@ -1447,15 +1472,15 @@ export function QuotationCreateDialog({
           </form>
         </Form>
 
-        <DialogFooter className="pt-2 border-t border-border flex flex-wrap items-center justify-between gap-3">
+        <DialogFooter className="sticky bottom-0 z-20 -mx-4 flex flex-col items-stretch gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:bg-transparent sm:px-0 sm:py-2">
           <span className="text-xs font-semibold text-muted-foreground">
             Total:{" "}
             <span className="text-foreground">
               {step >= 1 ? money(summary.header.total) : "—"}
             </span>
           </span>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleClose} disabled={isPending} className="text-xs">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Button variant="outline" onClick={handleClose} disabled={isPending} className="flex-1 text-xs sm:flex-none">
               Cancelar
             </Button>
             {step > 0 && (
@@ -1464,7 +1489,7 @@ export function QuotationCreateDialog({
                 variant="outline"
                 onClick={handleBack}
                 disabled={isPending}
-                className="text-xs gap-1"
+                 className="flex-1 gap-1 text-xs sm:flex-none"
               >
                 <ChevronLeft className="size-3.5" />
                 Volver
@@ -1475,7 +1500,7 @@ export function QuotationCreateDialog({
                 type="button"
                 onClick={handleNext}
                 disabled={isPending}
-                className="text-xs gap-1"
+                 className="flex-1 gap-1 text-xs sm:flex-none"
               >
                 Siguiente
                 <ChevronRight className="size-3.5" />
@@ -1485,7 +1510,7 @@ export function QuotationCreateDialog({
                 type="button"
                 onClick={form.handleSubmit(handleSubmit)}
                 disabled={isPending}
-                className="text-xs gap-2"
+                 className="flex-1 gap-2 text-xs sm:flex-none"
               >
                 {isPending && <Loader2 className="size-3.5 animate-spin" />}
                 {editingDetail ? "Guardar cambios" : "Crear cotización"}
