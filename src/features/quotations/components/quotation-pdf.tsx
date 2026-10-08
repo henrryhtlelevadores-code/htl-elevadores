@@ -282,7 +282,6 @@ const styles = StyleSheet.create({
   lineDescription: {
     fontSize: 9.5,
     fontFamily: PDF_FONT,
-    fontWeight: "bold",
     color: DARK,
   },
   lineBody: {
@@ -311,7 +310,6 @@ const styles = StyleSheet.create({
   linePriceValue: {
     fontSize: 10,
     fontFamily: PDF_FONT,
-    fontWeight: "bold",
     color: DARK,
   },
   tableHeader: {
