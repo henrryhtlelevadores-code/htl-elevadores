@@ -8,6 +8,7 @@ import {
   type SafetyTemplate,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import {
   safetyTemplateFormSchema,
@@ -43,6 +44,7 @@ export async function getSafetyTemplates(): Promise<SafetyTemplateWithType[]> {
 }
 
 export async function createSafetyTemplate(data: SafetyTemplateFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = safetyTemplateFormSchema.parse(data);
 
@@ -77,6 +79,7 @@ export async function updateSafetyTemplate(
   id: string,
   data: Partial<SafetyTemplateFormValues>
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       type?: string;
@@ -110,6 +113,7 @@ export async function updateSafetyTemplate(
 }
 
 export async function deleteSafetyTemplate(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(safetyTemplates).where(eq(safetyTemplates.id, id));
     revalidatePath("/work-orders");

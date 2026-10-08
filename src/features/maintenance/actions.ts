@@ -20,6 +20,7 @@ import {
   type MaintenanceTask,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import { addMonthsToTimestamp, nowSeconds } from "./constants";
 import {
@@ -161,6 +162,7 @@ export async function getMaintenancePlanPreview(
 export async function createMaintenanceModule(
   data: MaintenanceModuleFormValues
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceModuleFormSchema.parse(data);
     const code = validated.code.trim().toUpperCase();
@@ -215,6 +217,7 @@ export async function updateMaintenanceModule(
   id: string,
   data: Partial<MaintenanceModuleFormValues>
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceModulePatchSchema.parse(data);
     const update: Partial<MaintenanceModule> = {};
@@ -296,6 +299,7 @@ export async function updateMaintenanceModule(
 }
 
 export async function toggleMaintenanceModule(id: string, isActive: boolean) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db
       .update(maintenanceModules)
@@ -355,6 +359,7 @@ export async function createMaintenanceTask(
   moduleId: string,
   data: MaintenanceTaskFormValues
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceTaskFormSchema.parse(data);
 
@@ -424,6 +429,7 @@ export async function createMaintenanceTasksBatch(
   moduleId: string,
   data: MaintenanceTaskBatchValues
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceTaskBatchSchema.parse(data);
 
@@ -558,6 +564,7 @@ export async function updateMaintenanceTask(
   id: string,
   data: Partial<MaintenanceTaskFormValues>
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceTaskFormSchema.partial().parse(data);
 
@@ -641,6 +648,7 @@ export async function updateMaintenanceTask(
 }
 
 export async function deleteMaintenanceTask(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const task = await db
       .select({
@@ -693,8 +701,9 @@ export async function deleteMaintenanceTask(id: string) {
 export async function reorderMaintenanceTasks(
   moduleId: string,
   zone: string,
-  orderedIds: string[]
+  orderedIds: string[],
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (orderedIds.length === 0) {
       return { success: true, message: "Nada que reordenar" };
@@ -838,6 +847,7 @@ export async function recordModuleExecution(
   notes?: string | null,
   executedAt: number = nowSeconds()
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (moduleIds.length === 0) return { success: true, message: "Sin módulos" };
 

@@ -18,6 +18,7 @@ import {
   type ContractElevator,
 } from "@/db/index";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import { generateDocumentNumber } from "@/lib/document-number";
 import {
@@ -89,6 +90,7 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
 }
 
 export async function createContract(data: ContractFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = contractFormSchema.parse(data);
     const contractId = generateUuid();
@@ -135,6 +137,7 @@ export async function createContract(data: ContractFormValues) {
 }
 
 export async function updateContract(id: string, data: Partial<ContractFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       costCenterId?: string;
@@ -180,6 +183,7 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
 }
 
 export async function deleteContract(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.update(contracts).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(contracts.id, id));
     revalidatePath("/contracts");
@@ -191,6 +195,7 @@ export async function deleteContract(id: string) {
 }
 
 export async function cancelContract(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const now = Math.floor(Date.now() / 1000);
 
@@ -396,6 +401,7 @@ export async function getContractElevators(
 }
 
 export async function createContractElevator(data: ContractElevatorFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = contractElevatorFormSchema.parse(data);
 
@@ -422,6 +428,7 @@ export async function updateContractElevator(
   id: string,
   data: Partial<ContractElevatorFormValues>
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: { frequencyMonths?: number; price?: number } = {};
     if (data.frequencyMonths !== undefined) updateData.frequencyMonths = data.frequencyMonths;
@@ -438,6 +445,7 @@ export async function updateContractElevator(
 }
 
 export async function deleteContractElevator(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(contractElevators).where(eq(contractElevators.id, id));
     revalidatePath("/contracts");
@@ -561,6 +569,7 @@ export async function updateContractDocument(
     documentOverrides?: Record<string, unknown>;
   }
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: Record<string, unknown> = {};
     if (data.clientSignerName !== undefined) updateData.clientSignerName = data.clientSignerName;

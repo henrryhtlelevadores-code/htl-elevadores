@@ -12,6 +12,7 @@ import {
   type ElevatorUnity,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import { elevatorUnityFormSchema, type ElevatorUnityFormValues } from "./schema";
 import { eq, asc, isNull } from "drizzle-orm";
@@ -115,6 +116,7 @@ export async function getEquipmentFormData(): Promise<EquipmentFormData> {
 }
 
 export async function createEquipment(data: ElevatorUnityFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = elevatorUnityFormSchema.parse(data);
 
@@ -146,6 +148,7 @@ export async function createEquipment(data: ElevatorUnityFormValues) {
 }
 
 export async function updateEquipment(id: string, data: Partial<ElevatorUnityFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: Record<string, unknown> = {};
     if (data.costCenterId) updateData.costCenterId = data.costCenterId;
@@ -176,6 +179,7 @@ export async function updateEquipment(id: string, data: Partial<ElevatorUnityFor
 }
 
 export async function toggleEquipmentStatus(id: string, status: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.update(elevatorUnities).set({ status }).where(eq(elevatorUnities.id, id));
     revalidatePath("/equipment");
@@ -187,6 +191,7 @@ export async function toggleEquipmentStatus(id: string, status: string) {
 }
 
 export async function deleteEquipment(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db
       .update(elevatorUnities)

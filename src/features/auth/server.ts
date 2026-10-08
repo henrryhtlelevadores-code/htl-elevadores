@@ -53,3 +53,17 @@ export async function getSessionUser(): Promise<{
     return { id, fullName: null, email: null };
   }
 }
+
+/**
+ * Garantiza que la llamada provenga de una sesión de personal (staff) activa.
+ * Devuelve el usuario o lanza un error.
+ */
+export async function requireStaffSession(): Promise<{ id: string; fullName: string | null; email: string | null }> {
+  const user = await getSessionUser();
+  if (!user) {
+    const error = new Error("Sesión de personal requerida");
+    (error as Error & { code?: string }).code = "UNAUTHENTICATED";
+    throw error;
+  }
+  return user;
+}

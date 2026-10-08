@@ -23,6 +23,7 @@ import {
   type ChangeUserPasswordValues,
 } from "./schema";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { getSessionUserId } from "@/features/auth/server";
 
 /** Roles que habilitan el perfil de técnico en el formulario de usuarios. */
 const FIELD_ROLE_NAMES = ["TECNICO DE CAMPO", "SUPERVISOR"];
@@ -210,6 +211,9 @@ export async function getUserRoleName(userId: string): Promise<string | null> {
 }
 
 export async function createUser(data: CreateUserFormValues) {
+  if (!(await getSessionUserId())) {
+    return { success: false, error: "Sesión requerida" };
+  }
   try {
     const validated = createUserFormSchema.parse(data);
 
@@ -269,6 +273,9 @@ export async function createUser(data: CreateUserFormValues) {
 }
 
 export async function updateUser(id: string, data: UpdateUserFormValues) {
+  if (!(await getSessionUserId())) {
+    return { success: false, error: "Sesión requerida" };
+  }
   try {
     const validated = updateUserFormSchema.parse(data);
 
@@ -376,6 +383,9 @@ export async function uploadStaffSignature(dataUrl: string) {
 }
 
 export async function changeUserPassword(id: string, data: ChangeUserPasswordValues) {
+  if (!(await getSessionUserId())) {
+    return { success: false, error: "Sesión requerida" };
+  }
   try {
     const validated = changeUserPasswordSchema.parse(data);
 
@@ -391,6 +401,9 @@ export async function changeUserPassword(id: string, data: ChangeUserPasswordVal
 }
 
 export async function deleteUser(id: string) {
+  if (!(await getSessionUserId())) {
+    return { success: false, error: "Sesión requerida" };
+  }
   try {
     await db
       .update(users)

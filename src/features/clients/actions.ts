@@ -28,6 +28,7 @@ import {
 import { eq, asc, count, and, isNull, desc } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
 import { verify } from "@node-rs/argon2";
+import { getSessionUserId } from "@/features/auth/server";
 
 export type ClientWithStats = Client & {
   cost_centers_count?: number;
@@ -133,6 +134,7 @@ export async function getClients(): Promise<ClientWithStats[]> {
 }
 
 export async function createClient(data: ClientFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = clientFormSchema.parse(data);
 
@@ -170,6 +172,7 @@ export async function createClient(data: ClientFormValues) {
 }
 
 export async function updateClient(id: string, data: Partial<ClientFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       legalName?: string;
@@ -198,6 +201,7 @@ export async function updateClient(id: string, data: Partial<ClientFormValues>) 
 }
 
 export async function deleteClient(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.update(clients).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(clients.id, id));
     revalidatePath("/clients");
@@ -233,6 +237,7 @@ export async function getCostCenters(id_client?: string): Promise<CostCenter[]> 
 }
 
 export async function createCostCenter(data: CostCenterFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = costCenterFormSchema.parse(data);
 
@@ -253,6 +258,7 @@ export async function createCostCenter(data: CostCenterFormValues) {
 }
 
 export async function updateCostCenter(id: string, data: Partial<CostCenterFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: { name?: string; address?: string; ubigeoId?: string | null } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -270,6 +276,7 @@ export async function updateCostCenter(id: string, data: Partial<CostCenterFormV
 }
 
 export async function deleteCostCenter(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.update(costCenters).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(costCenters.id, id));
     revalidatePath("/clients");
@@ -306,6 +313,7 @@ export async function getCostCenterContacts(
 }
 
 export async function createContact(data: ContactFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = contactFormSchema.parse(data);
 
@@ -327,6 +335,7 @@ export async function createContact(data: ContactFormValues) {
 }
 
 export async function updateContact(id: string, data: Partial<ContactFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       fullName?: string;
@@ -351,6 +360,7 @@ export async function updateContact(id: string, data: Partial<ContactFormValues>
 }
 
 export async function deleteContact(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(costCenterContacts).where(eq(costCenterContacts.id, id));
     revalidatePath("/clients");
@@ -366,6 +376,7 @@ export async function deleteContact(id: string) {
 // ==========================================
 
 export async function setCostCenterPassword(costCenterId: string, plainTextPin: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!plainTextPin || plainTextPin.trim().length < 6) {
       return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
@@ -387,6 +398,7 @@ export async function setCostCenterPassword(costCenterId: string, plainTextPin: 
 }
 
 export async function clearCostCenterPassword(costCenterId: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db
       .update(costCenters)

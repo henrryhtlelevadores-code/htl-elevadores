@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { db, quotationImages } from "@/db/index";
 import { and, eq } from "drizzle-orm";
 import { deleteR2ObjectByUrl } from "@/lib/r2";
+import { getSessionUserId } from "@/features/auth/server";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; imageId: string }> }
 ) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
+    return NextResponse.json({ error: "No autenticado." }, { status: 401 });
+  }
   const { id, imageId } = await params;
   const body = (await request.json()) as { caption?: string; orderIndex?: number };
   await db
@@ -20,6 +25,10 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string; imageId: string }> }
 ) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
+    return NextResponse.json({ error: "No autenticado." }, { status: 401 });
+  }
   const { id, imageId } = await params;
   const [image] = await db
     .select()

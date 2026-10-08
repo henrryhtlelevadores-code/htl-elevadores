@@ -5,6 +5,7 @@ import { type BatchItem } from "drizzle-orm/batch";
 
 type SqliteBatchItem = BatchItem<"sqlite">;
 import { getSessionUserId } from "@/features/auth/server";
+import { getPortalSessionCostCenterId } from "@/features/portal/server";
 import {
   db,
   clients,
@@ -65,6 +66,7 @@ export async function getLaborConfig(): Promise<number> {
 }
 
 export async function upsertLaborConfig(hourlyCost: number): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const cost = round2(Number(hourlyCost) || 0);
     if (cost < 0) {
@@ -119,6 +121,7 @@ export async function getPricingConfig(): Promise<PricingRules> {
 export type PricingConfigInput = Partial<Omit<PricingRules, never>>;
 
 export async function upsertPricingConfig(input: PricingConfigInput): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const values = {
       overheadRateLabor: Number(input.overheadRateLabor),
@@ -693,6 +696,7 @@ function validateDiscountRules(
 export async function createQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const parsed = quotationFormSchema.parse({
       ...data,
@@ -811,6 +815,7 @@ export async function updateQuotation(
   id: string,
   data: QuotationFormValues
 ): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const parsed = quotationFormSchema.parse({
       ...data,
@@ -939,6 +944,7 @@ export async function updateQuotationDocument(
     validityDays?: number;
   }
 ): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validityDays = Math.max(1, Math.round(Number(input.validityDays) || 15));
     await db
@@ -964,6 +970,7 @@ export async function updateQuotationDocument(
 }
 
 export async function issueQuotation(id: string): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const quotation = await getQuotationById(id);
     if (!quotation) return { success: false, error: "Cotización no encontrada." };
@@ -992,6 +999,7 @@ export async function getQuotationImages(quotationId: string) {
 }
 
 export async function deleteQuotation(id: string): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [existing] = await db
       .select({ pdfUrl: quotations.pdfUrl })
@@ -1018,6 +1026,7 @@ export async function updateQuotationStatus(
   id: string,
   status: string
 ): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.update(quotations).set({ status }).where(eq(quotations.id, id));
     revalidatePath("/quotations");
@@ -1032,6 +1041,9 @@ export async function acceptPortalQuotation(
   quotationId: string,
   costCenterId: string
 ): Promise<ActionResult> {
+  if (!(await getPortalSessionCostCenterId())) {
+    return { success: false, error: "Sesión del portal requerida" };
+  }
   try {
     const [row] = await db
       .select({

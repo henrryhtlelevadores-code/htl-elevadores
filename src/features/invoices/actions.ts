@@ -15,6 +15,7 @@ import {
 import { eq, asc, desc, isNull, count, sql, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { ZodError } from "zod";
 import { invoiceFormSchema, invoiceStatusUpdateSchema, buildPayerColumns, type InvoiceFormValues } from "./schema";
 
@@ -316,6 +317,7 @@ function toTimestamp(dateStr: string | undefined): number | null {
 }
 
 export async function createInvoice(values: InvoiceFormValues): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = invoiceFormSchema.parse(values);
     const payer = buildPayerColumns(validated);
@@ -442,6 +444,7 @@ export async function updateInvoiceStatus(
   invoiceId: string,
   values: { sunatStatus: string; paymentStatus: string }
 ): Promise<ActionResult> {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = invoiceStatusUpdateSchema.parse(values);
 

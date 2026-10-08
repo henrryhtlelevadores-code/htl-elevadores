@@ -544,6 +544,7 @@ export async function getRouteConfig(technicianId: string): Promise<RouteConfigR
 }
 
 export async function updateRouteConfig(technicianId: string, input: unknown) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!technicianId) return { success: false, error: "Selecciona un técnico." };
     const parsed = routeConfigSchema.safeParse(input);
@@ -598,6 +599,7 @@ export async function updateRouteConfig(technicianId: string, input: unknown) {
 }
 
 export async function resetRouteConfig(technicianId: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!technicianId) return { success: false, error: "Selecciona un técnico." };
     const values = {
@@ -760,6 +762,7 @@ async function validateCapacityForMove(
 }
 
 export async function createRouteStops(data: RouteStopFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = routeStopFormSchema.parse(data);
     const config = await getRouteConfig(validated.technicianId);
@@ -849,6 +852,7 @@ export async function createRouteStops(data: RouteStopFormValues) {
 }
 
 export async function updateRouteStopDuration(ids: string[], estimatedDurationMins: number) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!ids.length) return { success: false, error: "No hay paradas seleccionadas." };
     const mins = Math.trunc(estimatedDurationMins);
@@ -868,6 +872,7 @@ export async function updateRouteStopDuration(ids: string[], estimatedDurationMi
 }
 
 export async function updateRouteStopsTime(ids: string[], plannedTime: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!ids.length) return { success: false, error: "No hay paradas seleccionadas." };
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(plannedTime)) {
@@ -890,6 +895,7 @@ export async function moveRouteStops(
   technicianId: string,
   businessDayNumber: number
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!ids.length) return { success: false, error: "No hay paradas seleccionadas." };
     if (!Number.isInteger(businessDayNumber) || businessDayNumber < 1) {
@@ -925,6 +931,7 @@ export async function moveRouteStops(
 }
 
 export async function deleteRouteStops(ids: string[]) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     if (!ids.length) return { success: false, error: "No hay paradas seleccionadas." };
     await db.delete(preventiveRouteStops).where(inArray(preventiveRouteStops.id, ids));
@@ -977,6 +984,9 @@ export async function generateMonth(
   technicianId: string,
   month: string = nextMonthLabel()
 ): Promise<GenerationResult> {
+  if (!(await getSessionUserId())) {
+    return { success: false, month, created: 0, skipped: 0, errors: [], error: "Sesión requerida" };
+  }
   const empty: GenerationResult = {
     success: false,
     month,
@@ -1305,6 +1315,9 @@ export async function transferVisitToTechnician(
   stopIds: string[],
   toTechnicianId: string
 ): Promise<TransferVisitResult> {
+  if (!(await getSessionUserId())) {
+    return { success: false, movedStops: 0, reassignedOrders: 0, blockedOrders: [], warnings: [], error: "Sesión requerida" };
+  }
   const empty: TransferVisitResult = {
     success: false,
     movedStops: 0,
@@ -1464,6 +1477,9 @@ export async function transferVisitToTechnician(
 export async function generateMonthForAllTechnicians(
   month: string = nextMonthLabel()
 ): Promise<GenerationResult> {
+  if (!(await getSessionUserId())) {
+    return { success: false, month, created: 0, skipped: 0, errors: [], error: "Sesión requerida" };
+  }
   const technicians = await db
     .selectDistinct({ technicianId: preventiveRoutes.technicianId })
     .from(preventiveRoutes)

@@ -18,6 +18,7 @@ import {
   type MaintenanceZone,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import {
   brandFormSchema,
@@ -64,6 +65,7 @@ export async function getMaintenanceElevatorTypes(): Promise<ElevatorType[]> {
 }
 
 export async function createMaintenanceZone(data: MaintenanceZoneFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceZoneFormSchema.parse(data);
     const [equipmentType] = await db.select({ id: elevatorTypes.id })
@@ -103,6 +105,7 @@ export async function createMaintenanceZone(data: MaintenanceZoneFormValues) {
 }
 
 export async function updateMaintenanceZone(id: string, data: MaintenanceZoneFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = maintenanceZoneFormSchema.parse(data);
     const [currentZone] = await db.select({ code: maintenanceZones.code, elevatorTypeId: maintenanceZones.elevatorTypeId })
@@ -141,6 +144,7 @@ export async function updateMaintenanceZone(id: string, data: MaintenanceZoneFor
 }
 
 export async function deleteMaintenanceZone(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(maintenanceZones).where(eq(maintenanceZones.id, id));
     revalidatePath("/masters");
@@ -151,6 +155,7 @@ export async function deleteMaintenanceZone(id: string) {
 }
 
 export async function createBrand(data: BrandFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = brandFormSchema.parse(data);
 
@@ -172,6 +177,7 @@ export async function createBrand(data: BrandFormValues) {
 }
 
 export async function updateBrand(id: string, data: Partial<BrandFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: { name?: string; country?: string | null; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -188,6 +194,7 @@ export async function updateBrand(id: string, data: Partial<BrandFormValues>) {
 }
 
 export async function deleteBrand(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(brands).where(eq(brands.id, id));
     revalidatePath("/masters");
@@ -218,6 +225,7 @@ export async function getElevatorTypes(): Promise<ElevatorType[]> {
 }
 
 export async function createElevatorType(data: ElevatorTypeFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = elevatorTypeFormSchema.parse(data);
 
@@ -241,6 +249,7 @@ export async function updateElevatorType(
   id: string,
   data: Partial<ElevatorTypeFormValues>
 ) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: { name?: string; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -256,6 +265,7 @@ export async function updateElevatorType(
 }
 
 export async function deleteElevatorType(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(elevatorTypes).where(eq(elevatorTypes.id, id));
     revalidatePath("/masters");
@@ -301,6 +311,7 @@ export async function getModels(): Promise<ModelWithBrand[]> {
 }
 
 export async function createModel(data: ModelFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = modelFormSchema.parse(data);
 
@@ -323,6 +334,7 @@ export async function createModel(data: ModelFormValues) {
 }
 
 export async function updateModel(id: string, data: Partial<ModelFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: { name?: string; brandId?: string; techSpecs?: string | null; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -340,6 +352,7 @@ export async function updateModel(id: string, data: Partial<ModelFormValues>) {
 }
 
 export async function deleteModel(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(models).where(eq(models.id, id));
     revalidatePath("/masters");
@@ -370,6 +383,7 @@ export async function getServiceTypes(): Promise<ServiceType[]> {
 }
 
 export async function createServiceType(data: ServiceTypeFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = serviceTypeFormSchema.parse(data);
 
@@ -395,6 +409,7 @@ export async function createServiceType(data: ServiceTypeFormValues) {
 }
 
 export async function updateServiceType(id: string, data: Partial<ServiceTypeFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       code?: string;
@@ -425,6 +440,7 @@ export async function updateServiceType(id: string, data: Partial<ServiceTypeFor
 }
 
 export async function deleteServiceType(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(serviceTypes).where(eq(serviceTypes.id, id));
     revalidatePath("/masters");
@@ -458,6 +474,7 @@ export async function getUbigeos(): Promise<Ubigeo[]> {
 }
 
 export async function createUbigeo(data: UbigeoFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = ubigeoFormSchema.parse(data);
 
@@ -482,6 +499,7 @@ export async function createUbigeo(data: UbigeoFormValues) {
 }
 
 export async function updateUbigeo(id: string, data: Partial<UbigeoFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const updateData: {
       departamento?: string;
@@ -509,6 +527,7 @@ export async function updateUbigeo(id: string, data: Partial<UbigeoFormValues>) 
 }
 
 export async function deleteUbigeo(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     await db.delete(ubigeos).where(eq(ubigeos.id, id));
     revalidatePath("/masters");
@@ -526,6 +545,7 @@ export async function deleteUbigeo(id: string) {
 }
 
 export async function importUbigeosBulk(data: UbigeoBulkImportValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = ubigeoBulkImportSchema.parse(data);
 

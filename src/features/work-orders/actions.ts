@@ -27,6 +27,7 @@ import {
   type WorkOrderTask,
 } from "@/db/index";
 import { getErrorMessage, getErrorDetail, isUniqueConstraintError } from "@/lib/errors";
+import { getSessionUserId } from "@/features/auth/server";
 import { generateUuid } from "@/lib/uuid";
 import { generateDocumentNumber } from "@/lib/document-number";
 import {
@@ -374,6 +375,7 @@ export async function buildPreventiveElevatorDetail({
 }
 
 export async function createWorkOrder(data: WorkOrderFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = workOrderFormSchema.parse(data);
 
@@ -545,6 +547,7 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
 }
 
 export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormValues>) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [currentApproval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -604,6 +607,7 @@ export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormVal
 }
 
 export async function updateWorkOrderStatus(id: string, status: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [currentApproval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -631,6 +635,7 @@ export async function updateWorkOrderStatus(id: string, status: string) {
 }
 
 export async function deleteWorkOrder(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [workOrder] = await db
       .select({ status: workOrders.status, approvalStatus: workOrders.approvalStatus })
@@ -767,6 +772,7 @@ export async function getWorkOrderElevators(
 }
 
 export async function createWorkOrderElevator(data: WorkOrderElevatorFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = workOrderElevatorFormSchema.parse(data);
     const [approval] = await db
@@ -795,6 +801,7 @@ export async function createWorkOrderElevator(data: WorkOrderElevatorFormValues)
 }
 
 export async function updateWorkOrderElevatorStatus(id: string, status: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -822,6 +829,7 @@ export async function updateWorkOrderElevatorStatus(id: string, status: string) 
 }
 
 export async function updateWorkOrderElevatorFinding(id: string, finding: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -846,6 +854,7 @@ export async function updateWorkOrderElevatorFinding(id: string, finding: string
 }
 
 export async function deleteWorkOrderElevator(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -909,6 +918,7 @@ export async function getWorkOrderTasks(
 }
 
 export async function createWorkOrderTask(data: WorkOrderTaskFormValues) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const validated = workOrderTaskFormSchema.parse(data);
     const [approval] = await db
@@ -940,6 +950,7 @@ export async function createWorkOrderTask(data: WorkOrderTaskFormValues) {
 }
 
 export async function toggleWorkOrderTask(id: string, isCompleted: boolean) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -966,6 +977,7 @@ export async function toggleWorkOrderTask(id: string, isCompleted: boolean) {
 }
 
 export async function deleteWorkOrderTask(id: string) {
+  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })

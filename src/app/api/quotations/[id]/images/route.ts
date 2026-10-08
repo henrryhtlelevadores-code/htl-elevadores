@@ -3,6 +3,7 @@ import { db, quotationImages } from "@/db/index";
 import { eq } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { uploadToR2 } from "@/lib/r2";
+import { getSessionUserId } from "@/features/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,10 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
+    return NextResponse.json({ error: "No autenticado." }, { status: 401 });
+  }
   const { id } = await params;
   const images = await db.select().from(quotationImages).where(eq(quotationImages.quotationId, id));
   return NextResponse.json({ images });
@@ -19,6 +24,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
+    return NextResponse.json({ error: "No autenticado." }, { status: 401 });
+  }
   try {
     const { id } = await params;
     const form = await request.formData();
