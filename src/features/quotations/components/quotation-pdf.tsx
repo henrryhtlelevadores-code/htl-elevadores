@@ -246,22 +246,57 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginBottom: 10,
   },
+  // Cabecera de cada ítem: tres niveles (referencia, descripción, precio).
   lineHead: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: BRAND,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
+  },
+  lineHeadMain: {
+    paddingTop: 8,
+    paddingBottom: 7,
+    paddingHorizontal: 10,
+  },
+  lineRefRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  lineIndex: {
+    fontSize: 8,
+    fontFamily: PDF_FONT,
+    fontWeight: "bold",
+    color: MUTED,
+    letterSpacing: 0.6,
+  },
+  lineEquipmentTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 3,
     backgroundColor: SOFT_BG,
   },
+  lineEquipmentLabel: {
+    fontSize: 7,
+    color: MUTED,
+    letterSpacing: 0.6,
+  },
   lineEquipment: {
-    fontSize: 9.5,
+    fontSize: 8.5,
     fontFamily: PDF_FONT,
+    fontWeight: "bold",
     color: DARK,
+    marginLeft: 4,
   },
   lineDescription: {
-    fontSize: 10,
+    fontSize: 11,
+    fontFamily: PDF_FONT,
+    fontWeight: "bold",
     color: DARK,
-    marginTop: 2,
+    lineHeight: 1.3,
   },
   lineBody: {
     paddingVertical: 8,
@@ -270,10 +305,25 @@ const styles = StyleSheet.create({
   lineFinalPrice: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 3,
-    fontSize: 9.5,
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: BRAND_SOFT,
+  },
+  linePriceLabel: {
+    fontSize: 8,
+    color: MUTED,
+    letterSpacing: 0.6,
+  },
+  linePriceNote: {
+    fontSize: 7.5,
+    color: MUTED,
+  },
+  linePriceValue: {
+    fontSize: 12.5,
     fontFamily: PDF_FONT,
-    color: DARK,
+    fontWeight: "bold",
+    color: BRAND,
   },
   tableHeader: {
     flexDirection: "row",
@@ -648,23 +698,30 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
            return (
              <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
               <View style={styles.lineHead} wrap={false}>
-                 {line.equipment ? (
-                   <Text style={styles.lineEquipment}>Equipo: {line.equipment}</Text>
-                 ) : null}
-                 <Text style={styles.lineDescription}>{line.description}</Text>
-                 <View style={styles.lineFinalPrice} wrap={false}>
-                   <Text>
-                     {line.equipment
-                       ? line.manualPriceIncludesIgv
-                         ? "Precio por Equipo (Incluye IGV):"
-                         : "Precio por Equipo:"
-                       : line.manualPriceIncludesIgv
-                         ? "Precio por Servicio (Incluye IGV):"
-                         : "Precio por Servicio:"}
-                   </Text>
-                   <Text>{money(line.clientPrice)}</Text>
-                 </View>
-               </View>
+                <View style={styles.lineHeadMain}>
+                  <View style={styles.lineRefRow}>
+                    <Text style={styles.lineIndex}>
+                      ÍTEM {String(index + 1).padStart(2, "0")}
+                    </Text>
+                    {line.equipment ? (
+                      <View style={styles.lineEquipmentTag}>
+                        <Text style={styles.lineEquipmentLabel}>EQUIPO</Text>
+                        <Text style={styles.lineEquipment}>{line.equipment}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.lineDescription}>{line.description}</Text>
+                </View>
+                <View style={styles.lineFinalPrice}>
+                  <Text style={styles.linePriceLabel}>
+                    {line.equipment ? "PRECIO POR EQUIPO" : "PRECIO POR SERVICIO"}
+                    {line.manualPriceIncludesIgv ? (
+                      <Text style={styles.linePriceNote}>  (incluye IGV)</Text>
+                    ) : null}
+                  </Text>
+                  <Text style={styles.linePriceValue}>{money(line.clientPrice)}</Text>
+                </View>
+              </View>
                {isManual ? <ManualLine line={line} /> : <CalculatedLine line={line} />}
              </View>
            );
