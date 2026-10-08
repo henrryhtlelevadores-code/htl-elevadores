@@ -147,7 +147,8 @@ export function PortalQuotationDocument({
             key={pdfUrl}
             title={`Cotización ${detail.quotationNumber}`}
             src={`${pdfUrl}#toolbar=0`}
-            className="h-[calc(100dvh-72px)] w-full flex-1 bg-white"
+            className="block w-full flex-1 min-h-[80vh] bg-white"
+            style={{ height: "calc(100dvh - 64px - env(safe-area-inset-top) - env(safe-area-inset-bottom))" }}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
