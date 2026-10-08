@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getPortalSessionCostCenterId } from "@/features/portal/server";
-import { getQuotationById } from "@/features/quotations/actions";
+import { getPortalQuotation } from "@/features/portal/quotations";
 import { PortalQuotationDocument } from "@/features/portal/components/quotation-document";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +23,20 @@ export default async function PortalQuotationPage({ params }: PortalQuotationPag
     redirect(`/portal/${costCenterId}/login`);
   }
 
-  const detail = await getQuotationById(quotationId);
-  if (!detail) {
+  // Filtra por la sede de la sesión: una cotización ajena responde 404.
+  const quotation = await getPortalQuotation(session, quotationId);
+  if (!quotation) {
     notFound();
   }
+
+  // Al navegador solo viaja lo necesario: el detalle completo incluye costos
+  // y márgenes internos.
+  const detail = {
+    id: quotation.id,
+    quotationNumber: quotation.quotationNumber,
+    pdfUrl: quotation.pdfUrl ?? null,
+    pdfGeneratedAt: quotation.pdfGeneratedAt ?? null,
+  };
 
   return <PortalQuotationDocument detail={detail} costCenterId={costCenterId} />;
 }

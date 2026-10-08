@@ -5,25 +5,22 @@ import { type BatchItem } from "drizzle-orm/batch";
 
 type SqliteBatchItem = BatchItem<"sqlite">;
 import { getSessionUserId } from "@/features/auth/server";
-import { getPortalSessionCostCenterId } from "@/features/portal/server";
 import {
   db,
   clients,
   costCenters,
   users,
-  ubigeos,
   elevatorUnities,
   laborConfig,
   pricingConfig,
   quotations,
   quotationLines,
   quotationLineProducts,
-  quotationImages,
   type Quotation,
   type QuotationLine,
   type QuotationLineProduct,
 } from "@/db/index";
-import { eq, isNull, desc, count, inArray, asc, and } from "drizzle-orm";
+import { eq, isNull, desc, count, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { generateDocumentNumber } from "@/lib/document-number";
@@ -37,6 +34,7 @@ import {
   type PricingRules,
 } from "./calc";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
+import { loadQuotationDetail, loadQuotationImages } from "./queries";
 
 export interface ActionResult {
   success: boolean;
@@ -309,126 +307,7 @@ export type QuotationDetail = Quotation & {
 
 export async function getQuotationById(id: string): Promise<QuotationDetail | null> {
   await requirePermission("quotations:read");
-  try {
-    const [row] = await db
-      .select({
-        id: quotations.id,
-        quotationNumber: quotations.quotationNumber,
-        clientId: quotations.clientId,
-        costCenterId: quotations.costCenterId,
-        advisorId: quotations.advisorId,
-        issueDate: quotations.issueDate,
-        validUntil: quotations.validUntil,
-        status: quotations.status,
-        discountMode: quotations.discountMode,
-        targetTotal: quotations.targetTotal,
-        targetTotalIncludesIgv: quotations.targetTotalIncludesIgv,
-        discountRate: quotations.discountRate,
-        subtotal: quotations.subtotal,
-        discountAmount: quotations.discountAmount,
-        taxableBase: quotations.taxableBase,
-        igv: quotations.igv,
-        total: quotations.total,
-        welcomeMessage: quotations.welcomeMessage,
-        closeMessage: quotations.closeMessage,
-        paymentTerms: quotations.paymentTerms,
-        executionTime: quotations.executionTime,
-        workingHours: quotations.workingHours,
-        validityDays: quotations.validityDays,
-        showTaxBreakdown: quotations.showTaxBreakdown,
-        configSnapshot: quotations.configSnapshot,
-        pdfUrl: quotations.pdfUrl,
-        pdfGeneratedAt: quotations.pdfGeneratedAt,
-        createdAt: quotations.createdAt,
-        client_name: clients.legalName,
-        client_tax_id: clients.taxId,
-        cost_center_name: costCenters.name,
-        cost_center_address: costCenters.address,
-        cost_center_district: ubigeos.distrito,
-        advisor_name: users.fullName,
-      })
-      .from(quotations)
-      .innerJoin(clients, eq(quotations.clientId, clients.id))
-      .leftJoin(costCenters, eq(quotations.costCenterId, costCenters.id))
-      .leftJoin(ubigeos, eq(costCenters.ubigeoId, ubigeos.id))
-      .leftJoin(users, eq(quotations.advisorId, users.id))
-      .where(eq(quotations.id, id))
-      .limit(1);
-
-    if (!row) return null;
-
-    const lineRows = await db
-      .select({
-        id: quotationLines.id,
-        quotationId: quotationLines.quotationId,
-        elevatorUnityId: quotationLines.elevatorUnityId,
-        equipmentSerial: quotationLines.equipmentSerial,
-        description: quotationLines.description,
-        orderIndex: quotationLines.orderIndex,
-        lineMode: quotationLines.lineMode,
-        lineModeReason: quotationLines.lineModeReason,
-        manualPrice: quotationLines.manualPrice,
-        manualPriceIncludesIgv: quotationLines.manualPriceIncludesIgv,
-        supplierName: quotationLines.supplierName,
-        supplierCost: quotationLines.supplierCost,
-        lineOverridePrice: quotationLines.lineOverridePrice,
-        lineOverrideReason: quotationLines.lineOverrideReason,
-        totalHours: quotationLines.totalHours,
-        hourlyCost: quotationLines.hourlyCost,
-        laborCost: quotationLines.laborCost,
-        productCost: quotationLines.productCost,
-        subtotal: quotationLines.subtotal,
-        overheadRate: quotationLines.overheadRate,
-        overheadAmount: quotationLines.overheadAmount,
-        totalCost: quotationLines.totalCost,
-        commissionRate: quotationLines.commissionRate,
-        commissionAmount: quotationLines.commissionAmount,
-        profitRate: quotationLines.profitRate,
-        profitAmount: quotationLines.profitAmount,
-        clientValue: quotationLines.clientValue,
-        igv: quotationLines.igv,
-        clientPrice: quotationLines.clientPrice,
-        createdAt: quotationLines.createdAt,
-        elevator_name: elevatorUnities.name,
-        elevator_internal_code: elevatorUnities.internalCode,
-      })
-      .from(quotationLines)
-      .leftJoin(elevatorUnities, eq(quotationLines.elevatorUnityId, elevatorUnities.id))
-      .where(eq(quotationLines.quotationId, id))
-      .orderBy(asc(quotationLines.orderIndex));
-
-    const productRows: QuotationLineProduct[] =
-      lineRows.length > 0
-        ? ((await db
-            .select()
-            .from(quotationLineProducts)
-            .where(
-              inArray(
-                quotationLineProducts.quotationLineId,
-                lineRows.map((l) => l.id)
-              )
-            )
-            .orderBy(asc(quotationLineProducts.orderIndex))) as QuotationLineProduct[])
-        : [];
-
-    const productsByLine = new Map<string, QuotationLineProduct[]>();
-    for (const p of productRows) {
-      const list = productsByLine.get(p.quotationLineId) ?? [];
-      list.push(p);
-      productsByLine.set(p.quotationLineId, list);
-    }
-
-    return {
-      ...row,
-      lines: lineRows.map((l) => ({
-        ...l,
-        products: productsByLine.get(l.id) ?? [],
-      })),
-    };
-  } catch (error) {
-    console.error("Error al obtener cotización:", error);
-    return null;
-  }
+  return loadQuotationDetail(id);
 }
 
 // ==========================================
@@ -991,7 +870,7 @@ export async function issueQuotation(id: string): Promise<ActionResult> {
       return { success: false, error: "La cotización debe tener cliente, sede y al menos una línea." };
     }
     await db.update(quotations).set({ status: "SENT", pdfUrl: null, pdfGeneratedAt: null }).where(eq(quotations.id, id));
-    const { generateAndStoreQuotationPdf } = await import("./quotation-pdf-actions");
+    const { storeQuotationPdf: generateAndStoreQuotationPdf } = await import("./pdf");
     const pdf = await generateAndStoreQuotationPdf(id);
     if (!pdf.success) return { success: false, error: pdf.error };
     revalidatePath("/quotations");
@@ -1005,11 +884,7 @@ export async function issueQuotation(id: string): Promise<ActionResult> {
 
 export async function getQuotationImages(quotationId: string) {
   await requirePermission("quotations:read");
-  return db
-    .select()
-    .from(quotationImages)
-    .where(eq(quotationImages.quotationId, quotationId))
-    .orderBy(asc(quotationImages.orderIndex));
+  return loadQuotationImages(quotationId);
 }
 
 export async function deleteQuotation(id: string): Promise<ActionResult> {
@@ -1049,42 +924,6 @@ export async function updateQuotationStatus(
     return { success: true, message: "Estado actualizado" };
   } catch (error) {
     console.error("Error al actualizar estado:", error);
-    return { success: false, error: getErrorMessage(error) };
-  }
-}
-
-export async function acceptPortalQuotation(
-  quotationId: string,
-  costCenterId: string
-): Promise<ActionResult> {
-  if (!(await getPortalSessionCostCenterId())) {
-    return { success: false, error: "Sesión del portal requerida" };
-  }
-  try {
-    const [row] = await db
-      .select({
-        id: quotations.id,
-        costCenterId: quotations.costCenterId,
-        status: quotations.status,
-      })
-      .from(quotations)
-      .where(eq(quotations.id, quotationId))
-      .limit(1);
-    if (!row || row.costCenterId !== costCenterId) {
-      return { success: false, error: "Cotización no encontrada." };
-    }
-    if (row.status !== "SENT") {
-      return { success: false, error: "Solo se pueden aceptar cotizaciones emitidas." };
-    }
-    await db
-      .update(quotations)
-      .set({ status: "ACCEPTED" })
-      .where(eq(quotations.id, quotationId));
-    revalidatePath(`/portal/${costCenterId}`);
-    revalidatePath(`/portal/${costCenterId}/cotizaciones/${quotationId}`);
-    return { success: true, message: "Cotización aceptada." };
-  } catch (error) {
-    console.error("Error al aceptar cotización desde el portal:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

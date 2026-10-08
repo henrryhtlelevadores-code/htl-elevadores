@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import type { QuotationDetail } from "@/features/quotations/actions";
-import { generateAndStoreQuotationPdf } from "@/features/quotations/quotation-pdf-actions";
+import { portalQuotationPdfAction } from "@/features/portal/actions";
 import {
   ArrowLeft,
   Download,
@@ -35,11 +34,19 @@ function openPdf(url: string, filename: string) {
   document.body.removeChild(link);
 }
 
+/** Solo lo que el portal necesita: sin costos, márgenes ni líneas internas. */
+export interface PortalQuotationSummary {
+  id: string;
+  quotationNumber: string;
+  pdfUrl: string | null;
+  pdfGeneratedAt: number | null;
+}
+
 export function PortalQuotationDocument({
   detail,
   costCenterId,
 }: {
-  detail: QuotationDetail;
+  detail: PortalQuotationSummary;
   costCenterId: string;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -56,7 +63,7 @@ export function PortalQuotationDocument({
   useEffect(() => {
     if (pdfUrl && pdfUrl.startsWith("http")) return;
     startTransition(async () => {
-      const res = await generateAndStoreQuotationPdf(detail.id);
+      const res = await portalQuotationPdfAction(detail.id);
       if (res.success) {
         setPdfUrl(res.pdfUrl);
       }
@@ -71,7 +78,7 @@ export function PortalQuotationDocument({
   function handleRegenerate() {
     setBusy(true);
     startTransition(async () => {
-      const res = await generateAndStoreQuotationPdf(detail.id);
+      const res = await portalQuotationPdfAction(detail.id);
       if (res.success) {
         setPdfUrl(res.pdfUrl);
         toast.success(
