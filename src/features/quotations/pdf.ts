@@ -119,6 +119,14 @@ async function renderQuotationPdf(quotationId: string): Promise<Buffer> {
   );
 }
 
+/**
+ * Versión del diseño del PDF. Va en el nombre del archivo guardado; al subirla
+ * (cada vez que cambie la plantilla en components/quotation-pdf.tsx) los PDFs
+ * ya generados dejan de reutilizarse y se regeneran al abrirlos.
+ */
+const PDF_TEMPLATE_VERSION = 2;
+const TEMPLATE_SUFFIX = `-t${PDF_TEMPLATE_VERSION}.pdf`;
+
 export type StoredQuotationPdf =
   | { success: true; pdfKey: string; generatedAt: number; reused: boolean }
   | { success: false; error: string };
@@ -140,6 +148,7 @@ export async function storeQuotationPdf(quotationId: string): Promise<StoredQuot
     const now = Math.floor(Date.now() / 1000);
     const cacheIsFresh =
       quotation.pdfKey &&
+      quotation.pdfKey.endsWith(TEMPLATE_SUFFIX) &&
       (quotation.pdfGeneratedAt ?? 0) >= (quotation.createdAt ?? 0);
 
     if (cacheIsFresh && quotation.pdfKey) {
@@ -160,7 +169,7 @@ export async function storeQuotationPdf(quotationId: string): Promise<StoredQuot
     }
 
     const buffer = await renderQuotationPdf(quotationId);
-    const pdfKey = newPrivatePdfKey("quotations");
+    const pdfKey = newPrivatePdfKey("quotations").replace(/\.pdf$/, TEMPLATE_SUFFIX);
     await uploadPrivatePdf(pdfKey, buffer);
     await db
       .update(quotations)
