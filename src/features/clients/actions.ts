@@ -27,6 +27,7 @@ import {
 } from "./schema";
 import { eq, asc, count, and, isNull, desc, sql } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
+import { validateNewPassword } from "@/lib/password-policy";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
 
 export type ClientWithStats = Client & {
@@ -387,13 +388,18 @@ export async function deleteContact(id: string) {
 // 4. CREDENCIALES DEL PORTAL (PASSWORD HASH)
 // ==========================================
 
-export async function setCostCenterPassword(costCenterId: string, plainTextPin: string) {
+export async function setCostCenterPassword(
+  costCenterId: string,
+  plainTextPin: string,
+  options: { passwordGenerated?: boolean } = {}
+) {
   const denied = await denyUnless("clients:write");
   if (denied) return denied;
   try {
-    if (!plainTextPin || plainTextPin.trim().length < 6) {
-      return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
-    }
+    const passwordError = validateNewPassword(plainTextPin, "portal", {
+      generated: options.passwordGenerated,
+    });
+    if (passwordError) return { success: false, error: passwordError };
 
     const hash = await hashPassword(plainTextPin);
 

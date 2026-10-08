@@ -25,6 +25,12 @@ import {
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { createSession, getSessionUserId } from "@/features/auth/server";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
+import { validateNewPassword } from "@/lib/password-policy";
+
+/** `passwordGenerated`: la contraseña salió del generador asistido. */
+export interface PasswordOptions {
+  passwordGenerated?: boolean;
+}
 
 /** Roles que habilitan el perfil de técnico en el formulario de usuarios. */
 const FIELD_ROLE_NAMES = ["TECNICO DE CAMPO", "SUPERVISOR"];
@@ -147,11 +153,15 @@ export async function getUsers(): Promise<UserListItem[]> {
   }
 }
 
-export async function createUser(data: CreateUserFormValues) {
+export async function createUser(data: CreateUserFormValues, options: PasswordOptions = {}) {
   const denied = await denyUnless("users:write");
   if (denied) return denied;
   try {
     const validated = createUserFormSchema.parse(data);
+    const passwordError = validateNewPassword(validated.password, "staff", {
+      generated: options.passwordGenerated,
+    });
+    if (passwordError) return { success: false, error: passwordError };
 
     const passwordHash = await hash(validated.password, ARGON2ID_PARAMS);
     const userId = generateUuid();
@@ -225,7 +235,11 @@ async function keepOwnSession(sessionUserId: string, targetUserId: string) {
   }
 }
 
-export async function updateUser(id: string, data: UpdateUserFormValues) {
+export async function updateUser(
+  id: string,
+  data: UpdateUserFormValues,
+  options: PasswordOptions = {}
+) {
   const denied = await denyUnless("users:write");
   if (denied) return denied;
   const sessionUserId = await getSessionUserId();
@@ -259,6 +273,10 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
 
     const password = validated.password || "";
     if (password) {
+      const passwordError = validateNewPassword(password, "staff", {
+        generated: options.passwordGenerated,
+      });
+      if (passwordError) return { success: false, error: passwordError };
       user.passwordHash = await hash(password, ARGON2ID_PARAMS);
     }
 
@@ -357,7 +375,11 @@ export async function uploadStaffSignature(dataUrl: string) {
   }
 }
 
-export async function changeUserPassword(id: string, data: ChangeUserPasswordValues) {
+export async function changeUserPassword(
+  id: string,
+  data: ChangeUserPasswordValues,
+  options: PasswordOptions = {}
+) {
   const denied = await denyUnless("users:write");
   if (denied) return denied;
   const sessionUserId = await getSessionUserId();
@@ -366,6 +388,10 @@ export async function changeUserPassword(id: string, data: ChangeUserPasswordVal
   }
   try {
     const validated = changeUserPasswordSchema.parse(data);
+    const passwordError = validateNewPassword(validated.password, "staff", {
+      generated: options.passwordGenerated,
+    });
+    if (passwordError) return { success: false, error: passwordError };
 
     const passwordHash = await hash(validated.password, ARGON2ID_PARAMS);
     // Cambiar la contraseña revoca las sesiones ya emitidas.

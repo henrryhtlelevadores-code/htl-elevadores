@@ -48,7 +48,7 @@ const baseUserFields = {
 
 const passwordField = z
   .string()
-  .min(8, "La contraseña debe tener al menos 8 caracteres")
+  .min(10, "La contraseña debe tener al menos 10 caracteres")
   .max(100, "Máximo 100 caracteres");
 
 export const userFormSchema = z.object({
@@ -56,8 +56,8 @@ export const userFormSchema = z.object({
   password: z
     .string()
     .max(100, "Máximo 100 caracteres")
-    .refine((v) => v.length === 0 || v.length >= 8, {
-      message: "La contraseña debe tener al menos 8 caracteres",
+    .refine((v) => v.length === 0 || v.length >= 10, {
+      message: "La contraseña debe tener al menos 10 caracteres",
     }),
 });
 

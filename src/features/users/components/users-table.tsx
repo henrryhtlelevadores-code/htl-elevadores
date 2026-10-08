@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { toIso } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import { PasswordGenerator } from "@/features/auth/components/password-generator";
 import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
 import {
   providerBadgeClassName,
@@ -138,6 +139,9 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
   const [passwordUser, setPasswordUser] = useState<UserListItem | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
+  // Última contraseña tomada del generador; si el campo aún la contiene se
+  // avisa al servidor de que es generada.
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const passwordForm = useForm<ChangeUserPasswordValues>({
@@ -273,10 +277,13 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
       });
       return;
     }
+    const passwordOptions = {
+      passwordGenerated: Boolean(values.password) && values.password === generatedPassword,
+    };
     startTransition(async () => {
       const res = editingUser
-        ? await updateUser(editingUser.id, values)
-        : await createUser(values);
+        ? await updateUser(editingUser.id, values, passwordOptions)
+        : await createUser(values, passwordOptions);
       if (res.success) {
         toast.success(editingUser ? "Usuario actualizado" : "Usuario creado", {
           description: res.message,
@@ -314,7 +321,9 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
   function handleSubmitPasswordChange(values: ChangeUserPasswordValues) {
     if (!passwordUser) return;
     startTransition(async () => {
-      const res = await changeUserPassword(passwordUser.id, values);
+      const res = await changeUserPassword(passwordUser.id, values, {
+        passwordGenerated: values.password === generatedPassword,
+      });
       if (res.success) {
         toast.success("Contraseña actualizada", {
           description: `Se cambió la contraseña de ${passwordUser.fullName}.`,
@@ -623,7 +632,7 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
                           <div className="relative">
                             <Input
                               type={showPassword ? "text" : "password"}
-                              placeholder={editingUser ? "Dejar vacío para no cambiar" : "Mínimo 8 caracteres"}
+                              placeholder={editingUser ? "Dejar vacío para no cambiar" : "Mínimo 10 caracteres"}
                               autoComplete="new-password"
                               {...field}
                               className={cn(inputClass, "pr-9 font-mono")}
@@ -638,6 +647,16 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
                             </button>
                           </div>
                         </FormControl>
+                        <PasswordGenerator
+                          profile="staff"
+                          fullName={form.watch("fullName")}
+                          email={form.watch("email")}
+                          onUse={(password) => {
+                            setGeneratedPassword(password);
+                            setShowPassword(true);
+                            form.setValue("password", password, { shouldDirty: true, shouldValidate: true });
+                          }}
+                        />
                         <FormMessage />
                       </FormItem>
                     )}
@@ -948,6 +967,17 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
               className="space-y-4 pt-2"
             >
               <div className="space-y-4">
+                <PasswordGenerator
+                  profile="staff"
+                  fullName={passwordUser?.fullName}
+                  email={passwordUser?.email}
+                  onUse={(password) => {
+                    setGeneratedPassword(password);
+                    setShowPasswords(true);
+                    passwordForm.setValue("password", password, { shouldValidate: true });
+                    passwordForm.setValue("confirmPassword", password, { shouldValidate: true });
+                  }}
+                />
                 <FormField
                   control={passwordForm.control}
                   name="password"
@@ -961,7 +991,7 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
                         <div className="relative">
                           <Input
                             type={showPasswords ? "text" : "password"}
-                            placeholder="Mínimo 8 caracteres"
+                            placeholder="Mínimo 10 caracteres"
                             autoComplete="new-password"
                             {...field}
                             className="bg-background border-border text-xs pr-9 font-mono focus-visible:ring-1 focus-visible:ring-[#0066CC]"

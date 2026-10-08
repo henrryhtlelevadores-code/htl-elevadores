@@ -30,6 +30,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { cn } from "cn";
+import { PasswordGenerator } from "@/features/auth/components/password-generator";
 
 interface CredentialsManagerProps {
   costCenter: CostCenter;
@@ -44,6 +45,7 @@ export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
   const [showPin, setShowPin] = useState(false);
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   const [copied, setCopied] = useState<null | "code" | "link">(null);
+  const [generatedPin, setGeneratedPin] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const portalUrl = `${window.location.origin}/portal/${costCenter.id}/login`;
@@ -81,7 +83,9 @@ export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
     }
 
     startTransition(async () => {
-      const res = await setCostCenterPassword(costCenter.id, pin);
+      const res = await setCostCenterPassword(costCenter.id, pin, {
+        passwordGenerated: pin === generatedPin,
+      });
       if (res.success) {
         setHasPassword(true);
         setPin("");
@@ -250,6 +254,16 @@ export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
+            <PasswordGenerator
+              profile="portal"
+              fullName={costCenter.name}
+              onUse={(password) => {
+                setGeneratedPin(password);
+                setPin(password);
+                setConfirmPin(password);
+                setShowPin(true);
+              }}
+            />
             <div className="space-y-2">
               <label className="text-xs font-semibold">Contraseña</label>
               <div className="relative">
