@@ -11,6 +11,7 @@ import {
   PORTAL_SESSION_COOKIE,
 } from "@/features/portal/session";
 import { sessionCookieOptions, shouldRenewSession } from "@/lib/session-token";
+import { isCrossOriginMutation } from "@/lib/csrf";
 
 /**
  * Primera barrera de navegación. Solo valida firma, tipo y expiración del
@@ -19,6 +20,25 @@ import { sessionCookieOptions, shouldRenewSession } from "@/lib/session-token";
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Defensa CSRF: ninguna petición que cambie estado puede venir de otro
+  // origen. Cubre rutas API, formularios y server actions.
+  if (
+    isCrossOriginMutation({
+      method: request.method,
+      host: request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+      origin: request.headers.get("origin"),
+      secFetchSite: request.headers.get("sec-fetch-site"),
+    })
+  ) {
+    return NextResponse.json({ error: "Origen no permitido." }, { status: 403 });
+  }
+
+  // Las rutas API se autentican y autorizan por sí mismas (401/403 en JSON);
+  // aquí no se redirigen al login.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
 
   // Rutas del portal del cliente: requieren sesión propia del portal.
   if (pathname.startsWith("/portal")) {
@@ -66,6 +86,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|gif|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|gif|ico)$).*)",
   ],
 };
