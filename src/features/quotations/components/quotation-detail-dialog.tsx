@@ -129,7 +129,7 @@ export function QuotationDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border sm:max-w-[860px] text-foreground shadow-lg max-h-[94vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border sm:max-w-[860px] text-foreground shadow-lg max-h-[94dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2">
             <FileText className="size-4 text-[#0066CC]" />

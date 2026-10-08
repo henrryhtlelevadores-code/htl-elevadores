@@ -645,7 +645,7 @@ export function InformesView({
       <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewingId(null)}>
         <DialogContent
           showCloseButton={false}
-          className="bg-card border-border sm:max-w-[820px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto"
+          className="bg-card border-border sm:max-w-[820px] text-foreground shadow-lg max-h-[92dvh] overflow-y-auto"
         >
           <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
             {viewing && viewing.approvalStatus !== "PENDING" && (

@@ -502,7 +502,7 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
 
       {/* Modal: Crear / Editar Usuario */}
       <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if (!open) setEditingUser(null); }}>
-        <DialogContent className="bg-card border-border sm:max-w-[720px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[720px] text-foreground shadow-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Users className="size-4 text-[#0066CC]" />

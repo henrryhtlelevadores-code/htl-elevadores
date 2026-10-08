@@ -354,7 +354,7 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
 
       {/* Modal: Crear Cliente */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Plus className="size-4 text-[#0066CC]" />
@@ -642,7 +642,7 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
 
       {/* Modal: Editar Cliente */}
       <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[425px] text-foreground shadow-lg max-h-[92dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Pencil className="size-4 text-[#0066CC]" />

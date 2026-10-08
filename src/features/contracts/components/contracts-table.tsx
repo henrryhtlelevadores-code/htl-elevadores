@@ -437,7 +437,7 @@ export function ContractsTable({
 
       {/* Modal: Crear/Editar Contrato */}
       <Dialog open={isCreateOpen} onOpenChange={(o) => { setIsCreateOpen(o); if (!o) setEditingContract(null); }}>
-        <DialogContent className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               {editingContract ? (
@@ -810,7 +810,7 @@ export function ContractsTable({
 
       {/* Modal: Ver Equipos del Contrato */}
       <Dialog open={!!viewingContract} onOpenChange={(open) => !open && setViewingContract(null)}>
-        <DialogContent showCloseButton={false} className="!max-w-[1280px] w-full bg-card border-border text-foreground shadow-lg max-h-[94vh] overflow-y-auto">
+        <DialogContent showCloseButton={false} className="!max-w-[1280px] w-full bg-card border-border text-foreground shadow-lg max-h-[94dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <FileSignature className="size-4 text-[#0066CC]" />

@@ -560,7 +560,7 @@ export function EquipmentTable({ initialEquipment, formData }: EquipmentTablePro
 
       {/* Modal: Crear/Editar Equipo */}
       <Dialog open={isCreateOpen} onOpenChange={(o) => { setIsCreateOpen(o); if (!o) setEditingEquipment(null); }}>
-        <DialogContent className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[640px] text-foreground shadow-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               {editingEquipment ? (

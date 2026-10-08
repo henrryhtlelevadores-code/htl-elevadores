@@ -303,7 +303,7 @@ export function InvoiceCreateDialog({
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent
         showCloseButton={false}
-        className="bg-card border-border sm:max-w-[880px] text-foreground shadow-lg max-h-[94vh] overflow-y-auto"
+        className="bg-card border-border sm:max-w-[880px] text-foreground shadow-lg max-h-[94dvh] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2">

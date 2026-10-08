@@ -108,7 +108,7 @@ export function MaintenancePlanDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="bg-card border-border sm:max-w-[680px] text-foreground shadow-lg max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-[680px] text-foreground shadow-lg max-h-[88dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2">
             <Wrench className="size-4 text-[#0066CC]" />

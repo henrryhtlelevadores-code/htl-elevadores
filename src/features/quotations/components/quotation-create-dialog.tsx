@@ -609,7 +609,7 @@ export function QuotationCreateDialog({
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent
         showCloseButton={false}
-        className="bg-card border-border sm:max-w-[980px] text-foreground shadow-lg max-h-[94vh] overflow-y-auto"
+        className="bg-card border-border sm:max-w-[980px] text-foreground shadow-lg max-h-[94dvh] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2">
@@ -1472,7 +1472,7 @@ export function QuotationCreateDialog({
           </form>
         </Form>
 
-        <DialogFooter className="sticky bottom-0 z-20 -mx-4 flex flex-col items-stretch gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:bg-transparent sm:px-0 sm:py-2">
+        <DialogFooter className="flex-col items-stretch gap-3 border-border bg-card py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs font-semibold text-muted-foreground">
             Total:{" "}
             <span className="text-foreground">

@@ -546,7 +546,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
       <Dialog open={!!viewing} onOpenChange={(open) => !open && closeDetail()}>
         <DialogContent
           showCloseButton={false}
-          className="w-[calc(100%-1rem)] max-w-[840px] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground shadow-lg sm:max-h-[92vh] sm:p-4"
+          className="w-[calc(100%-1rem)] max-w-[840px] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground shadow-lg sm:max-h-[92dvh] sm:p-4"
         >
           <button
             onClick={closeDetail}

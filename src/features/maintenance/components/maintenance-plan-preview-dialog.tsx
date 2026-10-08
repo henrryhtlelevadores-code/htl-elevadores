@@ -39,7 +39,7 @@ export function MaintenancePlanPreviewDialog({ clients, costCenters, contracts, 
   return <>
     <Button variant="outline" size="sm" onClick={() => setOpen(true)}>Consultar plan</Button>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="w-[calc(100%-1rem)] max-w-3xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground sm:max-h-[90vh] sm:p-4">
+      <DialogContent className="w-[calc(100%-1rem)] max-w-3xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground sm:max-h-[90dvh] sm:p-4">
         <DialogHeader className="pr-6">
           <DialogTitle className="text-base leading-tight sm:text-lg">Consulta de Plan de Mantenimiento</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">Consulta los módulos que corresponden a cada equipo en un mes específico.</DialogDescription>
