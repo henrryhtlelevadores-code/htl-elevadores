@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, FileText, Loader2, Save, Upload, Trash2 } from "lucide-react";
+import { ArrowLeft, Building2, CheckCircle2, FileText, Loader2, Save, Send, Upload, Trash2 } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
 import type { quotationImages } from "@/db/schema";
 
@@ -42,6 +42,7 @@ export function QuotationDetailPage({
   const [captionDraft, setCaptionDraft] = useState("");
   const [captionOpen, setCaptionOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<QuotationImage | null>(null);
+  const [emitOpen, setEmitOpen] = useState(false);
   const [form, setForm] = useState({
     welcomeMessage: quotation.welcomeMessage ?? defaultWelcome(quotation),
     closeMessage: quotation.closeMessage ?? DEFAULT_CLOSE_MESSAGE,
@@ -167,6 +168,11 @@ export function QuotationDetailPage({
   }
 
   function emitQuotation() {
+    setEmitOpen(true);
+  }
+
+  function confirmEmit() {
+    setEmitOpen(false);
     startTransition(async () => {
       const result = await issueQuotation(quotation.id);
       if (result.success) { toast.success(result.message); router.refresh(); }
@@ -187,7 +193,7 @@ export function QuotationDetailPage({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Badge variant="outline">{quotation.status === "DRAFT" ? "BORRADOR" : quotation.status}</Badge>
-            {quotation.status === "DRAFT" ? <Button size="sm" onClick={emitQuotation}>Emitir</Button> : null}
+            {quotation.status === "DRAFT" ? <Button size="sm" onClick={emitQuotation} className="gap-1.5"><Send className="size-3.5" />Emitir</Button> : null}
             <Button size="sm" disabled={isPending} onClick={saveDocument} className="gap-1.5">
               {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
               Guardar cambios
@@ -258,6 +264,34 @@ export function QuotationDetailPage({
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
             <Button type="button" variant="destructive" onClick={() => void confirmDeleteImage()}>Eliminar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emitOpen} onOpenChange={setEmitOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="size-4 text-primary" />
+              Emitir cotización
+            </DialogTitle>
+            <DialogDescription>
+              Al emitir, esta cotización cambiará su estado a <strong>SENT</strong> y aparecerá automáticamente en el portal del cliente para su aceptación.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Building2 className="size-4 text-primary" />
+              {quotation.cost_center_name ?? "Centro de costo"}
+            </p>
+            <p className="mt-1">Solo se mostrarán las cotizaciones emitidas; las borradores permanecen internas.</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEmitOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={confirmEmit} disabled={isPending} className="gap-1.5">
+              {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              Confirmar emisión
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

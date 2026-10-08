@@ -612,6 +612,33 @@ export function InformesView({
         columns={columns}
         data={filteredWorkOrders}
         searchPlaceholder="Buscar por OT, cliente o técnico..."
+        mobileCard={(row) => {
+          const report = row.original;
+          const photoCount = report.elevators.reduce(
+            (acc, e) => acc + (e.evidencePhotoUrls?.length ?? 0),
+            0
+          );
+          return (
+            <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="inline-block rounded bg-muted px-2 py-0.5 font-mono text-xs font-semibold border border-border">{report.otNumber}</span>
+                  <h3 className="mt-2 truncate text-sm font-semibold">{report.client_name ?? "—"}</h3>
+                  <p className="truncate text-xs text-muted-foreground">{report.cost_center_name ?? "—"}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => handleOpen(report)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
+                  <PenLine className="size-3.5" />
+                  Revisar
+                </Button>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div><dt className="text-muted-foreground">Técnico</dt><dd className="truncate font-medium">{report.technician_name ?? "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Completada</dt><dd className="font-medium">{formatDate(report.completedAt)}</dd></div>
+                <div><dt className="text-muted-foreground">Detalle</dt><dd className="font-medium">{report.elevators.length} equipo(s) · {photoCount} foto(s)</dd></div>
+              </dl>
+            </article>
+          );
+        }}
       />
 
       {/* Modal: Revisar Informe (OT completada) */}
@@ -621,6 +648,11 @@ export function InformesView({
           className="bg-card border-border sm:max-w-[820px] text-foreground shadow-lg max-h-[92vh] overflow-y-auto"
         >
           <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+            {viewing && viewing.approvalStatus !== "PENDING" && (
+              <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                Aprobada
+              </span>
+            )}
             {viewing && viewing.approvalStatus === "PENDING" && (
               <Button
                 size="sm"
@@ -650,11 +682,6 @@ export function InformesView({
                   <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
                     Completada
                   </span>
-                  {viewing.approvalStatus !== "PENDING" && (
-                    <span className="ml-auto inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                      ✓ Aprobada por {viewing.approvedByName ?? viewing.approvedBy ?? "usuario"} · {formatDate(viewing.approvedAt)}
-                    </span>
-                  )}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
                   {viewing.client_name} — {viewing.cost_center_name}
@@ -728,7 +755,7 @@ export function InformesView({
                     variant="outline"
                     size="xs"
                     onClick={handleSaveNotes}
-                    disabled={busy["notes"] || viewing.approvalStatus === "APPROVED"}
+                    disabled={busy["notes"]}
                     className="text-xs font-semibold gap-1.5"
                   >
                     {busy["notes"] ? (
@@ -743,7 +770,7 @@ export function InformesView({
                   rows={3}
                   value={notesDraft}
                   onChange={(e) => setNotesDraft(e.target.value)}
-                  disabled={viewing.approvalStatus === "APPROVED"}
+                  disabled={busy["notes"]}
                   placeholder="Notas de cierre de la orden..."
                   className="bg-card border-border text-xs leading-relaxed focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                 />
@@ -786,7 +813,7 @@ export function InformesView({
                       onSaveTask={(task) =>
                         handleSaveTaskObservation(task, elevator)
                       }
-                      readOnly={viewing.approvalStatus === "APPROVED"}
+                      readOnly={false}
                     />
                   ))
                 )}

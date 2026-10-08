@@ -322,6 +322,34 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
             Nuevo Cliente
           </Button>
         }
+        mobileCard={(row) => {
+          const item = row.original;
+          const sedeCount = Number(item.cost_centers_count ?? 0);
+          return (
+            <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="size-3.5 text-[#0066CC] shrink-0" />
+                    <span className="truncate text-sm font-semibold">{item.legalName}</span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{item.taxId || "Sin RUC"}</p>
+                  <p className="truncate text-xs text-muted-foreground">{item.billingEmail || "—"}</p>
+                </div>
+                <Button size="xs" variant="outline" onClick={() => onSelectClient(item)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
+                  <Eye className="size-3" />
+                  Ver Detalle
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                <span className="inline-flex items-center gap-1 rounded-full border border-[#0066CC]/20 bg-[#0066CC]/10 px-2.5 py-1 text-[11px] font-semibold text-[#0066CC] dark:text-blue-400">
+                  <MapPin className="size-3" />
+                  {sedeCount} {sedeCount === 1 ? "sede" : "sedes"}
+                </span>
+              </div>
+            </article>
+          );
+        }}
       />
 
       {/* Modal: Crear Cliente */}

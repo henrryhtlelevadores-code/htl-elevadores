@@ -1,47 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { QuotationDetail } from "@/features/quotations/actions";
 import { generateAndStoreQuotationPdf } from "@/features/quotations/quotation-pdf-actions";
 import {
   ArrowLeft,
-  Building2,
   Download,
   Loader2,
   LogOut,
+  RefreshCw,
 } from "lucide-react";
 
-const money = (value: number | null | undefined) =>
-  Number(value ?? 0).toLocaleString("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  });
-
-const formatDate = (ts: number | null | undefined) =>
+const formatDateTime = (ts: number | null | undefined) =>
   ts
-    ? new Date(ts * 1000).toLocaleDateString("es-PE", {
+    ? new Date(ts * 1000).toLocaleString("es-PE", {
         day: "2-digit",
         month: "short",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       })
     : "—";
-
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Borrador",
-  SENT: "Enviada",
-  ACCEPTED: "Aceptada",
-  REJECTED: "Rechazada",
-};
-
-const STATUS_CLASSES: Record<string, string> = {
-  DRAFT: "bg-amber-50 text-amber-700 border border-amber-100",
-  SENT: "bg-blue-50 text-blue-700 border border-blue-100",
-  ACCEPTED: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-  REJECTED: "bg-red-50 text-red-700 border border-red-100",
-};
 
 function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
@@ -62,222 +43,119 @@ export function PortalQuotationDocument({
   costCenterId: string;
 }) {
   const [isPending, startTransition] = useTransition();
-  const [downloading, setDownloading] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(detail.pdfUrl ?? null);
+  const [busy, setBusy] = useState(false);
 
-  function handleDownload() {
-    setDownloading(true);
+  const latestVersion = useMemo(() => {
+    if (!pdfUrl) return null;
+    const match = pdfUrl.match(/[?&]v=(\d+)/);
+    if (!match) return null;
+    return Number(match[1]) * 1000;
+  }, [pdfUrl]);
+
+  useEffect(() => {
+    if (pdfUrl && pdfUrl.startsWith("http")) return;
     startTransition(async () => {
       const res = await generateAndStoreQuotationPdf(detail.id);
       if (res.success) {
-        openPdf(res.pdfUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
+        setPdfUrl(res.pdfUrl);
+      }
+    });
+  }, [detail.id, pdfUrl, startTransition]);
+
+  function handleDownload() {
+    if (!pdfUrl) return;
+    openPdf(pdfUrl, `Cotizacion_${detail.quotationNumber}.pdf`);
+  }
+
+  function handleRegenerate() {
+    setBusy(true);
+    startTransition(async () => {
+      const res = await generateAndStoreQuotationPdf(detail.id);
+      if (res.success) {
+        setPdfUrl(res.pdfUrl);
         toast.success(
-          res.reused ? "PDF descargado (almacenado)" : "PDF generado y descargado"
+          res.reused
+            ? "Estas viendo la última versión del PDF"
+            : "Última versión del PDF generada"
         );
       } else {
         toast.error("Error al generar el PDF", { description: res.error });
       }
-      setDownloading(false);
+      setBusy(false);
     });
   }
 
-  const statusKey = detail.status ?? "DRAFT";
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-8">
-        {/* Topbar */}
-        <div className="flex items-center justify-between mb-6">
+    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href={`/portal/${costCenterId}`}
-            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-slate-800"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="size-4" />
             Volver al portal
           </Link>
-          <div className="flex items-center gap-4">
+          <span className="text-xs text-slate-300">|</span>
+          <p className="truncate font-mono text-xs font-semibold text-slate-700">
+            {detail.quotationNumber}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {pdfUrl ? (
+            <span className="hidden text-[11px] text-slate-500 sm:inline">
+              Última versión: {formatDateTime(latestVersion ?? detail.pdfGeneratedAt ?? null)}
+            </span>
+          ) : null}
+          <button
+            onClick={handleDownload}
+            disabled={!pdfUrl || isPending || busy}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#021133] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#021133]/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Descargar PDF
+          </button>
+          <button
+            onClick={handleRegenerate}
+            disabled={isPending || busy}
+            title="Recargar la última versión persistida"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            Regenerar
+          </button>
+          <form action={`/portal/${costCenterId}/logout`} method="post">
             <button
-              onClick={handleDownload}
-              disabled={isPending || downloading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-[#021133] hover:bg-[#021133]/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              type="submit"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-slate-800"
             >
-              {downloading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              Descargar PDF
+              <LogOut className="size-4" />
+              Salir
             </button>
-            <form action={`/portal/${costCenterId}/logout`} method="post">
-              <button
-                type="submit"
-                className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Salir
-              </button>
-            </form>
-          </div>
+          </form>
         </div>
+      </header>
 
-        {/* Document */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Header */}
-          <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-[#021133] flex items-center justify-center shrink-0">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">HTL ELEVADORES</h1>
-                <p className="text-sm text-slate-500">Cotización de servicios</p>
-              </div>
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="font-mono font-bold text-slate-900">{detail.quotationNumber}</p>
-              <span
-                className={`inline-block mt-1 px-3 py-1 text-xs rounded-full font-medium ${STATUS_CLASSES[statusKey] ?? "bg-slate-100 text-slate-600"}`}
-              >
-                {STATUS_LABELS[statusKey] ?? detail.status}
-              </span>
-            </div>
+      <main className="flex flex-1 flex-col">
+        {pdfUrl ? (
+          <iframe
+            key={pdfUrl}
+            title={`Cotización ${detail.quotationNumber}`}
+            src={`${pdfUrl}#toolbar=0`}
+            className="h-[calc(100dvh-72px)] w-full flex-1 bg-white"
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            Cargando la última versión del PDF…
           </div>
-
-          {/* Data */}
-          <div className="p-6 sm:p-8">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">
-                  Cliente
-                </div>
-                <div className="text-sm font-medium text-slate-800 truncate">
-                  {detail.client_name ?? "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">
-                  Sede
-                </div>
-                <div className="text-sm font-medium text-slate-800 truncate">
-                  {detail.cost_center_name ?? "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">
-                  Asesor
-                </div>
-                <div className="text-sm font-medium text-slate-800 truncate">
-                  {detail.advisor_name ?? "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">
-                  Válida hasta
-                </div>
-                <div className="text-sm font-medium text-slate-800">{formatDate(detail.validUntil)}</div>
-              </div>
-            </div>
-
-            {/* Lines */}
-            <div className="space-y-4 mb-6">
-              {detail.lines.map((line, idx) => (
-                <div key={line.id} className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="flex items-start justify-between gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-slate-900">
-                        {String(idx + 1).padStart(2, "0")}. {line.description}
-                      </p>
-                      {line.elevator_internal_code || line.elevator_name ? (
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Equipo:{" "}
-                          {[line.elevator_internal_code, line.elevator_name]
-                            .filter(Boolean)
-                            .join(" — ")}
-                        </p>
-                      ) : null}
-                      {line.lineMode === "MANUAL_PRICE" ? (
-                        <p className="text-xs text-amber-700 mt-0.5">
-                          Precio manual
-                          {line.lineModeReason ? ` — ${line.lineModeReason}` : ""}
-                          {line.supplierName
-                            ? ` — Proveedor: ${line.supplierName}${line.supplierCost != null ? ` (S/ ${money(line.supplierCost)})` : ""}`
-                            : ""}
-                        </p>
-                      ) : line.lineOverridePrice != null ? (
-                        <p className="text-xs text-amber-700 mt-0.5">
-                          Precio pactado — S/ {money(line.lineOverridePrice)} c/IGV
-                          {line.lineOverrideReason ? ` — ${line.lineOverrideReason}` : ""}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold text-sm text-slate-900">{money(line.clientPrice)}</p>
-                      <p className="text-[10px] text-slate-400">precio venta (+IGV)</p>
-                    </div>
-                  </div>
-
-                  {line.products.length > 0 ? (
-                    <div className="px-4 py-2">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-slate-400 border-b border-slate-100">
-                            <th className="py-1.5 font-medium">Descripción</th>
-                            <th className="py-1.5 font-medium text-right">Cant.</th>
-                            <th className="py-1.5 font-medium text-right">C. Unit.</th>
-                            <th className="py-1.5 font-medium text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {line.products.map((p, i) => (
-                            <tr key={i} className="border-b border-slate-50">
-                              <td className="py-1.5 text-slate-700">{p.description}</td>
-                              <td className="py-1.5 text-slate-700 text-right">
-                                {p.quantity} {p.unit}
-                              </td>
-                              <td className="py-1.5 text-slate-700 text-right">{money(p.unitCost)}</td>
-                              <td className="py-1.5 text-slate-700 text-right">{money(p.totalCost)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-
-            {/* Totals */}
-            <div className="max-w-sm ml-auto space-y-1.5 text-sm border border-slate-200 rounded-xl p-4 mb-6">
-              <div className="flex justify-between text-slate-500">
-                <span>Subtotal (sin IGV)</span>
-                <span>{money(detail.subtotal)}</span>
-              </div>
-              {Number(detail.discountAmount ?? 0) > 0 ? (
-                <div className="flex justify-between text-slate-500">
-                  <span>Descuento ({Math.round(detail.discountRate ?? 0)}%)</span>
-                  <span>-{money(detail.discountAmount)}</span>
-                </div>
-              ) : null}
-              <div className="flex justify-between text-slate-500">
-                <span>Base imponible</span>
-                <span>{money(detail.taxableBase)}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>IGV (18%)</span>
-                <span>{money(detail.igv)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-slate-900 text-base pt-2 border-t border-slate-100">
-                <span>TOTAL</span>
-                <span>{money(detail.total)}</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <p className="text-center text-[11px] text-slate-400 mt-6">
-          © {new Date().getFullYear()} HTL Elevadores · Portal del cliente
-        </p>
-      </div>
+        )}
+      </main>
     </div>
   );
 }

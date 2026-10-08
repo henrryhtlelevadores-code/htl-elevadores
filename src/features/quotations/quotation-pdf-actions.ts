@@ -160,8 +160,9 @@ export async function getQuotationPdfDataUrl(
 }
 
 /**
- * Genera el PDF, lo sube a R2 (si está configurado), y persiste la URL y la
- * marca de tiempo en la cotización. Devuelve el objeto con la URL final.
+ * Reutiliza el PDF persistido en R2 si ya existe y la cotización no cambió
+ * desde la última generación. En caso contrario regenera el PDF, sustituye
+ * el archivo en R2 (mismo nombre de clave) y actualiza la URL.
  */
 export async function generateAndStoreQuotationPdf(quotationId: string): Promise<
   | { success: true; pdfUrl: string; generatedAt: number; reused: boolean }
@@ -174,6 +175,21 @@ export async function generateAndStoreQuotationPdf(quotationId: string): Promise
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const cachedPdfUrl = quotation.pdfUrl;
+    const cacheIsFresh =
+      cachedPdfUrl &&
+      cachedPdfUrl.startsWith("http") &&
+      (quotation.pdfGeneratedAt ?? 0) >= (quotation.createdAt ?? 0);
+
+    if (cacheIsFresh) {
+      return {
+        success: true,
+        pdfUrl: cachedPdfUrl,
+        generatedAt: quotation.pdfGeneratedAt ?? now,
+        reused: true,
+      };
+    }
+
     const buffer = await renderQuotationPdf(quotationId);
     const key = buildQuotationPdfKey(quotation.quotationNumber);
     const hostedUrl = isR2Configured()

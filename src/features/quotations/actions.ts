@@ -1028,6 +1028,39 @@ export async function updateQuotationStatus(
   }
 }
 
+export async function acceptPortalQuotation(
+  quotationId: string,
+  costCenterId: string
+): Promise<ActionResult> {
+  try {
+    const [row] = await db
+      .select({
+        id: quotations.id,
+        costCenterId: quotations.costCenterId,
+        status: quotations.status,
+      })
+      .from(quotations)
+      .where(eq(quotations.id, quotationId))
+      .limit(1);
+    if (!row || row.costCenterId !== costCenterId) {
+      return { success: false, error: "Cotización no encontrada." };
+    }
+    if (row.status !== "SENT") {
+      return { success: false, error: "Solo se pueden aceptar cotizaciones emitidas." };
+    }
+    await db
+      .update(quotations)
+      .set({ status: "ACCEPTED" })
+      .where(eq(quotations.id, quotationId));
+    revalidatePath(`/portal/${costCenterId}`);
+    revalidatePath(`/portal/${costCenterId}/cotizaciones/${quotationId}`);
+    return { success: true, message: "Cotización aceptada." };
+  } catch (error) {
+    console.error("Error al aceptar cotización desde el portal:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 // ==========================================
 // PORTAL DEL CLIENTE
 // ==========================================

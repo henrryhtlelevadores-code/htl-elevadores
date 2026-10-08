@@ -21,6 +21,7 @@ import {
 import {
   Building2,
   KeyRound,
+  Lock,
   Loader2,
   LogIn,
   ChevronRight,
@@ -84,18 +85,23 @@ export function PortalLoginForm({
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col items-center mb-8">
-          <FortexLogo maxWidth={180} priority />
-          <h1 className="text-2xl font-bold text-foreground tracking-tight mt-6 text-center">
+        <div className="flex flex-col items-center mb-8 text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+            <Building2 className="size-3.5" />
             Portal del Edificio
+          </span>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mt-3">
+            {costCenterName}
           </h1>
-          <p className="text-muted-foreground text-sm mt-2 text-center">{costCenterName}</p>
           {(address || district) && (
-            <p className="text-xs mt-1 text-center flex items-center gap-1 text-muted-foreground">
-              <MapPin className="h-3 w-3 shrink-0" />
+            <p className="text-xs mt-2 flex items-center justify-center gap-1.5 text-muted-foreground">
+              <MapPin className="size-3.5 shrink-0 text-primary" />
               <span>{[address, district].filter(Boolean).join(", ")}</span>
             </p>
           )}
+          <p className="text-[10px] mt-4 text-muted-foreground/70">
+            Gestionado por Fortex Business Solution
+          </p>
         </div>
 
         {!hasPassword ? (
@@ -127,12 +133,14 @@ export function PortalLoginForm({
                     Código del Edificio
                   </label>
                   <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Building2 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                     <Input
                       readOnly
+                      aria-readonly
                       value={costCenterId}
-                      className="bg-muted/50 border-border text-muted-foreground pl-10 h-11 font-mono text-xs focus-visible:ring-1 focus-visible:ring-primary"
+                      className="cursor-default bg-muted/50 border-border text-muted-foreground pl-10 pr-10 h-11 font-mono text-xs focus-visible:ring-1 focus-visible:ring-primary"
                     />
+                    <Lock className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" aria-hidden="true" />
                   </div>
                 </div>
 

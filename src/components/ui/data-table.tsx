@@ -132,14 +132,14 @@ export function DataTable<TData, TValue>({
 
       {/* Table Container */}
       {mobileCard ? (
-        <div className="grid gap-3 md:hidden">
+        <div className="grid gap-3 lg:hidden">
           {table.getRowModel().rows.length > 0
             ? table.getRowModel().rows.map((row) => <React.Fragment key={row.id}>{mobileCard(row)}</React.Fragment>)
             : emptyState}
         </div>
       ) : null}
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-xs md:block">
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-xs lg:block">
         <Table className="min-w-[1200px]">
           <TableHeader className="bg-muted/50 border-b border-border">
             {table.getHeaderGroups().map((headerGroup) => (

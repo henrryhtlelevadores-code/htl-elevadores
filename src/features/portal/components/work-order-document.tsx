@@ -43,6 +43,17 @@ function formatDate(unix: number | null): string {
   });
 }
 
+function formatDateTime(unix: number | null): string {
+  if (!unix) return "—";
+  return new Date(unix).toLocaleString("es-PE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDayTime(date: string | null, time?: string | null): string {
   if (!date) return "—";
   const [y, m, d] = date.split("-").map(Number);
@@ -140,7 +151,6 @@ export function WorkOrderDocument({
             Información de la Orden de Trabajo
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-            {fieldLabel("Cliente", data.clientName ?? "—")}
             {fieldLabel("Edificio / Centro de costo", data.costCenterName ?? "—")}
             {fieldLabel(
               "Dirección",
@@ -158,8 +168,8 @@ export function WorkOrderDocument({
               "Programada",
               formatDayTime(data.scheduledDate, data.scheduledTime)
             )}
-            {fieldLabel("Inicio del servicio", formatDate(data.startedAt))}
-            {fieldLabel("Fecha de finalización", formatDate(data.completedAt))}
+            {fieldLabel("Inicio del servicio", formatDateTime(data.startedAt))}
+            {fieldLabel("Fecha de finalización", formatDateTime(data.completedAt))}
           </div>
         </section>
 

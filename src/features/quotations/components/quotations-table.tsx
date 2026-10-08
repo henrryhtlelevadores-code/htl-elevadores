@@ -202,9 +202,11 @@ export function QuotationsTable({
       {
         accessorKey: "client_name",
         header: "Cliente",
-        size: 180,
+        size: 220,
         cell: ({ row }) => (
-          <span className="text-xs font-medium">{row.original.client_name ?? "—"}</span>
+          <span className="block max-w-[220px] whitespace-normal break-words text-xs font-medium leading-snug">
+            {row.original.client_name ?? "—"}
+          </span>
         ),
       },
       {

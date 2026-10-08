@@ -288,6 +288,40 @@ export function CostCentersTable({
             Nuevo Centro de Costos
           </Button>
         }
+        mobileCard={(row) => {
+          const center = row.original;
+          const count = contactsCount[center.id] || 0;
+          const ubigeoLabel = center.ubigeoId ? distritoFor[center.ubigeoId] || "—" : "—";
+          const hasCredentials = Boolean(center.passwordHash);
+          return (
+            <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <button type="button" onClick={() => onSelectCostCenter?.(center)} className="flex items-center gap-2 text-left hover:text-[#0066CC]">
+                    <IconBuildingSkyscraper className="size-4 text-[#0066CC] shrink-0" />
+                    <span className="truncate text-sm font-semibold">{center.name}</span>
+                  </button>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{center.address || "Sin dirección"}</p>
+                  <p className="truncate text-xs text-muted-foreground">{ubigeoLabel}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => onSelectCostCenter?.(center)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
+                  Gestionar
+                  <IconChevronRight className="size-3.5" />
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold", count > 0 ? "border-blue-200 bg-blue-50 text-[#0066CC] dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400" : "border-border bg-muted/50 text-muted-foreground")}>
+                  <IconUsers className="size-3.5" />
+                  {count} {count === 1 ? "contacto" : "contactos"}
+                </span>
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold", hasCredentials ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400" : "border-border bg-muted/50 text-muted-foreground")}>
+                  {hasCredentials ? <IconShieldCheck className="size-3.5 text-green-600" /> : <IconKey className="size-3.5" />}
+                  {hasCredentials ? "Credencial OK" : "Sin credencial"}
+                </span>
+              </div>
+            </article>
+          );
+        }}
       />
 
       {/* Modal: Crear Sede */}
