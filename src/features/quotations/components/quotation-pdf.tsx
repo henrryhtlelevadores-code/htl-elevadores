@@ -129,7 +129,6 @@ export interface QuotationPdfData {
 }
 
 const BRAND = "#810303";
-const BRAND_SOFT = "#FEF2F2";
 const SOFT_BG = "#F3F4F6";
 const DARK = "#0F172A";
 const MUTED = "#64748B";
@@ -145,7 +144,8 @@ const styles = StyleSheet.create({
     paddingTop: 35,
     paddingBottom: 60,
     paddingHorizontal: 35,
-    lineHeight: 1.35,
+    // Interlineado único para todo el documento.
+    lineHeight: 1.5,
   },
   header: {
     flexDirection: "row",
@@ -176,31 +176,27 @@ const styles = StyleSheet.create({
   companyBlock: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 14,
-    marginBottom: 12,
+    alignItems: "flex-start",
+    marginTop: 16,
+    marginBottom: 6,
   },
   companyCol: {
     flexDirection: "column",
-    maxWidth: "55%",
+    width: "52%",
   },
   companyLine: {
-    fontSize: 9,
-    color: DARK,
-    marginBottom: 1.5,
+    fontSize: 8.5,
+    color: MUTED,
+    marginBottom: 2,
   },
   metaBox: {
-    width: 220,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: SOFT_BG,
+    width: 210,
   },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 3,
+    alignItems: "baseline",
+    marginBottom: 2,
   },
   metaLabel: {
     fontSize: 7.5,
@@ -209,34 +205,32 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   metaValue: {
-    fontSize: 8,
+    fontSize: 8.5,
     color: DARK,
+    textAlign: "right",
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 8.5,
     fontFamily: PDF_FONT,
+    fontWeight: "bold",
     color: BRAND,
-    marginTop: 12,
-    marginBottom: 14,
-    letterSpacing: 0.6,
+    marginTop: 14,
+    marginBottom: 6,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
+  // Cliente: plano, sin caja ni fondo.
   clientBlock: {
-    backgroundColor: BRAND_SOFT,
-    borderLeftWidth: 4,
-    borderLeftColor: BRAND,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 2,
     marginBottom: 4,
   },
   clientCenter: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontFamily: PDF_FONT,
+    fontWeight: "bold",
     color: DARK,
   },
   clientMeta: {
-    fontSize: 8,
+    fontSize: 8.5,
     color: MUTED,
     marginTop: 1,
   },
@@ -246,57 +240,50 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginBottom: 10,
   },
-  // Cabecera de cada ítem: tres niveles (referencia, descripción, precio).
+  // Cabecera de cada ítem: referencia discreta, descripción y precio.
   lineHead: {
-    borderLeftWidth: 3,
-    borderLeftColor: BRAND,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  lineHeadMain: {
     paddingTop: 8,
-    paddingBottom: 7,
     paddingHorizontal: 10,
+  },
+  lineHeadWithBody: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: BORDER,
   },
   lineRefRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   lineIndex: {
-    fontSize: 8,
-    fontFamily: PDF_FONT,
-    fontWeight: "bold",
+    fontSize: 7,
     color: MUTED,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   lineEquipmentTag: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 8,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    marginLeft: 6,
+    paddingVertical: 1,
+    paddingHorizontal: 5,
     borderRadius: 3,
-    backgroundColor: SOFT_BG,
+    borderWidth: 0.5,
+    borderColor: BORDER,
   },
   lineEquipmentLabel: {
-    fontSize: 7,
+    fontSize: 6.5,
     color: MUTED,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   lineEquipment: {
-    fontSize: 8.5,
-    fontFamily: PDF_FONT,
-    fontWeight: "bold",
+    fontSize: 7.5,
     color: DARK,
     marginLeft: 4,
   },
   lineDescription: {
-    fontSize: 11,
+    fontSize: 9.5,
     fontFamily: PDF_FONT,
     fontWeight: "bold",
     color: DARK,
-    lineHeight: 1.3,
   },
   lineBody: {
     paddingVertical: 8,
@@ -306,24 +293,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 7,
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: BRAND_SOFT,
+    borderTopWidth: 0.5,
+    borderTopColor: BORDER,
   },
   linePriceLabel: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: MUTED,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   linePriceNote: {
     fontSize: 7.5,
     color: MUTED,
+    letterSpacing: 0,
   },
   linePriceValue: {
-    fontSize: 12.5,
+    fontSize: 10,
     fontFamily: PDF_FONT,
     fontWeight: "bold",
-    color: BRAND,
+    color: DARK,
   },
   tableHeader: {
     flexDirection: "row",
@@ -422,7 +411,7 @@ const styles = StyleSheet.create({
   markdownParagraph: {
     fontSize: 9.5,
     color: DARK,
-    lineHeight: 1.4,
+
     marginBottom: 10,
   },
   markdownHeading: {
@@ -449,7 +438,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 9.5,
     color: DARK,
-    lineHeight: 1.4,
+
   },
   footer: {
     position: "absolute",
@@ -697,26 +686,28 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
           const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";
            return (
              <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
-              <View style={styles.lineHead} wrap={false}>
-                <View style={styles.lineHeadMain}>
+              <View
+                style={isManual ? styles.lineHead : [styles.lineHead, styles.lineHeadWithBody]}
+                wrap={false}
+              >
+                {/* Sin equipo asignado no se muestra la fila de referencia. */}
+                {line.equipment ? (
                   <View style={styles.lineRefRow}>
                     <Text style={styles.lineIndex}>
                       ÍTEM {String(index + 1).padStart(2, "0")}
                     </Text>
-                    {line.equipment ? (
-                      <View style={styles.lineEquipmentTag}>
-                        <Text style={styles.lineEquipmentLabel}>EQUIPO</Text>
-                        <Text style={styles.lineEquipment}>{line.equipment}</Text>
-                      </View>
-                    ) : null}
+                    <View style={styles.lineEquipmentTag}>
+                      <Text style={styles.lineEquipmentLabel}>EQUIPO</Text>
+                      <Text style={styles.lineEquipment}>{line.equipment}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.lineDescription}>{line.description}</Text>
-                </View>
+                ) : null}
+                <Text style={styles.lineDescription}>{line.description}</Text>
                 <View style={styles.lineFinalPrice}>
                   <Text style={styles.linePriceLabel}>
                     {line.equipment ? "PRECIO POR EQUIPO" : "PRECIO POR SERVICIO"}
                     {line.manualPriceIncludesIgv ? (
-                      <Text style={styles.linePriceNote}>  (incluye IGV)</Text>
+                      <Text style={styles.linePriceNote}> (incluye IGV)</Text>
                     ) : null}
                   </Text>
                   <Text style={styles.linePriceValue}>{money(line.clientPrice)}</Text>

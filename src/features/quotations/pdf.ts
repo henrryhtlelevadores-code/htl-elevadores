@@ -124,7 +124,7 @@ async function renderQuotationPdf(quotationId: string): Promise<Buffer> {
  * (cada vez que cambie la plantilla en components/quotation-pdf.tsx) los PDFs
  * ya generados dejan de reutilizarse y se regeneran al abrirlos.
  */
-const PDF_TEMPLATE_VERSION = 2;
+const PDF_TEMPLATE_VERSION = 3;
 const TEMPLATE_SUFFIX = `-t${PDF_TEMPLATE_VERSION}.pdf`;
 
 export type StoredQuotationPdf =
