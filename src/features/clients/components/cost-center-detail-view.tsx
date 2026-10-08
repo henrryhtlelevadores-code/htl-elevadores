@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { type Client, type CostCenter, type CostCenterContact, type Ubigeo } from "@/db";
+import { type Client, type CostCenterContact, type Ubigeo } from "@/db";
+import { type CostCenterView as CostCenter } from "../types";
 import { updateCostCenter } from "../actions";
 import { CredentialsManager } from "./credentials-manager";
 import { ContactsTable } from "./contacts-table";

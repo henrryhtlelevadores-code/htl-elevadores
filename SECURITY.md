@@ -59,6 +59,8 @@ La migración `0046` cambia los roles por defecto: TÉCNICO DE CAMPO pasa a `wor
 
 ## Portal del cliente
 
+El hash de la credencial de una sede nunca se envía al navegador: el panel solo recibe si la sede tiene credencial (`hasPortalPassword`).
+
 Todo recurso del portal se carga filtrando por la sede de la **sesión**, nunca por la de la URL. Una cotización, informe, equipo o contrato de otra sede responde 404. Al navegador solo llegan número y PDF de la cotización, no costos ni márgenes.
 
 ## Inicio de sesión
@@ -123,7 +125,6 @@ Máximo 5 MB; solo JPEG, PNG y WebP, decidido por los primeros bytes del archivo
 - **Contraseñas antiguas de menos de 10 caracteres** siguen siendo válidas; no hay cambio forzado. Conviene rotarlas a mano con el generador.
 - **Sin registro de auditoría** de acciones sensibles (altas, bajas, cambios de rol o contraseña).
 - **`'unsafe-inline'` en `script-src`**: eliminarlo exige nonces generados en el proxy.
-- **La ficha de la sede envía `password_hash` al navegador** del personal (`CredentialsManager` recibe la fila completa). Solo lo ve quien tiene `clients:read`, pero debería enviarse un booleano.
 - **La app del técnico** (`src/features/technician`) no se revisó en esta ronda: será reemplazada por una app móvil.
 
 ## Tests

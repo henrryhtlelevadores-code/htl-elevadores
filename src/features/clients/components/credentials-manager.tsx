@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { type CostCenter } from "@/db";
+import { type CostCenterView as CostCenter } from "../types";
 import { setCostCenterPassword, clearCostCenterPassword } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,7 @@ interface CredentialsManagerProps {
 }
 
 export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
-  const [hasPassword, setHasPassword] = useState<boolean>(Boolean(costCenter.passwordHash));
+  const [hasPassword, setHasPassword] = useState<boolean>(costCenter.hasPortalPassword);
   const [isSetOpen, setIsSetOpen] = useState(false);
   const [isClearOpen, setIsClearOpen] = useState(false);
   const [pin, setPin] = useState("");

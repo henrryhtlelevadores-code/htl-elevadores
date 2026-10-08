@@ -12,7 +12,6 @@ import {
   serviceTypes,
   users,
   type Client,
-  type CostCenter,
   type CostCenterContact,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
@@ -28,6 +27,7 @@ import {
 import { eq, asc, count, and, isNull, desc, sql } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
 import { validateNewPassword } from "@/lib/password-policy";
+import type { CostCenterView } from "./types";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
 
 export type ClientWithStats = Client & {
@@ -221,18 +221,34 @@ export async function deleteClient(id: string) {
 // 2. CENTROS DE COSTO (COST CENTERS)
 // ==========================================
 
-export async function getCostCenters(id_client?: string): Promise<CostCenter[]> {
+/** Columnas de una sede que pueden enviarse al navegador (sin el hash). */
+const costCenterViewColumns = {
+  id: costCenters.id,
+  clientId: costCenters.clientId,
+  name: costCenters.name,
+  address: costCenters.address,
+  ubigeoId: costCenters.ubigeoId,
+  latitude: costCenters.latitude,
+  longitude: costCenters.longitude,
+  mainPhotoUrl: costCenters.mainPhotoUrl,
+  createdAt: costCenters.createdAt,
+  deletedAt: costCenters.deletedAt,
+  // Solo un booleano: el hash de la credencial no sale del servidor.
+  hasPortalPassword: sql<number>`${costCenters.passwordHash} IS NOT NULL`.mapWith(Boolean),
+};
+
+export async function getCostCenters(id_client?: string): Promise<CostCenterView[]> {
   await requirePermission("clients:read");
   try {
     if (id_client) {
       return await db
-        .select()
+        .select(costCenterViewColumns)
         .from(costCenters)
         .where(and(eq(costCenters.clientId, id_client), isNull(costCenters.deletedAt)))
         .orderBy(asc(costCenters.name));
     }
     return await db
-      .select()
+      .select(costCenterViewColumns)
       .from(costCenters)
       .where(isNull(costCenters.deletedAt))
       .orderBy(asc(costCenters.name));

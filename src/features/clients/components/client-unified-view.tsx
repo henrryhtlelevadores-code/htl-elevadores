@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import { type CostCenter, type Ubigeo } from "@/db";
+import { type Ubigeo } from "@/db";
+import { type CostCenterView as CostCenter } from "../types";
 import { type ClientWithStats } from "../actions";
 import { ClientsTable } from "./clients-table";
 import { CostCentersTable } from "./cost-centers-table";

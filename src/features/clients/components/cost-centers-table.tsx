@@ -5,7 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { type Client, type CostCenter, type Ubigeo } from "@/db";
+import { type Client, type Ubigeo } from "@/db";
+import { type CostCenterView as CostCenter } from "../types";
 import { createCostCenter, updateCostCenter, deleteCostCenter } from "../actions";
 import { costCenterFormSchema, type CostCenterFormValues } from "../schema";
 import { UbigeoSelector } from "@/components/ubigeo-selector";
@@ -202,7 +203,7 @@ export function CostCentersTable({
         header: "Credenciales",
         cell: ({ row }) => {
           const center = row.original;
-          const has = Boolean(center.passwordHash);
+          const has = center.hasPortalPassword;
           return has ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20">
               <IconShieldCheck className="size-3.5 text-green-600" />
@@ -292,7 +293,7 @@ export function CostCentersTable({
           const center = row.original;
           const count = contactsCount[center.id] || 0;
           const ubigeoLabel = center.ubigeoId ? distritoFor[center.ubigeoId] || "—" : "—";
-          const hasCredentials = Boolean(center.passwordHash);
+          const hasCredentials = center.hasPortalPassword;
           return (
             <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">

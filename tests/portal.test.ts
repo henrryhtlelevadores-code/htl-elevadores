@@ -4,7 +4,11 @@ import { db, quotations } from "@/db";
 import { acceptPortalQuotation, getPortalQuotation } from "@/features/portal/quotations";
 import { portalQuotationPdfAction } from "@/features/portal/actions";
 import { getPortalSessionCostCenterId } from "@/features/portal/server";
-import { clearCostCenterPassword, setCostCenterPassword } from "@/features/clients/actions";
+import {
+  clearCostCenterPassword,
+  getCostCenters,
+  setCostCenterPassword,
+} from "@/features/clients/actions";
 import { PORTAL_SESSION_COOKIE } from "@/features/portal/session";
 import PortalQuotationPage from "@/app/(portal)/portal/[costCenterId]/cotizaciones/[quotationId]/page";
 import { GET as portalQuotationPdf } from "@/app/api/portal/[costCenterId]/quotations/[quotationId]/pdf/route";
@@ -179,5 +183,25 @@ describe("revocación de la sesión del portal", () => {
     expect((await clearCostCenterPassword(costCenter.id)).success).toBe(true);
     await loginPortal(costCenter.id);
     expect(await getPortalSessionCostCenterId()).toBeNull();
+  });
+});
+
+describe("ficha de sede", () => {
+  it("nunca envía el hash de la credencial, solo si existe", async () => {
+    const withPassword = await createCostCenter();
+    const withoutPassword = await createCostCenter();
+    await loginAs((await createUser({ permissions: ["*"] })).id);
+    expect((await clearCostCenterPassword(withoutPassword.id)).success).toBe(true);
+
+    const centers = await getCostCenters();
+    const find = (id: string) => centers.find((center) => center.id === id)!;
+    expect(find(withPassword.id).hasPortalPassword).toBe(true);
+    expect(find(withoutPassword.id).hasPortalPassword).toBe(false);
+
+    for (const center of [...centers, ...(await getCostCenters(withPassword.clientId))]) {
+      expect(center).not.toHaveProperty("passwordHash");
+      expect(center).not.toHaveProperty("portalSessionVersion");
+      expect(JSON.stringify(center)).not.toContain("$argon2");
+    }
   });
 });
