@@ -9,18 +9,26 @@ import { createHmac, timingSafeEqual } from "crypto";
  * `version` permite revocar sesiones: se compara con el valor guardado en la
  * base (session_version) cada vez que se resuelve la sesión.
  */
-export type SessionType = "staff" | "portal";
+/**
+ * `mobile` es la sesión de la app de técnicos: viaja como `Authorization:
+ * Bearer` y solo la aceptan las rutas `/api/mobile/v1`. Se firma con el
+ * secreto del personal, pero al llevar su propio tipo no sirve como cookie
+ * del panel, ni una cookie del panel sirve como token de la app.
+ */
+export type SessionType = "staff" | "portal" | "mobile";
 
 const TOKEN_FORMAT = "v2";
 
 const SECRET_ENV: Record<SessionType, string> = {
   staff: "STAFF_SESSION_SECRET",
   portal: "PORTAL_SESSION_SECRET",
+  mobile: "STAFF_SESSION_SECRET",
 };
 
 const DEV_SECRETS: Record<SessionType, string> = {
   staff: "dev-staff-secret-htl-no-usar-en-produccion",
   portal: "dev-portal-secret-htl-no-usar-en-produccion",
+  mobile: "dev-staff-secret-htl-no-usar-en-produccion",
 };
 
 function getSecret(type: SessionType): string {
@@ -29,7 +37,7 @@ function getSecret(type: SessionType): string {
     if (!secret) {
       throw new Error(`${SECRET_ENV[type]} no está definido en el entorno.`);
     }
-    const other: SessionType = type === "staff" ? "portal" : "staff";
+    const other: SessionType = type === "portal" ? "staff" : "portal";
     if (secret === process.env[SECRET_ENV[other]]) {
       throw new Error(
         "STAFF_SESSION_SECRET y PORTAL_SESSION_SECRET deben ser distintos."
@@ -101,7 +109,7 @@ export function verifySessionToken(
  * que obliga a Secure + Path=/ sin Domain e impide que un subdominio la fije.
  * En desarrollo (http) ese prefijo haría que el navegador la rechace.
  */
-export function sessionCookieName(type: SessionType): string {
+export function sessionCookieName(type: "staff" | "portal"): string {
   const base = type === "staff" ? "htl_staff_session" : "htl_portal_session";
   return process.env.NODE_ENV === "production" ? `__Host-${base}` : base;
 }

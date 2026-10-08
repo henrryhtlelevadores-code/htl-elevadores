@@ -6,7 +6,7 @@ Notas operativas del modelo de seguridad de HTL Elevadores. Complementa al READM
 
 1. Definir en el entorno `STAFF_SESSION_SECRET` y `PORTAL_SESSION_SECRET` (distintos; `openssl rand -hex 32`). `AUTH_SECRET` deja de usarse.
 2. Crear un bucket R2 **sin acceso público** y definir `R2_PRIVATE_BUCKET_NAME`.
-3. Aplicar las migraciones `0045` a `0048` con `npx tsx scripts/apply-sql.ts drizzle/<archivo>.sql`. Deben estar aplicadas **antes** de que arranque el código nuevo: sin `session_version` no se puede resolver ninguna sesión.
+3. Aplicar las migraciones `0045` a `0049` con `npx tsx scripts/apply-sql.ts drizzle/<archivo>.sql`. Deben estar aplicadas **antes** de que arranque el código nuevo: sin `session_version` no se puede resolver ninguna sesión.
 4. Desplegar.
 5. Ejecutar `npx tsx scripts/migrate-pdfs-to-private.ts --dry-run` y luego sin `--dry-run`.
 
@@ -62,6 +62,21 @@ La migración `0046` cambia los roles por defecto: TÉCNICO DE CAMPO pasa a `wor
 El hash de la credencial de una sede nunca se envía al navegador: el panel solo recibe si la sede tiene credencial (`hasPortalPassword`).
 
 Todo recurso del portal se carga filtrando por la sede de la **sesión**, nunca por la de la URL. Una cotización, informe, equipo o contrato de otra sede responde 404. Al navegador solo llegan número y PDF de la cotización, no costos ni márgenes.
+
+## App de técnicos (`/api/mobile/v1`)
+
+La app móvil usa este mismo backend a través de rutas propias; no hay otro servidor ni otra base.
+
+- **Autenticación:** `POST /auth/login` devuelve un token que la app envía como `Authorization: Bearer`. Es un token de tipo `mobile`: solo lo aceptan estas rutas. No sirve como cookie del panel, y las cookies del panel no autentican la API móvil.
+- **Quién puede entrar:** usuarios activos cuyo rol tenga el permiso `work_orders:field`. El login comparte el rate limit con el del panel.
+- **Duración y revocación:** 7 días, renovable con `POST /auth/refresh`. Se comprueba en cada petición contra `session_version` y el estado del usuario, así que cambiar la contraseña o desactivar al técnico lo deja fuera de inmediato.
+- **Pertenencia:** cada operación comprueba que la orden o el equipo estén asignados al técnico. Un recurso ajeno responde 404.
+- **Idempotencia:** la app reintenta envíos cuando recupera señal. Repetir una operación ya aplicada responde bien y no cambia nada; fotos, audios e ítems de seguridad usan el ID que generó la app (debe ser un UUID).
+- **Hora del teléfono:** se respeta la hora en que el técnico hizo cada cambio, salvo que esté más de 5 minutos en el futuro o más de 30 días atrás; en ese caso se usa la del servidor.
+- **Archivos:** las fotos se validan por contenido, igual que las de cotización. Las notas de voz (M4A, máximo 5 MB) van al bucket privado y se entregan con URL firmada de una hora. Requiere la migración `0049`.
+- **Códigos de respuesta:** 401 detiene la cola de la app hasta volver a iniciar sesión; 4xx significa que reintentar no sirve; 5xx, que la app debe reintentar.
+
+La regla de fotos difiere de la vista web del técnico: en la app el mínimo de 4 fotos solo aplica a preventivos (`PREV`); en la web también a correctivos.
 
 ## Inicio de sesión
 
@@ -125,7 +140,8 @@ Máximo 5 MB; solo JPEG, PNG y WebP, decidido por los primeros bytes del archivo
 - **Contraseñas antiguas de menos de 10 caracteres** siguen siendo válidas; no hay cambio forzado. Conviene rotarlas a mano con el generador.
 - **Sin registro de auditoría** de acciones sensibles (altas, bajas, cambios de rol o contraseña).
 - **`'unsafe-inline'` en `script-src`**: eliminarlo exige nonces generados en el proxy.
-- **La app del técnico** (`src/features/technician`) no se revisó en esta ronda: será reemplazada por una app móvil.
+- **La vista web del técnico** (`src/features/technician`) no se revisó en esta ronda: la reemplaza la app móvil.
+- **Transcripción de notas de voz:** los audios se guardan, pero no se transcriben (`transcript_status = NONE`).
 
 ## Tests
 

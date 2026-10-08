@@ -196,6 +196,36 @@ export async function getSignedPdfUrl(
   );
 }
 
+/** Sube un archivo cualquiera al bucket privado. */
+export async function uploadPrivateObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string
+): Promise<void> {
+  await R2.send(
+    new PutObjectCommand({ Bucket: privateBucket(), Key: key, Body: body, ContentType: contentType })
+  );
+}
+
+/**
+ * URL firmada de corta duración para un objeto del bucket privado. Quien
+ * llama debe haber validado antes sesión y pertenencia del recurso.
+ */
+export async function getSignedPrivateUrl(
+  key: string,
+  options: { contentType: string; expiresIn: number }
+): Promise<string> {
+  return getSignedUrl(
+    R2,
+    new GetObjectCommand({
+      Bucket: privateBucket(),
+      Key: key,
+      ResponseContentType: options.contentType,
+    }),
+    { expiresIn: options.expiresIn }
+  );
+}
+
 /** Clave dentro del bucket público a partir de su URL pública. */
 export function publicKeyFromUrl(url: string): string | null {
   try {

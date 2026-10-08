@@ -887,3 +887,23 @@ export const loginAttempts = sqliteTable(
     index("idx_login_attempts_created").on(t.createdAt),
   ]
 );
+
+// Notas de voz de hallazgos, grabadas en la app de técnicos. El archivo vive
+// en el bucket privado de R2 (`key`), nunca con URL pública.
+export const workOrderElevatorAudios = sqliteTable(
+  "work_order_elevator_audios",
+  {
+    // Lo genera la app: permite reintentar la subida sin duplicar.
+    id: text("id").primaryKey(),
+    workOrderElevatorId: text("work_order_elevator_id")
+      .notNull()
+      .references(() => workOrderElevators.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    durationMs: integer("duration_ms").notNull().default(0),
+    transcript: text("transcript"),
+    // 'NONE' (sin transcripción) | 'PENDING' | 'DONE' | 'FAILED'
+    transcriptStatus: text("transcript_status").notNull().default("NONE"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_woea_elevator").on(t.workOrderElevatorId)]
+);
