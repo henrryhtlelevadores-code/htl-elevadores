@@ -75,7 +75,8 @@ Las variables se documentan en [`.env.example`](./.env.example). Las principales
 |---|---|
 | `TURSO_DATABASE_URL` | URL de SQLite local o base Turso |
 | `TURSO_AUTH_TOKEN` | Token de autenticación de Turso, si aplica |
-| `AUTH_SECRET` | Secreto para firmar las sesiones HTTP-only |
+| `STAFF_SESSION_SECRET` | Secreto para firmar las sesiones del personal (ver [`SECURITY.md`](./SECURITY.md)) |
+| `PORTAL_SESSION_SECRET` | Secreto para firmar las sesiones del portal del cliente; debe ser distinto del anterior |
 | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME` | Identificación del almacenamiento Cloudflare R2 |
 | `R2_S3_API`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Acceso S3-compatible a R2 |
 | `R2_PUBLIC_URL` | URL pública base de los archivos |
