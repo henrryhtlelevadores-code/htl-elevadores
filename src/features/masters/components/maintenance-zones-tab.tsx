@@ -142,7 +142,23 @@ export function MaintenanceZonesTab({ initialZones, elevatorTypes }: { initialZo
         </DialogContent>
       </Dialog>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
+      <div className="grid gap-3 lg:hidden">
+        {visibleZones.map((zone) => (
+          <article key={zone.id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{zone.name}</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">{zone.code} · Orden {zone.orderIndex}</p>
+              </div>
+              <div className="flex shrink-0 gap-1"><Button variant="ghost" size="icon-xs" onClick={() => openEdit(zone)} title="Editar"><Pencil className="size-3.5" /></Button><Button variant="ghost" size="icon-xs" onClick={() => remove(zone)} title="Eliminar" className="text-destructive"><Trash2 className="size-3.5" /></Button></div>
+            </div>
+            <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{zone.isActive ? "Activa" : "Inactiva"}</p>
+          </article>
+        ))}
+        {visibleZones.length === 0 && <div className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-xs text-muted-foreground"><MapPinned className="mx-auto mb-2 size-6" />No hay zonas registradas para este tipo.</div>}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-xs lg:block">
         <table className="w-full min-w-[560px] text-xs">
           <thead className="border-b border-border bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr><th className="px-4 py-3">Orden</th><th className="px-4 py-3">Código</th><th className="px-4 py-3">Nombre</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3 text-right">Acciones</th></tr>

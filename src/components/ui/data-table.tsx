@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  type Header,
   type Row,
   type SortingState,
   flexRender,
@@ -42,6 +43,65 @@ interface DataTableProps<TData, TValue> {
   hideSearch?: boolean;
   emptyState?: React.ReactNode;
   mobileCard?: (row: Row<TData>) => React.ReactNode;
+}
+
+const ACTION_COLUMN_IDS = new Set(["actions", "acciones"]);
+
+/**
+ * Card genérica para móvil cuando la vista no define `mobileCard`: la primera
+ * columna es el título, el resto se lista como etiqueta/valor y la columna de
+ * acciones va al pie. Reutiliza los renderers de celda de la tabla.
+ */
+function DefaultMobileCard<TData>({
+  row,
+  headers,
+}: {
+  row: Row<TData>;
+  headers: Header<TData, unknown>[];
+}) {
+  const cells = row.getVisibleCells();
+  const actionCell = cells.find((cell) => ACTION_COLUMN_IDS.has(cell.column.id));
+  const [titleCell, ...detailCells] = cells.filter((cell) => cell !== actionCell);
+
+  function renderLabel(columnId: string) {
+    const header = headers.find((h) => h.column.id === columnId);
+    if (!header) return null;
+    const def = header.column.columnDef.header;
+    if (typeof def === "string") return def;
+    // Los headers con botón de orden se muestran solo como texto.
+    return (
+      <span className="pointer-events-none [&_button]:h-auto [&_button]:p-0 [&_button]:text-xs [&_button]:font-normal [&_svg]:hidden">
+        {flexRender(def, header.getContext()) as React.ReactNode}
+      </span>
+    );
+  }
+
+  return (
+    <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+      {titleCell && (
+        <div className="min-w-0 text-sm font-semibold">
+          {flexRender(titleCell.column.columnDef.cell, titleCell.getContext())}
+        </div>
+      )}
+      {detailCells.length > 0 && (
+        <dl className="mt-3 space-y-2 border-t border-border pt-3">
+          {detailCells.map((cell) => (
+            <div key={cell.id} className="flex items-start justify-between gap-3 text-xs">
+              <dt className="shrink-0 text-muted-foreground">{renderLabel(cell.column.id)}</dt>
+              <dd className="flex min-w-0 justify-end text-right">
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {actionCell && (
+        <div className="mt-3 border-t border-border pt-3">
+          {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
+        </div>
+      )}
+    </article>
+  );
 }
 
 export function DataTable<TData, TValue>({
@@ -131,13 +191,21 @@ export function DataTable<TData, TValue>({
       )}
 
       {/* Table Container */}
-      {mobileCard ? (
-        <div className="grid gap-3 lg:hidden">
-          {table.getRowModel().rows.length > 0
-            ? table.getRowModel().rows.map((row) => <React.Fragment key={row.id}>{mobileCard(row)}</React.Fragment>)
-            : emptyState}
-        </div>
-      ) : null}
+      <div className="grid gap-3 lg:hidden">
+        {table.getRowModel().rows.length > 0 ? (
+          table.getRowModel().rows.map((row) => (
+            <React.Fragment key={row.id}>
+              {mobileCard ? mobileCard(row) : <DefaultMobileCard row={row} headers={table.getFlatHeaders()} />}
+            </React.Fragment>
+          ))
+        ) : (
+          emptyState ?? (
+            <div className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-xs text-muted-foreground">
+              No se encontraron registros.
+            </div>
+          )
+        )}
+      </div>
 
       <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-xs lg:block">
         <Table className="min-w-[1200px]">
