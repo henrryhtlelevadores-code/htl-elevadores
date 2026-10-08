@@ -78,6 +78,7 @@ Las variables se documentan en [`.env.example`](./.env.example). Las principales
 | `STAFF_SESSION_SECRET` | Secreto para firmar las sesiones del personal (ver [`SECURITY.md`](./SECURITY.md)) |
 | `PORTAL_SESSION_SECRET` | Secreto para firmar las sesiones del portal del cliente; debe ser distinto del anterior |
 | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME` | Identificación del almacenamiento Cloudflare R2 |
+| `R2_PRIVATE_BUCKET_NAME` | Bucket R2 sin acceso público para los PDFs de contratos y cotizaciones |
 | `R2_S3_API`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Acceso S3-compatible a R2 |
 | `R2_PUBLIC_URL` | URL pública base de los archivos |
 | `NEXT_PUBLIC_R2_*` | URLs públicas de imágenes usadas en documentos PDF |
@@ -92,6 +93,8 @@ No subas `.env.local` ni secretos al repositorio. El archivo `local.db` puede co
 | `npm run build` | Genera el build de producción |
 | `npm run start` | Inicia el build de producción |
 | `npm run lint` | Ejecuta ESLint |
+| `npm run typecheck` | Comprueba los tipos con TypeScript |
+| `npm test` | Ejecuta los tests de seguridad contra una base SQLite temporal |
 | `npx drizzle-kit push` | Aplica el esquema directamente a la base configurada |
 | `npx drizzle-kit generate` | Genera una migración a partir de cambios en el esquema |
 | `npx drizzle-kit migrate` | Ejecuta las migraciones de `drizzle/` |
@@ -135,7 +138,7 @@ La organización actual de `src` es adecuada para crecer: cada dominio mantiene 
 2. Mantén la lógica de negocio dentro del `feature` correspondiente y evita colocar código de dominio en `lib` o componentes genéricos.
 3. Si cambias `src/db/schema.ts`, genera y revisa la migración de Drizzle correspondiente.
 4. Actualiza `TECHNICIAN_APP_SPEC.md` cuando cambien los contratos usados por la app móvil.
-5. Ejecuta `npm run lint` y `npm run build` antes de abrir un pull request.
+5. Ejecuta `npm run lint`, `npm run typecheck`, `npm test` y `npm run build` antes de abrir un pull request.
 6. Documenta cualquier migración de datos y prueba primero en una copia de la base de datos.
 
 ## Documentación Relacionada
