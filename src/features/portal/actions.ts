@@ -1,6 +1,6 @@
 "use server";
 
-import { verifyCostCenterCredentials } from "@/features/clients/actions";
+import { verifyCostCenterCredentials } from "./credentials";
 import { createPortalSession } from "./server";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -8,6 +8,7 @@ export type PortalLoginActionResult =
   | { success: true; redirectTo: string }
   | { success: false; error: string };
 
+/** Pública por diseño: es la puerta de entrada del portal del cliente. */
 export async function portalLoginAction(input: {
   costCenterId: string;
   password: string;
@@ -18,7 +19,7 @@ export async function portalLoginAction(input: {
       return { success: false, error: res.error };
     }
 
-    await createPortalSession(res.costCenter.id);
+    await createPortalSession(res.costCenter.id, res.costCenter.sessionVersion);
     return { success: true, redirectTo: `/portal/${res.costCenter.id}` };
   } catch (error) {
     console.error("Error en portalLoginAction:", error);

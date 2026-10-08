@@ -30,6 +30,8 @@ export const users = sqliteTable("users", {
   phone: text("phone"),
   roleId: text("role_id").notNull().references(() => roles.id),
   status: text("status").default("ACTIVE"),
+  // Se incrementa para revocar las sesiones emitidas (ver SECURITY.md).
+  sessionVersion: integer("session_version").notNull().default(0),
   lastLoginAt: integer("last_login_at"),
   createdAt: integer("created_at").default(unixNow()),
   deletedAt: integer("deleted_at"),
@@ -95,6 +97,8 @@ export const costCenters = sqliteTable("cost_center", {
   longitude: real("longitude"),
   mainPhotoUrl: text("main_photo_url"),
   passwordHash: text("password_hash"),
+  // Se incrementa para revocar las sesiones del portal de esta sede.
+  portalSessionVersion: integer("portal_session_version").notNull().default(0),
   createdAt: integer("created_at").default(unixNow()),
   deletedAt: integer("deleted_at"),
 });

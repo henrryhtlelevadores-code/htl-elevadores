@@ -14,7 +14,7 @@ export interface SessionUser {
   permissions: string[];
 }
 
-export async function createSession(userId: string, sessionVersion = 0) {
+export async function createSession(userId: string, sessionVersion: number) {
   const { token, maxAge } = createSessionToken(userId, sessionVersion);
   const store = await cookies();
   store.set(SESSION_COOKIE, token, sessionCookieOptions(maxAge));
@@ -54,6 +54,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
         email: users.email,
         status: users.status,
         deletedAt: users.deletedAt,
+        sessionVersion: users.sessionVersion,
         roleName: roles.name,
         roleIsActive: roles.isActive,
         permissions: roles.permissions,
@@ -64,6 +65,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       .limit(1);
 
     if (!row || row.deletedAt != null || row.status !== "ACTIVE") return null;
+    // Sesión revocada: cambio de contraseña, rol o estado desde que se emitió.
+    if (row.sessionVersion !== claims.version) return null;
 
     return {
       id: row.id,

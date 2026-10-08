@@ -25,9 +25,8 @@ import {
   type CostCenterFormValues,
   type ContactFormValues,
 } from "./schema";
-import { eq, asc, count, and, isNull, desc } from "drizzle-orm";
+import { eq, asc, count, and, isNull, desc, sql } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
-import { verify } from "@node-rs/argon2";
 import { getSessionUserId } from "@/features/auth/server";
 
 export type ClientWithStats = Client & {
@@ -386,7 +385,7 @@ export async function setCostCenterPassword(costCenterId: string, plainTextPin: 
 
     await db
       .update(costCenters)
-      .set({ passwordHash: hash })
+      .set({ passwordHash: hash, portalSessionVersion: sql`${costCenters.portalSessionVersion} + 1` })
       .where(eq(costCenters.id, costCenterId));
 
     revalidatePath("/clients");
@@ -402,7 +401,7 @@ export async function clearCostCenterPassword(costCenterId: string) {
   try {
     await db
       .update(costCenters)
-      .set({ passwordHash: null })
+      .set({ passwordHash: null, portalSessionVersion: sql`${costCenters.portalSessionVersion} + 1` })
       .where(eq(costCenters.id, costCenterId));
 
     revalidatePath("/clients");
@@ -410,41 +409,5 @@ export async function clearCostCenterPassword(costCenterId: string) {
   } catch (error) {
     console.error("Error al eliminar la credencial del edificio:", error);
     return { success: false, error: "Error al eliminar la credencial del edificio" };
-  }
-}
-
-export type VerifyCostCenterCredentialResult =
-  | { success: true; costCenter: { id: string; name: string; address: string | null } }
-  | { success: false; error: string };
-
-export async function verifyCostCenterCredentials(
-  costCenterId: string,
-  plainTextPin: string
-): Promise<VerifyCostCenterCredentialResult> {
-  try {
-    const rows = await db
-      .select({ id: costCenters.id, name: costCenters.name, address: costCenters.address, passwordHash: costCenters.passwordHash })
-      .from(costCenters)
-      .where(eq(costCenters.id, costCenterId))
-      .limit(1);
-
-    if (rows.length === 0) {
-      return { success: false, error: "El código del edificio no existe." };
-    }
-
-    const row = rows[0];
-    if (!row.passwordHash) {
-      return { success: false, error: "Este edificio aún no tiene credenciales configuradas." };
-    }
-
-    const valid = await verify(row.passwordHash, plainTextPin);
-    if (!valid) {
-      return { success: false, error: "Contraseña incorrecta." };
-    }
-
-    return { success: true, costCenter: { id: row.id, name: row.name, address: row.address } };
-  } catch (error) {
-    console.error("Error al verificar credenciales del edificio:", error);
-    return { success: false, error: "Error al verificar las credenciales." };
   }
 }

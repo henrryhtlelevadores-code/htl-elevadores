@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hash, verify } from "@node-rs/argon2";
+import { hash } from "@node-rs/argon2";
 import {
   db,
   users,
@@ -13,7 +13,7 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { generateUuid } from "@/lib/uuid";
 import { uploadToR2, deleteR2ObjectByUrl, buildStaffSignatureKey } from "@/lib/r2";
-import { ARGON2ID_PARAMS, requiresRehash } from "./password";
+import { ARGON2ID_PARAMS } from "./password";
 import {
   createUserFormSchema,
   updateUserFormSchema,
@@ -22,8 +22,8 @@ import {
   type UpdateUserFormValues,
   type ChangeUserPasswordValues,
 } from "./schema";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { getSessionUserId } from "@/features/auth/server";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createSession, getSessionUserId } from "@/features/auth/server";
 
 /** Roles que habilitan el perfil de técnico en el formulario de usuarios. */
 const FIELD_ROLE_NAMES = ["TECNICO DE CAMPO", "SUPERVISOR"];
@@ -69,7 +69,7 @@ function staffProfileFields(data: {
   };
 }
 
-export type UserListItem = Omit<User, "passwordHash"> & {
+export type UserListItem = Omit<User, "passwordHash" | "sessionVersion"> & {
   role_name?: string | null;
   isFieldRole?: boolean | null;
   specialization?: string | null;
@@ -272,8 +272,26 @@ export async function createUser(data: CreateUserFormValues) {
   }
 }
 
+/**
+ * Tras revocar las sesiones de un usuario, si quien hace el cambio es ese
+ * mismo usuario se le reemite la cookie para no expulsarlo de su sesión
+ * actual (las demás sí quedan cerradas).
+ */
+async function keepOwnSession(sessionUserId: string, targetUserId: string) {
+  if (sessionUserId !== targetUserId) return;
+  const [row] = await db
+    .select({ sessionVersion: users.sessionVersion, status: users.status })
+    .from(users)
+    .where(and(eq(users.id, targetUserId), isNull(users.deletedAt)))
+    .limit(1);
+  if (row && row.status === "ACTIVE") {
+    await createSession(targetUserId, row.sessionVersion);
+  }
+}
+
 export async function updateUser(id: string, data: UpdateUserFormValues) {
-  if (!(await getSessionUserId())) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
     return { success: false, error: "Sesión requerida" };
   }
   try {
@@ -306,7 +324,24 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
       user.passwordHash = await hash(password, ARGON2ID_PARAMS);
     }
 
-    await db.update(users).set(user).where(eq(users.id, id));
+    const [current] = await db
+      .select({ roleId: users.roleId, status: users.status })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    // Cambiar contraseña, rol o estado revoca las sesiones ya emitidas.
+    const revokeSessions =
+      Boolean(password) ||
+      current?.roleId !== validated.roleId ||
+      current?.status !== validated.status;
+
+    await db
+      .update(users)
+      .set(revokeSessions ? { ...user, sessionVersion: sql`${users.sessionVersion} + 1` } : user)
+      .where(eq(users.id, id));
+    if (revokeSessions) {
+      await keepOwnSession(sessionUserId, id);
+    }
 
     const staffFields = isField
       ? staffProfileFields(validated)
@@ -383,14 +418,20 @@ export async function uploadStaffSignature(dataUrl: string) {
 }
 
 export async function changeUserPassword(id: string, data: ChangeUserPasswordValues) {
-  if (!(await getSessionUserId())) {
+  const sessionUserId = await getSessionUserId();
+  if (!sessionUserId) {
     return { success: false, error: "Sesión requerida" };
   }
   try {
     const validated = changeUserPasswordSchema.parse(data);
 
     const passwordHash = await hash(validated.password, ARGON2ID_PARAMS);
-    await db.update(users).set({ passwordHash }).where(and(eq(users.id, id), isNull(users.deletedAt)));
+    // Cambiar la contraseña revoca las sesiones ya emitidas.
+    await db
+      .update(users)
+      .set({ passwordHash, sessionVersion: sql`${users.sessionVersion} + 1` })
+      .where(and(eq(users.id, id), isNull(users.deletedAt)));
+    await keepOwnSession(sessionUserId, id);
 
     revalidatePath("/users");
     return { success: true, message: "Contraseña actualizada correctamente" };
@@ -407,7 +448,11 @@ export async function deleteUser(id: string) {
   try {
     await db
       .update(users)
-      .set({ deletedAt: Math.floor(Date.now() / 1000), status: "INACTIVE" })
+      .set({
+        deletedAt: Math.floor(Date.now() / 1000),
+        status: "INACTIVE",
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+      })
       .where(and(eq(users.id, id), isNull(users.deletedAt)));
 
     revalidatePath("/users");
@@ -416,49 +461,5 @@ export async function deleteUser(id: string) {
   } catch (error) {
     console.error("Error al eliminar usuario:", error);
     return { success: false, error: getErrorMessage(error) };
-  }
-}
-
-// ==========================================
-// AUXILIARES DE SEGURIDAD (login)
-// ==========================================
-
-export async function verifyCredentials(
-  email: string,
-  password: string
-): Promise<string | null> {
-  try {
-    const rows = await db
-      .select({ id: users.id, passwordHash: users.passwordHash })
-      .from(users)
-      .where(and(eq(users.email, email.toLowerCase().trim()), isNull(users.deletedAt)))
-      .limit(1);
-
-    if (rows.length === 0) return null;
-
-    const row = rows[0];
-    const valid = await verify(row.passwordHash, password);
-    if (!valid) return null;
-
-    // Si el hash no cumple la política actual (Argon2id m=64MB, t=3, p=4),
-    // se re-hashea automáticamente con los parámetros vigentes.
-    if (requiresRehash(row.passwordHash)) {
-      const passwordHash = await hash(password, ARGON2ID_PARAMS);
-      await db
-        .update(users)
-        .set({ passwordHash, lastLoginAt: Math.floor(Date.now() / 1000) })
-        .where(eq(users.id, row.id));
-      return row.id;
-    }
-
-    await db
-      .update(users)
-      .set({ lastLoginAt: Math.floor(Date.now() / 1000) })
-      .where(eq(users.id, row.id));
-
-    return row.id;
-  } catch (error) {
-    console.error("Error al verificar credenciales:", error);
-    return null;
   }
 }

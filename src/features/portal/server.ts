@@ -10,7 +10,7 @@ import {
 import { sessionCookieOptions } from "@/lib/session-token";
 import { db, costCenters } from "@/db";
 
-export async function createPortalSession(costCenterId: string, sessionVersion = 0) {
+export async function createPortalSession(costCenterId: string, sessionVersion: number) {
   const { token, maxAge } = createPortalSessionToken(costCenterId, sessionVersion);
   const store = await cookies();
   store.set(PORTAL_SESSION_COOKIE, token, sessionCookieOptions(maxAge));
@@ -35,11 +35,17 @@ export const getPortalSessionCostCenterId = cache(async (): Promise<string | nul
 
   try {
     const [row] = await db
-      .select({ id: costCenters.id, passwordHash: costCenters.passwordHash })
+      .select({
+        id: costCenters.id,
+        passwordHash: costCenters.passwordHash,
+        portalSessionVersion: costCenters.portalSessionVersion,
+      })
       .from(costCenters)
       .where(and(eq(costCenters.id, claims.subject), isNull(costCenters.deletedAt)))
       .limit(1);
     if (!row || !row.passwordHash) return null;
+    // Sesión revocada: la credencial de la sede cambió desde que se emitió.
+    if (row.portalSessionVersion !== claims.version) return null;
     return row.id;
   } catch (error) {
     console.error("Error al resolver la sesión del portal:", error);
