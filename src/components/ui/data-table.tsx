@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
   ChevronRight,
@@ -43,6 +44,36 @@ interface DataTableProps<TData, TValue> {
   hideSearch?: boolean;
   emptyState?: React.ReactNode;
   mobileCard?: (row: Row<TData>) => React.ReactNode;
+}
+
+// Fondos opacos de las columnas fijas. Reproducen el color que resulta de
+// pintar el fondo translúcido de la fila sobre la card, para que en ambos
+// temas la columna fija se vea igual que el resto de la fila.
+const PINNED_BG = {
+  head: "bg-[color-mix(in_srgb,var(--muted)_50%,var(--card))]",
+  cell: "bg-card group-hover:bg-[color-mix(in_srgb,var(--muted)_40%,var(--card))] group-data-[state=selected]:bg-muted",
+} as const;
+const PINNED_SHADOW_LEFT = "shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]";
+
+/**
+ * Clases de una columna fija. Acciones siempre queda fija a la derecha. El
+ * N° de cotización y el cliente quedan fijos a la izquierda solo cuando la
+ * tabla tiene ambas columnas en ese orden (`pinnedLeft`): el cliente se
+ * desplaza el ancho del N°, y fijarlo en otra tabla taparía las columnas
+ * vecinas.
+ */
+function pinnedClass(columnId: string, pinnedLeft: boolean, kind: "head" | "cell"): string {
+  const layer = kind === "head" ? "z-20" : "z-10";
+  if (columnId === "actions") {
+    return cn("sticky right-0", layer, PINNED_BG[kind]);
+  }
+  if (pinnedLeft && columnId === "quotationNumber") {
+    return cn("sticky left-0 w-[120px] min-w-[120px]", layer, PINNED_BG[kind], PINNED_SHADOW_LEFT);
+  }
+  if (pinnedLeft && columnId === "client_name") {
+    return cn("sticky left-[120px] w-[180px] min-w-[180px]", layer, PINNED_BG[kind], PINNED_SHADOW_LEFT);
+  }
+  return "";
 }
 
 const ACTION_COLUMN_IDS = new Set(["actions", "acciones"]);
@@ -143,6 +174,11 @@ export function DataTable<TData, TValue>({
     },
   });
 
+  // El par fijo a la izquierda (N° + cliente) solo existe en cotizaciones.
+  const pinnedLeft = columns.some(
+    (column) => "accessorKey" in column && column.accessorKey === "quotationNumber"
+  );
+
   return (
     <div className="space-y-4">
       {/* Top Controls: Search & Extra Actions */}
@@ -216,7 +252,10 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                       className={`select-none py-3 text-xs font-semibold text-muted-foreground ${header.column.id === "quotationNumber" ? "sticky left-0 z-20 w-[120px] min-w-[120px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : header.column.id === "client_name" ? "sticky left-[120px] z-20 w-[180px] min-w-[180px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : header.column.id === "actions" ? "sticky right-0 z-20 bg-white dark:bg-gray-900" : ""}`}
+                       className={cn(
+                        "select-none py-3 text-xs font-semibold text-muted-foreground",
+                        pinnedClass(header.column.id, pinnedLeft, "head")
+                      )}
                       style={{ width: header.column.getSize() }}
                     >
                       {header.isPlaceholder
@@ -237,12 +276,15 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="border-border hover:bg-muted/40 transition-colors"
+                  className="group border-border hover:bg-muted/40 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                       className={`py-2.5 text-xs ${cell.column.id === "quotationNumber" ? "sticky left-0 z-10 w-[120px] min-w-[120px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : cell.column.id === "client_name" ? "sticky left-[120px] z-10 w-[180px] min-w-[180px] bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] dark:bg-gray-900" : cell.column.id === "actions" ? "sticky right-0 z-10 bg-white dark:bg-gray-900" : ""}`}
+                       className={cn(
+                        "py-2.5 text-xs",
+                        pinnedClass(cell.column.id, pinnedLeft, "cell")
+                      )}
                       style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
