@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { getSessionUserId } from "@/features/auth/server";
-import { getUserSummary } from "@/features/users/actions";
+import { getSessionUser } from "@/features/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,20 +11,20 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const userId = await getSessionUserId();
-  if (!userId) {
+  const user = await getSessionUser();
+  if (!user) {
     redirect("/login");
   }
 
-  const summary = await getUserSummary(userId);
-  if (summary?.roleName === TECHNICIAN_ROLE) {
+  if (user.roleName === TECHNICIAN_ROLE) {
     redirect("/technician/work-orders");
   }
 
   return (
     <DashboardShell
-      userName={summary?.fullName ?? "Usuario"}
-      roleName={summary?.roleName ?? "Sin rol"}
+      userName={user.fullName}
+      roleName={user.roleName ?? "Sin rol"}
+      permissions={user.permissions}
     >
       {children}
     </DashboardShell>

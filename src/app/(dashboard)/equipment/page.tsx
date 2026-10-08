@@ -1,10 +1,12 @@
 import { getEquipmentList, getEquipmentFormData } from "@/features/equipment/actions";
 import { EquipmentTable } from "@/features/equipment/components/equipment-table";
 import { Cpu } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function EquipmentPage() {
+  await requirePageAccess("equipment:read");
   const [equipment, formData] = await Promise.all([getEquipmentList(), getEquipmentFormData()]);
 
   return (

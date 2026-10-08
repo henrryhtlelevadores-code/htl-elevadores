@@ -5,10 +5,12 @@ import {
 } from "@/features/work-orders/actions";
 import { WorkOrdersCalendar } from "@/features/work-orders/components/work-orders-calendar";
 import { ClipboardList } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkOrdersPage() {
+  await requirePageAccess("work_orders:panel:read");
   const [workOrders, formData, workOrderElevators] = await Promise.all([
     getWorkOrders(),
     getWorkOrdersFormData(),

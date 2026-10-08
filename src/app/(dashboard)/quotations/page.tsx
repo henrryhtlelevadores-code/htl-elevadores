@@ -2,10 +2,12 @@ import { getQuotations, getQuotationFormData, getLaborConfig, getPricingConfig, 
 import { getSessionUser } from "@/features/auth/server";
 import { QuotationsTable } from "@/features/quotations/components/quotations-table";
 import { FileText } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function QuotationsPage() {
+  await requirePageAccess("quotations:read");
   const [quotations, options, hourlyCost, pricingRules, lineModes, currentUser] =
     await Promise.all([
       getQuotations(),

@@ -1,7 +1,7 @@
 "use server";
 
 import { verifyCredentials } from "@/features/users/credentials";
-import { getUserRoleName } from "@/features/users/actions";
+import { getUserRoleName } from "@/features/users/queries";
 import { createSession, destroySession } from "./server";
 import { getErrorMessage } from "@/lib/errors";
 

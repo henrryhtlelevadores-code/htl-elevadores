@@ -2,10 +2,12 @@ import { getSafetyTemplates } from "@/features/safety/actions";
 import { SafetyTemplatesTable } from "@/features/safety/components/safety-templates-table";
 import { getElevatorTypes } from "@/features/masters/actions";
 import { ShieldCheck } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function SafetyPage() {
+  await requirePageAccess("safety:read");
   const [templates, elevatorTypes] = await Promise.all([getSafetyTemplates(), getElevatorTypes()]);
 
   return (

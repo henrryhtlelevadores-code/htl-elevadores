@@ -18,7 +18,7 @@ import {
   type ContractElevator,
 } from "@/db/index";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import { generateDocumentNumber } from "@/lib/document-number";
 import {
@@ -49,6 +49,7 @@ async function nextContractNumber(): Promise<string> {
 }
 
 export async function getContracts(): Promise<ContractWithRelations[]> {
+  await requirePermission("contracts:read", "maintenance:read");
   try {
     return await db
       .select({
@@ -90,7 +91,8 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
 }
 
 export async function createContract(data: ContractFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const validated = contractFormSchema.parse(data);
     const contractId = generateUuid();
@@ -137,7 +139,8 @@ export async function createContract(data: ContractFormValues) {
 }
 
 export async function updateContract(id: string, data: Partial<ContractFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const updateData: {
       costCenterId?: string;
@@ -183,7 +186,8 @@ export async function updateContract(id: string, data: Partial<ContractFormValue
 }
 
 export async function deleteContract(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     await db.update(contracts).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(contracts.id, id));
     revalidatePath("/contracts");
@@ -195,7 +199,8 @@ export async function deleteContract(id: string) {
 }
 
 export async function cancelContract(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const now = Math.floor(Date.now() / 1000);
 
@@ -278,6 +283,7 @@ export async function cancelContract(id: string) {
 export async function getContractsWithRotatingModules(): Promise<
   Record<string, boolean>
 > {
+  await requirePermission("contracts:read");
   try {
     const rows = await db
       .selectDistinct({ contractId: contractElevators.contractId })
@@ -315,6 +321,7 @@ export async function getContractsWithRotatingModules(): Promise<
 export async function contractHasRotatingModules(
   contractId: string
 ): Promise<boolean> {
+  await requirePermission("contracts:read");
   try {
     const rows = await db
       .select({ id: maintenanceModules.id })
@@ -361,6 +368,7 @@ export type ContractElevatorWithRelations = ContractElevator & {
 export async function getContractElevators(
   contractId?: string
 ): Promise<ContractElevatorWithRelations[]> {
+  await requirePermission("contracts:read", "maintenance:read");
   try {
     const query = db
       .select({
@@ -401,7 +409,8 @@ export async function getContractElevators(
 }
 
 export async function createContractElevator(data: ContractElevatorFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const validated = contractElevatorFormSchema.parse(data);
 
@@ -428,7 +437,8 @@ export async function updateContractElevator(
   id: string,
   data: Partial<ContractElevatorFormValues>
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const updateData: { frequencyMonths?: number; price?: number } = {};
     if (data.frequencyMonths !== undefined) updateData.frequencyMonths = data.frequencyMonths;
@@ -445,7 +455,8 @@ export async function updateContractElevator(
 }
 
 export async function deleteContractElevator(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     await db.delete(contractElevators).where(eq(contractElevators.id, id));
     revalidatePath("/contracts");
@@ -461,6 +472,7 @@ export async function deleteContractElevator(id: string) {
 // ==========================================
 
 export async function getContractCostCenters() {
+  await requirePermission("contracts:read", "maintenance:read");
   try {
     const result = await db
       .select({
@@ -482,6 +494,7 @@ export async function getContractCostCenters() {
 }
 
 export async function getContractServiceTypes() {
+  await requirePermission("contracts:read");
   try {
     return await db
       .select()
@@ -508,6 +521,7 @@ export type ContractDetail = Contract & {
 };
 
 export async function getContractById(id: string): Promise<ContractDetail | null> {
+  await requirePermission("contracts:read");
   try {
     const [row] = await db
       .select({
@@ -569,7 +583,8 @@ export async function updateContractDocument(
     documentOverrides?: Record<string, unknown>;
   }
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("contracts:write");
+  if (denied) return denied;
   try {
     const updateData: Record<string, unknown> = {};
     if (data.clientSignerName !== undefined) updateData.clientSignerName = data.clientSignerName;

@@ -3,10 +3,12 @@ import { ContractsTable } from "@/features/contracts/components/contracts-table"
 import { getClients } from "@/features/clients/actions";
 import { getEquipmentList } from "@/features/equipment/actions";
 import { FileSignature } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContractsPage() {
+  await requirePageAccess("contracts:read");
   const [contracts, contractElevators, costCenters, serviceTypes, clients, equipment] = await Promise.all([
     getContracts(),
     getContractElevators(),

@@ -5,6 +5,7 @@ import { getEquipmentList } from "@/features/equipment/actions";
 import { getCompletedWorkOrders } from "@/features/reports/actions";
 import { getWorkOrders } from "@/features/work-orders/actions";
 import { getContracts } from "@/features/contracts/actions";
+import { readIfAllowed } from "@/features/auth/guard";
 import {
   Cpu,
   Layers,
@@ -21,15 +22,16 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardHomePage() {
   const [brands, types, models, clients, equipment, informes, workOrders, contracts] =
+    // Cada métrica se carga solo si el rol puede leer ese módulo.
     await Promise.all([
-      getBrands(),
-      getElevatorTypes(),
-      getModels(),
-      getClients(),
-      getEquipmentList(),
-      getCompletedWorkOrders(),
-      getWorkOrders(),
-      getContracts(),
+      readIfAllowed(["masters:read"], getBrands, []),
+      readIfAllowed(["masters:read"], getElevatorTypes, []),
+      readIfAllowed(["masters:read"], getModels, []),
+      readIfAllowed(["clients:read"], getClients, []),
+      readIfAllowed(["equipment:read"], getEquipmentList, []),
+      readIfAllowed(["reports:read"], getCompletedWorkOrders, []),
+      readIfAllowed(["work_orders:panel:read"], getWorkOrders, []),
+      readIfAllowed(["contracts:read"], getContracts, []),
     ]);
 
   const activeEquipment = equipment.filter((e) => e.status === "OPERATIVE").length;

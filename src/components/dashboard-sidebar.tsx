@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { hasPermission } from "@/features/auth/permissions";
 import {
   LayoutDashboard,
   Building2,
@@ -29,42 +30,54 @@ const navGroups = [
   {
     title: "Core",
     items: [
-      { title: "Inicio", href: "/", icon: LayoutDashboard },
-      { title: "Clientes y Centros de Costo", href: "/clients", icon: Building2 },
-      { title: "Equipos", href: "/equipment", icon: Cpu },
+      { title: "Inicio", href: "/", icon: LayoutDashboard, permission: null },
+      { title: "Clientes y Centros de Costo", href: "/clients", icon: Building2, permission: "clients:read" },
+      { title: "Equipos", href: "/equipment", icon: Cpu, permission: "equipment:read" },
     ],
   },
   {
     title: "Operaciones y Ventas",
     items: [
-      { title: "Rutas Preventivas", href: "/routes", icon: Map },
-      { title: "Órdenes de Trabajo", href: "/work-orders", icon: ClipboardList },
-      { title: "Contratos", href: "/contracts", icon: FileSignature },
-      { title: "Cotizaciones", href: "/quotations", icon: FileText },
-      { title: "Facturas", href: "/invoices", icon: ReceiptText },
+      { title: "Rutas Preventivas", href: "/routes", icon: Map, permission: "routes:read" },
+      { title: "Órdenes de Trabajo", href: "/work-orders", icon: ClipboardList, permission: "work_orders:panel:read" },
+      { title: "Contratos", href: "/contracts", icon: FileSignature, permission: "contracts:read" },
+      { title: "Cotizaciones", href: "/quotations", icon: FileText, permission: "quotations:read" },
+      { title: "Facturas", href: "/invoices", icon: ReceiptText, permission: "invoices:read" },
     ],
   },
   {
     title: "Administración",
     items: [
-      { title: "Mantenimiento", href: "/configuracion/mantenimiento/modulos", icon: Wrench },
-      { title: "Informes", href: "/reports", icon: FileText },
-      { title: "Personal y Usuarios", href: "/users", icon: Users },
-      { title: "Seguridad", href: "/safety", icon: ShieldCheck },
-      { title: "Tablas Maestras", href: "/masters", icon: Database },
+      { title: "Mantenimiento", href: "/configuracion/mantenimiento/modulos", icon: Wrench, permission: "maintenance:read" },
+      { title: "Informes", href: "/reports", icon: FileText, permission: "reports:read" },
+      { title: "Personal y Usuarios", href: "/users", icon: Users, permission: "users:read" },
+      { title: "Seguridad", href: "/safety", icon: ShieldCheck, permission: "safety:read" },
+      { title: "Tablas Maestras", href: "/masters", icon: Database, permission: "masters:read" },
     ],
   },
 ];
 
 export function DashboardSidebar({
+  permissions,
   mobileOpen = false,
   onMobileClose,
 }: {
+  permissions: string[];
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  // Solo se muestran los módulos que el rol puede leer; el servidor vuelve a
+  // comprobarlo en cada página y acción.
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => item.permission === null || hasPermission(permissions, item.permission)
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <aside
@@ -126,7 +139,7 @@ export function DashboardSidebar({
 
       {/* Navigation Links */}
         <nav className="min-h-0 flex flex-1 flex-col overflow-y-auto p-2">
-         {navGroups.map((group) => (
+         {visibleGroups.map((group) => (
            <div key={group.title} className="space-y-1 [&+&]:mt-4">
              <div className={cn("px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-opacity duration-200", collapsed && "opacity-0")}>{group.title}</div>
              {group.items.map((item) => {

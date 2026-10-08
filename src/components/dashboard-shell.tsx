@@ -8,16 +8,19 @@ export function DashboardShell({
   children,
   userName,
   roleName,
+  permissions,
 }: {
   children: React.ReactNode;
   userName: string;
   roleName: string;
+  permissions: string[];
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="flex min-h-dvh overflow-x-hidden bg-background text-foreground transition-colors duration-200">
       <DashboardSidebar
+        permissions={permissions}
         mobileOpen={mobileMenuOpen}
         onMobileClose={() => setMobileMenuOpen(false)}
       />

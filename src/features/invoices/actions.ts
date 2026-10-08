@@ -15,7 +15,7 @@ import {
 import { eq, asc, desc, isNull, count, sql, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { ZodError } from "zod";
 import { invoiceFormSchema, invoiceStatusUpdateSchema, buildPayerColumns, type InvoiceFormValues } from "./schema";
 
@@ -67,6 +67,7 @@ export type InvoiceListItem = {
 };
 
 export async function getInvoices(): Promise<InvoiceListItem[]> {
+  await requirePermission("invoices:read");
   try {
     const rows = await db
       .select({
@@ -187,6 +188,7 @@ export interface InvoicesFilterData {
 }
 
 export async function getInvoicesFilterData(): Promise<InvoicesFilterData> {
+  await requirePermission("invoices:read");
   const [clientRes, ccRes] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName })
@@ -223,6 +225,7 @@ export type InvoiceItemDetail = {
 export async function getInvoiceItems(
   invoiceId: string
 ): Promise<InvoiceItemDetail[]> {
+  await requirePermission("invoices:read");
   try {
     const rows = await db
       .select({
@@ -278,6 +281,7 @@ const INVOICE_SERVICE_CODES = [
 ];
 
 export async function getInvoiceFormData(): Promise<InvoiceFormData> {
+  await requirePermission("invoices:read");
   const [serviceTypeRes, contractRes] = await Promise.all([
     db
       .select({ id: serviceTypes.id, name: serviceTypes.name })
@@ -317,7 +321,8 @@ function toTimestamp(dateStr: string | undefined): number | null {
 }
 
 export async function createInvoice(values: InvoiceFormValues): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("invoices:write");
+  if (denied) return denied;
   try {
     const validated = invoiceFormSchema.parse(values);
     const payer = buildPayerColumns(validated);
@@ -444,7 +449,8 @@ export async function updateInvoiceStatus(
   invoiceId: string,
   values: { sunatStatus: string; paymentStatus: string }
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("invoices:write");
+  if (denied) return denied;
   try {
     const validated = invoiceStatusUpdateSchema.parse(values);
 

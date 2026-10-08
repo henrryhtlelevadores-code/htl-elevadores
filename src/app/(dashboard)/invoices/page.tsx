@@ -1,10 +1,12 @@
 import { getInvoices, getInvoicesFilterData, getInvoiceFormData } from "@/features/invoices/actions";
 import { InvoicesView } from "@/features/invoices/components/invoices-view";
 import { ReceiptText } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function InvoicesPage() {
+  await requirePageAccess("invoices:read");
   const [invoices, filterData, formData] = await Promise.all([
     getInvoices(),
     getInvoicesFilterData(),

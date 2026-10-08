@@ -24,6 +24,7 @@ import {
 } from "./schema";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { createSession, getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 
 /** Roles que habilitan el perfil de técnico en el formulario de usuarios. */
 const FIELD_ROLE_NAMES = ["TECNICO DE CAMPO", "SUPERVISOR"];
@@ -89,6 +90,7 @@ export type UserListItem = Omit<User, "passwordHash" | "sessionVersion"> & {
 // ==========================================
 
 export async function getAllRoles(): Promise<Role[]> {
+  await requirePermission("users:read");
   try {
     return await db
       .select()
@@ -100,51 +102,13 @@ export async function getAllRoles(): Promise<Role[]> {
   }
 }
 
-export async function ensureDefaultRoles() {
-  try {
-    const existing = await db.select({ id: roles.id }).from(roles).limit(1);
-
-    if (existing.length === 0) {
-      const defaultRoles = [
-        { name: "ADMINISTRADOR", permissions: ["*"], isFieldRole: false },
-        {
-          name: "SUPERVISOR",
-          permissions: ["work_orders", "reports", "users:read"],
-          isFieldRole: true,
-        },
-        {
-          name: "TECNICO DE CAMPO",
-          permissions: ["work_orders", "safety"],
-          isFieldRole: true,
-        },
-        { name: "SOPORTE", permissions: ["work_orders:read"], isFieldRole: false },
-      ];
-
-      await db.insert(roles).values(
-        defaultRoles.map((r) => ({
-          id: generateUuid(),
-          name: r.name,
-          permissions: r.permissions,
-          isFieldRole: r.isFieldRole,
-        }))
-      );
-    }
-
-    // Respaldo idempotente por si la migración 0022 no llegó a aplicarse.
-    await db
-      .update(roles)
-      .set({ isFieldRole: true })
-      .where(inArray(roles.name, FIELD_ROLE_NAMES));
-  } catch (error) {
-    console.error("Error al inicializar roles:", error);
-  }
-}
 
 // ==========================================
 // USUARIOS (PERSONAL)
 // ==========================================
 
 export async function getUsers(): Promise<UserListItem[]> {
+  await requirePermission("users:read");
   try {
     const rows = await db
       .select({
@@ -183,37 +147,9 @@ export async function getUsers(): Promise<UserListItem[]> {
   }
 }
 
-export interface UserSummary {
-  fullName: string;
-  roleName: string | null;
-}
-
-export async function getUserSummary(userId: string): Promise<UserSummary | null> {
-  try {
-    const rows = await db
-      .select({ fullName: users.fullName, role_name: roles.name })
-      .from(users)
-      .leftJoin(roles, eq(users.roleId, roles.id))
-      .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    return { fullName: row.fullName, roleName: row.role_name };
-  } catch (error) {
-    console.error("Error al obtener resumen del usuario:", error);
-    return null;
-  }
-}
-
-export async function getUserRoleName(userId: string): Promise<string | null> {
-  const summary = await getUserSummary(userId);
-  return summary?.roleName ?? null;
-}
-
 export async function createUser(data: CreateUserFormValues) {
-  if (!(await getSessionUserId())) {
-    return { success: false, error: "Sesión requerida" };
-  }
+  const denied = await denyUnless("users:write");
+  if (denied) return denied;
   try {
     const validated = createUserFormSchema.parse(data);
 
@@ -290,6 +226,8 @@ async function keepOwnSession(sessionUserId: string, targetUserId: string) {
 }
 
 export async function updateUser(id: string, data: UpdateUserFormValues) {
+  const denied = await denyUnless("users:write");
+  if (denied) return denied;
   const sessionUserId = await getSessionUserId();
   if (!sessionUserId) {
     return { success: false, error: "Sesión requerida" };
@@ -396,6 +334,8 @@ export async function updateUser(id: string, data: UpdateUserFormValues) {
 
 /** Sube la firma del técnico a R2 y devuelve la URL pública. */
 export async function uploadStaffSignature(dataUrl: string) {
+  const denied = await denyUnless("users:write");
+  if (denied) return denied;
   try {
     const match = /^data:(image\/(?:png|jpe?g));base64,(.+)$/i.exec(dataUrl ?? "");
     if (!match) {
@@ -418,6 +358,8 @@ export async function uploadStaffSignature(dataUrl: string) {
 }
 
 export async function changeUserPassword(id: string, data: ChangeUserPasswordValues) {
+  const denied = await denyUnless("users:write");
+  if (denied) return denied;
   const sessionUserId = await getSessionUserId();
   if (!sessionUserId) {
     return { success: false, error: "Sesión requerida" };
@@ -442,9 +384,8 @@ export async function changeUserPassword(id: string, data: ChangeUserPasswordVal
 }
 
 export async function deleteUser(id: string) {
-  if (!(await getSessionUserId())) {
-    return { success: false, error: "Sesión requerida" };
-  }
+  const denied = await denyUnless("users:write");
+  if (denied) return denied;
   try {
     await db
       .update(users)

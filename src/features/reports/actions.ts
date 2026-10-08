@@ -15,7 +15,7 @@ import {
   serviceTypes,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { buildEvidenceKey, uploadToR2 } from "@/lib/r2";
 import { generateUuid } from "@/lib/uuid";
 import { eq, asc, desc, and, isNull, inArray } from "drizzle-orm";
@@ -102,6 +102,7 @@ export interface ActionResult {
 export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null }> };
 
 export async function getPendingManualReportOrders(): Promise<ManualReportOrder[]> {
+  await requirePermission("reports:read");
   const rows = await db.select({ id: workOrders.id, otNumber: workOrders.otNumber, clientId: clients.id, clientName: clients.legalName, costCenterId: workOrders.costCenterId, costCenterName: costCenters.name, serviceTypeId: workOrders.serviceTypeId, serviceTypeName: serviceTypes.name, scheduledDate: workOrders.scheduledDate, scheduledTime: workOrders.scheduledTime, description: workOrders.description })
     .from(workOrders).innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id)).innerJoin(clients, eq(costCenters.clientId, clients.id)).leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
     .where(and(eq(workOrders.status, "PENDING"), isNull(workOrders.deletedAt))).orderBy(desc(workOrders.createdAt));
@@ -117,7 +118,8 @@ function peruTimestamp(date: string | null, time: string): number | null {
 }
 
 export async function completeManualReport(data: { workOrderId: string; date: string | null; startTime: string; endTime: string; number: string; notes: string; findings: Record<string, string>; signerName: string; signatureDataUrl: string }): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     const startedAt = peruTimestamp(data.date, data.startTime);
     const completedAt = peruTimestamp(data.date, data.endTime);
@@ -135,7 +137,8 @@ export async function completeManualReport(data: { workOrderId: string; date: st
 }
 
 export async function updateClientSignature(data: { workOrderId: string; signerName: string; signatureDataUrl?: string }): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     if (!data.signerName.trim()) return { success: false, error: "El nombre del firmante es obligatorio." };
     const update: { clientSignerName: string; clientSignatureUrl?: string } = { clientSignerName: data.signerName.trim() };
@@ -174,6 +177,7 @@ async function isWorkOrderEditable(workOrderId: string): Promise<boolean> {
 }
 
 export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport[]> {
+  await requirePermission("reports:read");
   try {
     const approvedUsers = alias(users, "approved_users");
     const woRows = await db
@@ -351,6 +355,7 @@ export interface ReportsFilterData {
 }
 
 export async function getReportsFilterData(): Promise<ReportsFilterData> {
+  await requirePermission("reports:read");
   const [clientRes, ccRes] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName })
@@ -377,7 +382,8 @@ export async function updateElevatorFinding(
   elevatorId: string,
   finding: string
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     const [elevator] = await db
       .select({ workOrderId: workOrderElevators.workOrderId })
@@ -404,7 +410,8 @@ export async function updateWorkOrderClosingNotes(
   workOrderId: string,
   closingNotes: string
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     if (!(await isWorkOrderEditable(workOrderId))) {
       return { success: false, error: "La OT aprobada ya no admite cambios." };
@@ -426,7 +433,8 @@ export async function updateTaskObservation(
   taskId: string,
   observations: string
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     const [task] = await db
       .select({ workOrderId: workOrderElevators.workOrderId })
@@ -455,7 +463,8 @@ export async function addEvidencePhotos(
   elevatorId: string,
   images: Array<{ dataUrl: string; contentType: string }>
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     if (!images || images.length === 0) {
       return { success: false, error: "No se recibieron imágenes." };
@@ -518,7 +527,8 @@ export async function removeEvidencePhoto(
   elevatorId: string,
   url: string
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
   try {
     const [elevator] = await db
       .select({ workOrderId: workOrderElevators.workOrderId })

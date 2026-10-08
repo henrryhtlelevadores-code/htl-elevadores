@@ -13,6 +13,7 @@ import {
   dateEs,
   type QuotationPdfData,
 } from "./components/quotation-pdf";
+import { requirePermission } from "@/features/auth/guard";
 
 function resolveLogoUrl(): string {
   const r2Url =
@@ -132,6 +133,7 @@ async function renderQuotationPdf(quotationId: string): Promise<Buffer> {
 export async function getQuotationPdfDataUrl(
   quotationId: string
 ): Promise<{ dataUrl: string; reused: boolean } | { error: string }> {
+  await requirePermission("quotations:read");
   try {
     const quotation = await getQuotationById(quotationId);
     if (!quotation) {
@@ -168,6 +170,7 @@ export async function generateAndStoreQuotationPdf(quotationId: string): Promise
   | { success: true; pdfUrl: string; generatedAt: number; reused: boolean }
   | { success: false; error: string }
 > {
+  await requirePermission("quotations:read");
   try {
     const quotation = await getQuotationById(quotationId);
     if (!quotation) {

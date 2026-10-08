@@ -6,6 +6,7 @@ import {
   type MaintenanceModuleWithCount,
 } from "@/features/maintenance/actions";
 import { ModuleTasksView } from "@/features/maintenance/components/module-tasks-view";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function ModuleTasksPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePageAccess("maintenance:read");
   const { id } = await params;
 
   const maintenanceModule = await getMaintenanceModuleById(id);

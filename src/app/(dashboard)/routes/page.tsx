@@ -6,10 +6,12 @@ import {
   getRouteConfig,
 } from "@/features/routes/actions";
 import { RoutesBoard } from "@/features/routes/components/routes-board";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoutesPage() {
+  await requirePageAccess("routes:read");
   const [technicians, contractOptions, coverage] = await Promise.all([
     getTechnicians(),
     getPreventiveContractOptions(),

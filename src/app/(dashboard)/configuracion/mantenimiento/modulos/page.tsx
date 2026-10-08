@@ -3,6 +3,7 @@ import { MaintenanceModulesTable } from "@/features/maintenance/components/maint
 import { Wrench } from "lucide-react";
 import { getClients } from "@/features/clients/actions";
 import { getContracts, getContractCostCenters, getContractElevators } from "@/features/contracts/actions";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export const metadata = {
 };
 
 export default async function MaintenanceModulesPage() {
+  await requirePageAccess("maintenance:read");
   const [modules, elevatorTypes, clients, costCenters, contracts, elevators] = await Promise.all([
     getMaintenanceModules(),
     getMaintenanceElevatorTypes(),

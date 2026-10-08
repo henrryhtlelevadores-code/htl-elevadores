@@ -12,7 +12,7 @@ import {
   type ElevatorUnity,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import { elevatorUnityFormSchema, type ElevatorUnityFormValues } from "./schema";
 import { eq, asc, isNull } from "drizzle-orm";
@@ -26,6 +26,7 @@ export type ElevatorUnityWithRelations = ElevatorUnity & {
 };
 
 export async function getEquipmentList(): Promise<ElevatorUnityWithRelations[]> {
+  await requirePermission("equipment:read", "contracts:read");
   try {
     return await db
       .select({
@@ -78,6 +79,7 @@ export interface EquipmentFormData {
 }
 
 export async function getEquipmentFormData(): Promise<EquipmentFormData> {
+  await requirePermission("equipment:read");
   const [clientRes, ccRes, brandRes, modelRes, typeRes] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName })
@@ -116,7 +118,8 @@ export async function getEquipmentFormData(): Promise<EquipmentFormData> {
 }
 
 export async function createEquipment(data: ElevatorUnityFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("equipment:write");
+  if (denied) return denied;
   try {
     const validated = elevatorUnityFormSchema.parse(data);
 
@@ -148,7 +151,8 @@ export async function createEquipment(data: ElevatorUnityFormValues) {
 }
 
 export async function updateEquipment(id: string, data: Partial<ElevatorUnityFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("equipment:write");
+  if (denied) return denied;
   try {
     const updateData: Record<string, unknown> = {};
     if (data.costCenterId) updateData.costCenterId = data.costCenterId;
@@ -179,7 +183,8 @@ export async function updateEquipment(id: string, data: Partial<ElevatorUnityFor
 }
 
 export async function toggleEquipmentStatus(id: string, status: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("equipment:write");
+  if (denied) return denied;
   try {
     await db.update(elevatorUnities).set({ status }).where(eq(elevatorUnities.id, id));
     revalidatePath("/equipment");
@@ -191,7 +196,8 @@ export async function toggleEquipmentStatus(id: string, status: string) {
 }
 
 export async function deleteEquipment(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("equipment:write");
+  if (denied) return denied;
   try {
     await db
       .update(elevatorUnities)

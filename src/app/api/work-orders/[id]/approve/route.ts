@@ -1,30 +1,15 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { db, roles, users, workOrders } from "@/db";
-import { getSessionUserId } from "@/features/auth/server";
+import { db, workOrders } from "@/db";
+import { authorizeApi } from "@/features/auth/api";
 
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = await getSessionUserId();
-  if (!userId) {
-    return NextResponse.json({ error: "No autenticado." }, { status: 401 });
-  }
-
-  const [user] = await db
-    .select({ id: users.id, roleName: roles.name })
-    .from(users)
-    .leftJoin(roles, eq(users.roleId, roles.id))
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  if (!user?.roleName?.toUpperCase().includes("ADMIN")) {
-    return NextResponse.json(
-      { error: "Solo un administrador puede aprobar reportes." },
-      { status: 403 }
-    );
-  }
+  const auth = await authorizeApi("reports:approve");
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
 
   const { id } = await params;
   const [workOrder] = await db

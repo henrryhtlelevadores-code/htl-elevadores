@@ -1,9 +1,11 @@
 import { getBrands, getElevatorTypes, getModels, getServiceTypes, getUbigeos, getMaintenanceZones, getMaintenanceElevatorTypes } from "@/features/masters/actions";
 import { MastersView } from "@/features/masters/components/masters-view";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function MastersPage() {
+  await requirePageAccess("masters:read");
   const [brandsData, typesData, modelsData, serviceTypesData, ubigeosData, maintenanceZonesData, maintenanceTypesData] = await Promise.all([
     getBrands(),
     getElevatorTypes(),

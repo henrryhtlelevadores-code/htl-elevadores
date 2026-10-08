@@ -27,7 +27,7 @@ import {
   type WorkOrderTask,
 } from "@/db/index";
 import { getErrorMessage, getErrorDetail, isUniqueConstraintError } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import { generateDocumentNumber } from "@/lib/document-number";
 import {
@@ -83,6 +83,7 @@ export type ServiceTypeOption = {
 };
 
 export async function getServiceTypes(): Promise<ServiceTypeOption[]> {
+  await requirePermission("work_orders:panel:read", "reports:read", "masters:read");
   try {
     return await db
       .select({
@@ -101,6 +102,7 @@ export async function getServiceTypes(): Promise<ServiceTypeOption[]> {
 }
 
 export async function getNextOtNumber(isoDate: string) {
+  await requirePermission("work_orders:panel:read");
   try {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return { otNumber: "" };
     const [y, m] = isoDate.split("-").map(Number);
@@ -114,6 +116,7 @@ export async function getNextOtNumber(isoDate: string) {
 }
 
 export async function getWorkOrdersFormData(): Promise<WorkOrdersFormData> {
+  await requirePermission("work_orders:panel:read");
   const [clientRes, ccRes, techRes, eqRes, serviceTypeRes] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName })
@@ -153,6 +156,7 @@ export async function getWorkOrdersFormData(): Promise<WorkOrdersFormData> {
 }
 
 export async function getWorkOrders(): Promise<WorkOrderWithRelations[]> {
+  await requirePermission("work_orders:panel:read");
   try {
     return await db
       .select({
@@ -225,6 +229,7 @@ export async function buildPreventiveElevatorDetail({
   contractElevatorId: string | null;
   scheduledDate: string;
 }): Promise<PreventiveElevatorDetail> {
+  await requirePermission("work_orders:panel:write", "routes:write");
   const statements: BatchItem<"sqlite">[] = [];
   const errors: string[] = [];
 
@@ -375,7 +380,8 @@ export async function buildPreventiveElevatorDetail({
 }
 
 export async function createWorkOrder(data: WorkOrderFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const validated = workOrderFormSchema.parse(data);
 
@@ -547,7 +553,8 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
 }
 
 export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [currentApproval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -607,7 +614,8 @@ export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormVal
 }
 
 export async function updateWorkOrderStatus(id: string, status: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [currentApproval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -635,7 +643,8 @@ export async function updateWorkOrderStatus(id: string, status: string) {
 }
 
 export async function deleteWorkOrder(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [workOrder] = await db
       .select({ status: workOrders.status, approvalStatus: workOrders.approvalStatus })
@@ -733,6 +742,7 @@ export type WorkOrderElevatorWithRelations = WorkOrderElevator & {
 export async function getWorkOrderElevators(
   workOrderId?: string
 ): Promise<WorkOrderElevatorWithRelations[]> {
+  await requirePermission("work_orders:panel:read");
   try {
     const query = db
       .select({
@@ -772,7 +782,8 @@ export async function getWorkOrderElevators(
 }
 
 export async function createWorkOrderElevator(data: WorkOrderElevatorFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const validated = workOrderElevatorFormSchema.parse(data);
     const [approval] = await db
@@ -801,7 +812,8 @@ export async function createWorkOrderElevator(data: WorkOrderElevatorFormValues)
 }
 
 export async function updateWorkOrderElevatorStatus(id: string, status: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -829,7 +841,8 @@ export async function updateWorkOrderElevatorStatus(id: string, status: string) 
 }
 
 export async function updateWorkOrderElevatorFinding(id: string, finding: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -854,7 +867,8 @@ export async function updateWorkOrderElevatorFinding(id: string, finding: string
 }
 
 export async function deleteWorkOrderElevator(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -886,6 +900,7 @@ export type WorkOrderTaskWithRelations = WorkOrderTask & {
 export async function getWorkOrderTasks(
   workOrderElevatorId: string
 ): Promise<WorkOrderTaskWithRelations[]> {
+  await requirePermission("work_orders:panel:read");
   try {
     return await db
       .select({
@@ -918,7 +933,8 @@ export async function getWorkOrderTasks(
 }
 
 export async function createWorkOrderTask(data: WorkOrderTaskFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const validated = workOrderTaskFormSchema.parse(data);
     const [approval] = await db
@@ -950,7 +966,8 @@ export async function createWorkOrderTask(data: WorkOrderTaskFormValues) {
 }
 
 export async function toggleWorkOrderTask(id: string, isCompleted: boolean) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })
@@ -977,7 +994,8 @@ export async function toggleWorkOrderTask(id: string, isCompleted: boolean) {
 }
 
 export async function deleteWorkOrderTask(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("work_orders:panel:write");
+  if (denied) return denied;
   try {
     const [approval] = await db
       .select({ approvalStatus: workOrders.approvalStatus })

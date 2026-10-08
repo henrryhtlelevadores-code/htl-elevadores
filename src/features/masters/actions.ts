@@ -18,7 +18,7 @@ import {
   type MaintenanceZone,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import {
   brandFormSchema,
@@ -43,6 +43,7 @@ import { and, eq, asc, max } from "drizzle-orm";
 // ==========================================
 
 export async function getBrands(): Promise<Brand[]> {
+  await requirePermission("masters:read");
   try {
     return await db.select().from(brands).orderBy(asc(brands.name));
   } catch (error) {
@@ -52,6 +53,7 @@ export async function getBrands(): Promise<Brand[]> {
 }
 
 export async function getMaintenanceZones(): Promise<MaintenanceZone[]> {
+  await requirePermission("masters:read");
   try {
     return await db.select().from(maintenanceZones).orderBy(asc(maintenanceZones.orderIndex));
   } catch (error) {
@@ -61,11 +63,13 @@ export async function getMaintenanceZones(): Promise<MaintenanceZone[]> {
 }
 
 export async function getMaintenanceElevatorTypes(): Promise<ElevatorType[]> {
+  await requirePermission("masters:read", "maintenance:read");
   return db.select().from(elevatorTypes).orderBy(asc(elevatorTypes.name));
 }
 
 export async function createMaintenanceZone(data: MaintenanceZoneFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceZoneFormSchema.parse(data);
     const [equipmentType] = await db.select({ id: elevatorTypes.id })
@@ -105,7 +109,8 @@ export async function createMaintenanceZone(data: MaintenanceZoneFormValues) {
 }
 
 export async function updateMaintenanceZone(id: string, data: MaintenanceZoneFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceZoneFormSchema.parse(data);
     const [currentZone] = await db.select({ code: maintenanceZones.code, elevatorTypeId: maintenanceZones.elevatorTypeId })
@@ -144,7 +149,8 @@ export async function updateMaintenanceZone(id: string, data: MaintenanceZoneFor
 }
 
 export async function deleteMaintenanceZone(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(maintenanceZones).where(eq(maintenanceZones.id, id));
     revalidatePath("/masters");
@@ -155,7 +161,8 @@ export async function deleteMaintenanceZone(id: string) {
 }
 
 export async function createBrand(data: BrandFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = brandFormSchema.parse(data);
 
@@ -177,7 +184,8 @@ export async function createBrand(data: BrandFormValues) {
 }
 
 export async function updateBrand(id: string, data: Partial<BrandFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const updateData: { name?: string; country?: string | null; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -194,7 +202,8 @@ export async function updateBrand(id: string, data: Partial<BrandFormValues>) {
 }
 
 export async function deleteBrand(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(brands).where(eq(brands.id, id));
     revalidatePath("/masters");
@@ -216,6 +225,7 @@ export async function deleteBrand(id: string) {
 // ==========================================
 
 export async function getElevatorTypes(): Promise<ElevatorType[]> {
+  await requirePermission("masters:read", "safety:read");
   try {
     return await db.select().from(elevatorTypes).orderBy(asc(elevatorTypes.name));
   } catch (error) {
@@ -225,7 +235,8 @@ export async function getElevatorTypes(): Promise<ElevatorType[]> {
 }
 
 export async function createElevatorType(data: ElevatorTypeFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = elevatorTypeFormSchema.parse(data);
 
@@ -249,7 +260,8 @@ export async function updateElevatorType(
   id: string,
   data: Partial<ElevatorTypeFormValues>
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const updateData: { name?: string; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -265,7 +277,8 @@ export async function updateElevatorType(
 }
 
 export async function deleteElevatorType(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(elevatorTypes).where(eq(elevatorTypes.id, id));
     revalidatePath("/masters");
@@ -289,6 +302,7 @@ export async function deleteElevatorType(id: string) {
 export type ModelWithBrand = Model & { brand_name?: string | null };
 
 export async function getModels(): Promise<ModelWithBrand[]> {
+  await requirePermission("masters:read");
   try {
     const result = await db
       .select({
@@ -311,7 +325,8 @@ export async function getModels(): Promise<ModelWithBrand[]> {
 }
 
 export async function createModel(data: ModelFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = modelFormSchema.parse(data);
 
@@ -334,7 +349,8 @@ export async function createModel(data: ModelFormValues) {
 }
 
 export async function updateModel(id: string, data: Partial<ModelFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const updateData: { name?: string; brandId?: string; techSpecs?: string | null; isActive?: boolean } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -352,7 +368,8 @@ export async function updateModel(id: string, data: Partial<ModelFormValues>) {
 }
 
 export async function deleteModel(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(models).where(eq(models.id, id));
     revalidatePath("/masters");
@@ -374,6 +391,7 @@ export async function deleteModel(id: string) {
 // ==========================================
 
 export async function getServiceTypes(): Promise<ServiceType[]> {
+  await requirePermission("masters:read", "reports:read", "work_orders:panel:read");
   try {
     return await db.select().from(serviceTypes).orderBy(asc(serviceTypes.name));
   } catch (error) {
@@ -383,7 +401,8 @@ export async function getServiceTypes(): Promise<ServiceType[]> {
 }
 
 export async function createServiceType(data: ServiceTypeFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = serviceTypeFormSchema.parse(data);
 
@@ -409,7 +428,8 @@ export async function createServiceType(data: ServiceTypeFormValues) {
 }
 
 export async function updateServiceType(id: string, data: Partial<ServiceTypeFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const updateData: {
       code?: string;
@@ -440,7 +460,8 @@ export async function updateServiceType(id: string, data: Partial<ServiceTypeFor
 }
 
 export async function deleteServiceType(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(serviceTypes).where(eq(serviceTypes.id, id));
     revalidatePath("/masters");
@@ -462,6 +483,7 @@ export async function deleteServiceType(id: string) {
 // ==========================================
 
 export async function getUbigeos(): Promise<Ubigeo[]> {
+  await requirePermission("masters:read", "clients:read");
   try {
     return await db
       .select()
@@ -474,7 +496,8 @@ export async function getUbigeos(): Promise<Ubigeo[]> {
 }
 
 export async function createUbigeo(data: UbigeoFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = ubigeoFormSchema.parse(data);
 
@@ -499,7 +522,8 @@ export async function createUbigeo(data: UbigeoFormValues) {
 }
 
 export async function updateUbigeo(id: string, data: Partial<UbigeoFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const updateData: {
       departamento?: string;
@@ -527,7 +551,8 @@ export async function updateUbigeo(id: string, data: Partial<UbigeoFormValues>) 
 }
 
 export async function deleteUbigeo(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     await db.delete(ubigeos).where(eq(ubigeos.id, id));
     revalidatePath("/masters");
@@ -545,7 +570,8 @@ export async function deleteUbigeo(id: string) {
 }
 
 export async function importUbigeosBulk(data: UbigeoBulkImportValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
   try {
     const validated = ubigeoBulkImportSchema.parse(data);
 

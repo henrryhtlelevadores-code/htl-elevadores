@@ -29,6 +29,28 @@ Si un usuario se modifica a sí mismo, conserva la sesión desde la que hizo el 
 
 La migración `drizzle/0045_session_versions.sql` debe aplicarse **antes** de desplegar este código: sin esas columnas no se puede resolver ninguna sesión.
 
+## Permisos por rol
+
+Los permisos viven en `roles.permissions` (lista JSON) y se evalúan en `src/features/auth/permissions.ts`.
+
+- Un permiso son segmentos separados por `:`; por ejemplo `users:read` o `work_orders:panel:write`.
+- Un permiso concedido cubre al requerido cuando sus segmentos son un **prefijo exacto**: `work_orders` cubre `work_orders:panel:write`; `users:read` no cubre `users:write` ni `users:readonly`.
+- `*` cubre todo. Escritura no implica lectura: un rol necesita `modulo` (ambas) o los dos permisos.
+- Un rol desactivado no concede nada.
+
+Módulos: `clients`, `contracts`, `equipment`, `invoices`, `maintenance`, `masters`, `quotations`, `reports` (más `reports:approve`), `routes`, `safety`, `users` y `work_orders:panel`. La app del técnico usa `work_orders:field`.
+
+Cómo se aplica:
+
+- **Server actions** (`src/features/*/actions.ts`): cada función exportada empieza con `requirePermission(...)` (lecturas, lanza `AuthError`) o `denyUnless(...)` (mutaciones, devuelve `{ success: false, error }`). El proxy **no** protege las server actions, así que una acción nueva sin guard queda pública.
+- **Rutas API**: `authorizeApi(...)` responde 401 o 403.
+- **Páginas del panel**: `requirePageAccess(...)` redirige a `/sin-acceso`. El menú lateral solo muestra los módulos que el rol puede leer.
+- Algunas lecturas admiten varios permisos porque las usan formularios de otros módulos (por ejemplo, `getClients` desde contratos).
+
+Públicas por diseño: `loginAction`, `portalLoginAction` y `logoutAction`. Los helpers que no deben ser endpoints (`verifyCredentials`, `verifyCostCenterCredentials`, `ensureDefaultRoles`, `getUserRoleName`) están en módulos `server-only`, fuera de los archivos `"use server"`.
+
+La migración `drizzle/0046_role_permissions_panel_field.sql` cambia los roles por defecto: TÉCNICO DE CAMPO pasa a `work_orders:field` y SOPORTE a `work_orders:panel:read`. Con la matriz actual, clientes, contratos, equipos, cotizaciones, facturas, rutas, maestros y mantenimiento solo son accesibles para ADMINISTRADOR hasta que se editen los roles.
+
 ### Despliegue: se cierran todas las sesiones
 
 El cambio de formato, secretos y nombre de cookie invalida **todas** las sesiones activas de personal y del portal. Tras desplegar, todos los usuarios (incluidos los técnicos de campo) deben iniciar sesión de nuevo. La variable `AUTH_SECRET` deja de usarse.

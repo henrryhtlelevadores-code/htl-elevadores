@@ -8,7 +8,7 @@ import {
   type SafetyTemplate,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import {
   safetyTemplateFormSchema,
@@ -21,6 +21,7 @@ export type SafetyTemplateWithType = SafetyTemplate & {
 };
 
 export async function getSafetyTemplates(): Promise<SafetyTemplateWithType[]> {
+  await requirePermission("safety:read");
   try {
     return await db
       .select({
@@ -44,7 +45,8 @@ export async function getSafetyTemplates(): Promise<SafetyTemplateWithType[]> {
 }
 
 export async function createSafetyTemplate(data: SafetyTemplateFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("safety:write");
+  if (denied) return denied;
   try {
     const validated = safetyTemplateFormSchema.parse(data);
 
@@ -79,7 +81,8 @@ export async function updateSafetyTemplate(
   id: string,
   data: Partial<SafetyTemplateFormValues>
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("safety:write");
+  if (denied) return denied;
   try {
     const updateData: {
       type?: string;
@@ -113,7 +116,8 @@ export async function updateSafetyTemplate(
 }
 
 export async function deleteSafetyTemplate(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("safety:write");
+  if (denied) return denied;
   try {
     await db.delete(safetyTemplates).where(eq(safetyTemplates.id, id));
     revalidatePath("/work-orders");

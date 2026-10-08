@@ -36,6 +36,7 @@ import {
   DEFAULT_PRICING_RULES,
   type PricingRules,
 } from "./calc";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 
 export interface ActionResult {
   success: boolean;
@@ -53,6 +54,7 @@ const toTimestamp = (dateStr: string): number =>
 // ==========================================
 
 export async function getLaborConfig(): Promise<number> {
+  await requirePermission("quotations:read");
   try {
     const [row] = await db
       .select({ hourlyCost: laborConfig.hourlyCost })
@@ -66,7 +68,8 @@ export async function getLaborConfig(): Promise<number> {
 }
 
 export async function upsertLaborConfig(hourlyCost: number): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const cost = round2(Number(hourlyCost) || 0);
     if (cost < 0) {
@@ -109,6 +112,7 @@ function toRules(row: typeof pricingConfig.$inferSelect | undefined): PricingRul
 }
 
 export async function getPricingConfig(): Promise<PricingRules> {
+  await requirePermission("quotations:read");
   try {
     const [row] = await db.select().from(pricingConfig).limit(1);
     return toRules(row);
@@ -121,7 +125,8 @@ export async function getPricingConfig(): Promise<PricingRules> {
 export type PricingConfigInput = Partial<Omit<PricingRules, never>>;
 
 export async function upsertPricingConfig(input: PricingConfigInput): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const values = {
       overheadRateLabor: Number(input.overheadRateLabor),
@@ -187,6 +192,7 @@ export type QuotationWithRelations = Quotation & {
 };
 
 export async function getQuotations(): Promise<QuotationWithRelations[]> {
+  await requirePermission("quotations:read");
   try {
     return await db
       .select({
@@ -247,6 +253,7 @@ export type LineModeSummary =
  * items. MANUAL_PRICE con proveedor y costo se clasifica como PASSTHROUGH.
  */
 export async function getQuotationLineModeSummary(): Promise<Record<string, LineModeSummary>> {
+  await requirePermission("quotations:read");
   try {
     const rows = await db
       .select({
@@ -301,6 +308,7 @@ export type QuotationDetail = Quotation & {
 };
 
 export async function getQuotationById(id: string): Promise<QuotationDetail | null> {
+  await requirePermission("quotations:read");
   try {
     const [row] = await db
       .select({
@@ -447,6 +455,7 @@ export interface QuotationFormOptions {
 }
 
 export async function getQuotationFormData(): Promise<QuotationFormOptions> {
+  await requirePermission("quotations:read");
   const [clientRows, costCenterRows, advisorRows, equipmentRows] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName, taxId: clients.taxId })
@@ -696,7 +705,8 @@ function validateDiscountRules(
 export async function createQuotation(
   data: QuotationFormValues
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const parsed = quotationFormSchema.parse({
       ...data,
@@ -815,7 +825,8 @@ export async function updateQuotation(
   id: string,
   data: QuotationFormValues
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const parsed = quotationFormSchema.parse({
       ...data,
@@ -944,7 +955,8 @@ export async function updateQuotationDocument(
     validityDays?: number;
   }
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const validityDays = Math.max(1, Math.round(Number(input.validityDays) || 15));
     await db
@@ -970,7 +982,8 @@ export async function updateQuotationDocument(
 }
 
 export async function issueQuotation(id: string): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const quotation = await getQuotationById(id);
     if (!quotation) return { success: false, error: "Cotización no encontrada." };
@@ -991,6 +1004,7 @@ export async function issueQuotation(id: string): Promise<ActionResult> {
 }
 
 export async function getQuotationImages(quotationId: string) {
+  await requirePermission("quotations:read");
   return db
     .select()
     .from(quotationImages)
@@ -999,7 +1013,8 @@ export async function getQuotationImages(quotationId: string) {
 }
 
 export async function deleteQuotation(id: string): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     const [existing] = await db
       .select({ pdfUrl: quotations.pdfUrl })
@@ -1026,7 +1041,8 @@ export async function updateQuotationStatus(
   id: string,
   status: string
 ): Promise<ActionResult> {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
   try {
     await db.update(quotations).set({ status }).where(eq(quotations.id, id));
     revalidatePath("/quotations");
@@ -1085,6 +1101,7 @@ export type PortalQuotation = Pick<
 export async function getQuotationsByCostCenter(
   costCenterId: string
 ): Promise<PortalQuotation[]> {
+  await requirePermission("quotations:read");
   try {
     const rows = await db
       .select({

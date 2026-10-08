@@ -10,6 +10,7 @@ import { uploadPdfToR2, buildContractPdfKey } from "@/lib/r2";
 import { PreventiveContractPDF } from "./components/preventive-contract-pdf";
 import { buildContractTemplateData, buildOverridesSnapshot } from "./template";
 import { getContractById } from "./actions";
+import { requirePermission } from "@/features/auth/guard";
 
 export interface ContractPdfInput {
   signerName: string;
@@ -39,6 +40,7 @@ async function renderContractPdf(contractId: string, input: ContractPdfInput): P
 }
 
 export async function previewContractPdf(contractId: string, input: ContractPdfInput) {
+  await requirePermission("contracts:read");
   try {
     const buffer = await renderContractPdf(contractId, input);
     const dataUrl = `data:application/pdf;base64,${buffer.toString("base64")}`;
@@ -50,6 +52,7 @@ export async function previewContractPdf(contractId: string, input: ContractPdfI
 }
 
 export async function generateAndLockContractPdf(contractId: string, input: ContractPdfInput) {
+  await requirePermission("contracts:write");
   try {
     const contract = await getContractById(contractId);
     if (!contract) {

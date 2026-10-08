@@ -27,7 +27,7 @@ import {
 } from "./schema";
 import { eq, asc, count, and, isNull, desc, sql } from "drizzle-orm";
 import { hashPassword } from "@/features/users/password";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 
 export type ClientWithStats = Client & {
   cost_centers_count?: number;
@@ -45,6 +45,7 @@ export async function getCostCenterCalendarWorkOrders(
   serviceType = "ALL",
   status = "ACTIVE"
 ) {
+  await requirePermission("clients:read");
   const rows = await db
     .select({
       id: workOrders.id,
@@ -104,6 +105,7 @@ export type CostCenterCredentialStatus = {
 // ==========================================
 
 export async function getClients(): Promise<ClientWithStats[]> {
+  await requirePermission("clients:read", "contracts:read", "maintenance:read");
   try {
     const result = await db
       .select({
@@ -133,7 +135,8 @@ export async function getClients(): Promise<ClientWithStats[]> {
 }
 
 export async function createClient(data: ClientFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const validated = clientFormSchema.parse(data);
 
@@ -171,7 +174,8 @@ export async function createClient(data: ClientFormValues) {
 }
 
 export async function updateClient(id: string, data: Partial<ClientFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const updateData: {
       legalName?: string;
@@ -200,7 +204,8 @@ export async function updateClient(id: string, data: Partial<ClientFormValues>) 
 }
 
 export async function deleteClient(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     await db.update(clients).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(clients.id, id));
     revalidatePath("/clients");
@@ -216,6 +221,7 @@ export async function deleteClient(id: string) {
 // ==========================================
 
 export async function getCostCenters(id_client?: string): Promise<CostCenter[]> {
+  await requirePermission("clients:read");
   try {
     if (id_client) {
       return await db
@@ -236,7 +242,8 @@ export async function getCostCenters(id_client?: string): Promise<CostCenter[]> 
 }
 
 export async function createCostCenter(data: CostCenterFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const validated = costCenterFormSchema.parse(data);
 
@@ -257,7 +264,8 @@ export async function createCostCenter(data: CostCenterFormValues) {
 }
 
 export async function updateCostCenter(id: string, data: Partial<CostCenterFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const updateData: { name?: string; address?: string; ubigeoId?: string | null } = {};
     if (data.name) updateData.name = data.name.trim();
@@ -275,7 +283,8 @@ export async function updateCostCenter(id: string, data: Partial<CostCenterFormV
 }
 
 export async function deleteCostCenter(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     await db.update(costCenters).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(costCenters.id, id));
     revalidatePath("/clients");
@@ -293,6 +302,7 @@ export async function deleteCostCenter(id: string) {
 export async function getCostCenterContacts(
   id_ccenter?: string
 ): Promise<CostCenterContact[]> {
+  await requirePermission("clients:read");
   try {
     if (id_ccenter) {
       return await db
@@ -312,7 +322,8 @@ export async function getCostCenterContacts(
 }
 
 export async function createContact(data: ContactFormValues) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const validated = contactFormSchema.parse(data);
 
@@ -334,7 +345,8 @@ export async function createContact(data: ContactFormValues) {
 }
 
 export async function updateContact(id: string, data: Partial<ContactFormValues>) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     const updateData: {
       fullName?: string;
@@ -359,7 +371,8 @@ export async function updateContact(id: string, data: Partial<ContactFormValues>
 }
 
 export async function deleteContact(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     await db.delete(costCenterContacts).where(eq(costCenterContacts.id, id));
     revalidatePath("/clients");
@@ -375,7 +388,8 @@ export async function deleteContact(id: string) {
 // ==========================================
 
 export async function setCostCenterPassword(costCenterId: string, plainTextPin: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     if (!plainTextPin || plainTextPin.trim().length < 6) {
       return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
@@ -397,7 +411,8 @@ export async function setCostCenterPassword(costCenterId: string, plainTextPin: 
 }
 
 export async function clearCostCenterPassword(costCenterId: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
   try {
     await db
       .update(costCenters)

@@ -20,7 +20,7 @@ import {
   type MaintenanceTask,
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
-import { getSessionUserId } from "@/features/auth/server";
+import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { generateUuid } from "@/lib/uuid";
 import { addMonthsToTimestamp, nowSeconds } from "./constants";
 import {
@@ -55,6 +55,7 @@ export type MaintenanceModuleWithCount = MaintenanceModule & {
 };
 
 export async function getMaintenanceModules(elevatorTypeId?: string): Promise<MaintenanceModuleWithCount[]> {
+  await requirePermission("maintenance:read");
   try {
     return await db
       .select({
@@ -85,6 +86,7 @@ export async function getMaintenanceModules(elevatorTypeId?: string): Promise<Ma
 }
 
 export async function getMaintenanceModuleById(id: string) {
+  await requirePermission("maintenance:read");
   try {
     const rows = await db
       .select()
@@ -99,6 +101,7 @@ export async function getMaintenanceModuleById(id: string) {
 }
 
 export async function getMaintenanceElevatorTypes() {
+  await requirePermission("maintenance:read", "masters:read");
   return db.select().from(elevatorTypes).orderBy(asc(elevatorTypes.name));
 }
 
@@ -107,6 +110,7 @@ export async function getMaintenancePlanPreview(
   elevatorIds: string[],
   month: number
 ) {
+  await requirePermission("maintenance:read");
   const rows = await db
     .select({
       contractElevatorId: contractElevators.id,
@@ -162,7 +166,8 @@ export async function getMaintenancePlanPreview(
 export async function createMaintenanceModule(
   data: MaintenanceModuleFormValues
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceModuleFormSchema.parse(data);
     const code = validated.code.trim().toUpperCase();
@@ -217,7 +222,8 @@ export async function updateMaintenanceModule(
   id: string,
   data: Partial<MaintenanceModuleFormValues>
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceModulePatchSchema.parse(data);
     const update: Partial<MaintenanceModule> = {};
@@ -299,7 +305,8 @@ export async function updateMaintenanceModule(
 }
 
 export async function toggleMaintenanceModule(id: string, isActive: boolean) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     await db
       .update(maintenanceModules)
@@ -330,6 +337,7 @@ export type MaintenanceTaskWithModule = Omit<MaintenanceTask, "zone"> & {
 export async function getMaintenanceTasks(
   moduleId: string
 ): Promise<MaintenanceTaskWithModule[]> {
+  await requirePermission("maintenance:read");
   try {
     return await db
       .select({
@@ -359,7 +367,8 @@ export async function createMaintenanceTask(
   moduleId: string,
   data: MaintenanceTaskFormValues
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceTaskFormSchema.parse(data);
 
@@ -429,7 +438,8 @@ export async function createMaintenanceTasksBatch(
   moduleId: string,
   data: MaintenanceTaskBatchValues
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceTaskBatchSchema.parse(data);
 
@@ -564,7 +574,8 @@ export async function updateMaintenanceTask(
   id: string,
   data: Partial<MaintenanceTaskFormValues>
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const validated = maintenanceTaskFormSchema.partial().parse(data);
 
@@ -648,7 +659,8 @@ export async function updateMaintenanceTask(
 }
 
 export async function deleteMaintenanceTask(id: string) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     const task = await db
       .select({
@@ -703,7 +715,8 @@ export async function reorderMaintenanceTasks(
   zone: string,
   orderedIds: string[],
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     if (orderedIds.length === 0) {
       return { success: true, message: "Nada que reordenar" };
@@ -779,6 +792,7 @@ async function getLastExecutionsByModule(
 export async function getContractElevatorModules(
   contractElevatorId: string
 ): Promise<ContractElevatorModuleRow[]> {
+  await requirePermission("maintenance:read");
   try {
     const [context] = await db
       .select({
@@ -847,7 +861,8 @@ export async function recordModuleExecution(
   notes?: string | null,
   executedAt: number = nowSeconds()
 ) {
-  if (!(await getSessionUserId())) return { success: false, error: "Sesión requerida" };
+  const denied = await denyUnless("maintenance:write");
+  if (denied) return denied;
   try {
     if (moduleIds.length === 0) return { success: true, message: "Sin módulos" };
 
@@ -923,6 +938,7 @@ export async function getModuleExecutionHistory(
   contractElevatorId: string,
   moduleId?: string
 ) {
+  await requirePermission("maintenance:read");
   try {
     const conditions = [eq(contractElevatorModuleExecutions.contractElevatorId, contractElevatorId)];
     if (moduleId) conditions.push(eq(contractElevatorModuleExecutions.moduleId, moduleId));
@@ -952,6 +968,7 @@ export async function getModuleExecutionHistory(
 }
 
 export async function getActiveMaintenanceModules(): Promise<MaintenanceModule[]> {
+  await requirePermission("maintenance:read");
   try {
     return await db
       .select()
@@ -965,6 +982,7 @@ export async function getActiveMaintenanceModules(): Promise<MaintenanceModule[]
 }
 
 export async function getActiveMaintenanceZones(elevatorTypeId?: string | null) {
+  await requirePermission("maintenance:read");
   return db.select().from(maintenanceZones)
     .where(and(eq(maintenanceZones.isActive, true), elevatorTypeId ? eq(maintenanceZones.elevatorTypeId, elevatorTypeId) : undefined))
     .orderBy(asc(maintenanceZones.orderIndex));
@@ -972,6 +990,7 @@ export async function getActiveMaintenanceZones(elevatorTypeId?: string | null) 
 
 /** Siguiente vencimiento global, para vistas de calendario/alertas. */
 export async function getUpcomingModuleDeadlines(limit = 20) {
+  await requirePermission("maintenance:read");
   try {
     const [config] = await db
       .select({ graceDays: pricingConfig.maintenanceGraceDays })

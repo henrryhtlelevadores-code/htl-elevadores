@@ -1,10 +1,13 @@
-import { getUsers, getAllRoles, ensureDefaultRoles } from "@/features/users/actions";
+import { getUsers, getAllRoles } from "@/features/users/actions";
+import { ensureDefaultRoles } from "@/features/users/queries";
 import { UsersTable } from "@/features/users/components/users-table";
 import { Users } from "lucide-react";
+import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
+  await requirePageAccess("users:read");
   await ensureDefaultRoles();
   const [users, roles] = await Promise.all([getUsers(), getAllRoles()]);
 
