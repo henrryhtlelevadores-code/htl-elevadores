@@ -865,3 +865,21 @@ export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert;
 export type WorkOrderElevatorPhoto = typeof workOrderElevatorPhotos.$inferSelect;
 export type NewWorkOrderElevatorPhoto = typeof workOrderElevatorPhotos.$inferInsert;
+
+// Fallos de inicio de sesión para el rate limit (ver src/lib/rate-limit).
+export const loginAttempts = sqliteTable(
+  "login_attempts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    // "staff" | "portal"
+    scope: text("scope").notNull(),
+    ip: text("ip").notNull(),
+    // Correo (personal) o id de la sede (portal).
+    identifier: text("identifier").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_login_attempts_key").on(t.scope, t.ip, t.identifier, t.createdAt),
+    index("idx_login_attempts_created").on(t.createdAt),
+  ]
+);

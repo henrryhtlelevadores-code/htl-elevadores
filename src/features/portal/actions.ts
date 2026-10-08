@@ -5,6 +5,13 @@ import { createPortalSession, getPortalSessionCostCenterId } from "./server";
 import { getPortalQuotation } from "./quotations";
 import { storeQuotationPdf } from "@/features/quotations/pdf";
 import { getErrorMessage } from "@/lib/errors";
+import { getClientIp } from "@/lib/client-ip";
+import {
+  checkLoginAllowed,
+  rateLimitMessage,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "@/lib/rate-limit";
 
 export type PortalLoginActionResult =
   | { success: true; redirectTo: string }
@@ -16,11 +23,23 @@ export async function portalLoginAction(input: {
   password: string;
 }): Promise<PortalLoginActionResult> {
   try {
-    const res = await verifyCostCenterCredentials(input.costCenterId, input.password);
+    const costCenterId = String(input?.costCenterId ?? "").trim().slice(0, 64);
+    const password = String(input?.password ?? "");
+    const key = { scope: "portal", ip: await getClientIp(), identifier: costCenterId };
+
+    // Antes de Argon2: una petición bloqueada no llega a hashear.
+    const limit = await checkLoginAllowed(key);
+    if (!limit.allowed) {
+      return { success: false, error: rateLimitMessage(limit.retryAfterSeconds) };
+    }
+
+    const res = await verifyCostCenterCredentials(costCenterId, password);
     if (!res.success) {
+      await recordLoginFailure(key);
       return { success: false, error: res.error };
     }
 
+    await recordLoginSuccess(key);
     await createPortalSession(res.costCenter.id, res.costCenter.sessionVersion);
     return { success: true, redirectTo: `/portal/${res.costCenter.id}` };
   } catch (error) {

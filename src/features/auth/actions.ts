@@ -4,6 +4,13 @@ import { verifyCredentials } from "@/features/users/credentials";
 import { getUserRoleName } from "@/features/users/queries";
 import { createSession, destroySession } from "./server";
 import { getErrorMessage } from "@/lib/errors";
+import { getClientIp } from "@/lib/client-ip";
+import {
+  checkLoginAllowed,
+  rateLimitMessage,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "@/lib/rate-limit";
 
 const TECHNICIAN_ROLE = "TECNICO DE CAMPO";
 
@@ -17,14 +24,26 @@ export async function loginAction(input: {
   password: string;
 }): Promise<LoginResult> {
   try {
-    const user = await verifyCredentials(input.email, input.password);
+    const email = String(input?.email ?? "").toLowerCase().trim().slice(0, 254);
+    const password = String(input?.password ?? "");
+    const key = { scope: "staff", ip: await getClientIp(), identifier: email };
+
+    // Antes de Argon2: una petición bloqueada no llega a hashear.
+    const limit = await checkLoginAllowed(key);
+    if (!limit.allowed) {
+      return { success: false, error: rateLimitMessage(limit.retryAfterSeconds) };
+    }
+
+    const user = await verifyCredentials(email, password);
     if (!user) {
+      await recordLoginFailure(key);
       return {
         success: false,
         error: "Credenciales inválidas. Verifica tu correo y contraseña.",
       };
     }
 
+    await recordLoginSuccess(key);
     await createSession(user.id, user.sessionVersion);
 
     const roleName = await getUserRoleName(user.id);
