@@ -216,7 +216,9 @@ export const contracts = sqliteTable("contracts", {
   signatureDate: integer("signature_date"),
   documentStatus: text("document_status").default("DRAFT"),
   documentOverrides: text("document_overrides", { mode: "json" }),
+  // Legado: URL pública anterior. Los PDFs nuevos usan final_pdf_key.
   finalPdfUrl: text("final_pdf_url"),
+  finalPdfKey: text("final_pdf_key"),
   createdAt: integer("created_at").default(unixNow()),
   deletedAt: integer("deleted_at"),
 });
@@ -571,7 +573,9 @@ export const quotations = sqliteTable("quotations", {
   validityDays: integer("validity_days").default(15),
   showTaxBreakdown: integer("show_tax_breakdown", { mode: "boolean" }).default(true),
   configSnapshot: text("config_snapshot"),
+  // Legado: URL pública anterior. Los PDFs nuevos usan pdf_key (bucket privado).
   pdfUrl: text("pdf_url"),
+  pdfKey: text("pdf_key"),
   pdfGeneratedAt: integer("pdf_generated_at"),
   createdAt: integer("created_at").default(unixNow()),
 });

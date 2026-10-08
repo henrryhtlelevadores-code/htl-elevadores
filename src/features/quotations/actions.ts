@@ -24,7 +24,8 @@ import { eq, isNull, desc, count, asc, and } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { generateDocumentNumber } from "@/lib/document-number";
-import { deleteR2ObjectByUrl } from "@/lib/r2";
+import { deleteStoredPdf } from "@/lib/r2";
+import { quotationPdfPath } from "@/lib/pdf-paths";
 import { quotationFormSchema, stripBlankProducts, type QuotationFormValues } from "./schema";
 import {
   calculateQuotationLine,
@@ -189,10 +190,23 @@ export type QuotationWithRelations = Quotation & {
   lineCount: number;
 };
 
+/**
+ * Lo que el navegador recibe como `pdfUrl`: la ruta de la app que valida la
+ * sesión y redirige a una URL firmada, nunca la URL del bucket.
+ */
+function clientPdfUrl(row: {
+  id: string;
+  pdfUrl: string | null;
+  pdfKey: string | null;
+  pdfGeneratedAt: number | null;
+}): string | null {
+  return row.pdfKey || row.pdfUrl ? quotationPdfPath(row.id, row.pdfGeneratedAt) : null;
+}
+
 export async function getQuotations(): Promise<QuotationWithRelations[]> {
   await requirePermission("quotations:read");
   try {
-    return await db
+    const rows = await db
       .select({
         id: quotations.id,
         quotationNumber: quotations.quotationNumber,
@@ -220,6 +234,7 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
         showTaxBreakdown: quotations.showTaxBreakdown,
         configSnapshot: quotations.configSnapshot,
         pdfUrl: quotations.pdfUrl,
+        pdfKey: quotations.pdfKey,
         pdfGeneratedAt: quotations.pdfGeneratedAt,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,
@@ -234,6 +249,7 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
       .leftJoin(quotationLines, eq(quotationLines.quotationId, quotations.id))
       .groupBy(quotations.id)
       .orderBy(desc(quotations.createdAt));
+    return rows.map((row) => ({ ...row, pdfUrl: clientPdfUrl(row) }));
   } catch (error) {
     console.error("Error al obtener cotizaciones:", error);
     return [];
@@ -307,7 +323,8 @@ export type QuotationDetail = Quotation & {
 
 export async function getQuotationById(id: string): Promise<QuotationDetail | null> {
   await requirePermission("quotations:read");
-  return loadQuotationDetail(id);
+  const detail = await loadQuotationDetail(id);
+  return detail ? { ...detail, pdfUrl: clientPdfUrl(detail) } : null;
 }
 
 // ==========================================
@@ -722,7 +739,7 @@ export async function updateQuotation(
     if (discountError) return { success: false, error: discountError };
 
     const existing = await db
-      .select({ id: quotations.id, pdfUrl: quotations.pdfUrl })
+      .select({ id: quotations.id, pdfUrl: quotations.pdfUrl, pdfKey: quotations.pdfKey })
       .from(quotations)
       .where(eq(quotations.id, id))
       .limit(1);
@@ -750,6 +767,7 @@ export async function updateQuotation(
         total: payload.total,
         showTaxBreakdown: payload.showTaxBreakdown,
         pdfUrl: null,
+        pdfKey: null,
         pdfGeneratedAt: null,
       })
       .where(eq(quotations.id, id));
@@ -808,13 +826,7 @@ export async function updateQuotation(
     }
 
     await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
-    if (existing[0].pdfUrl) {
-      try {
-        await deleteR2ObjectByUrl(existing[0].pdfUrl);
-      } catch (error) {
-        console.warn("No se pudo eliminar el PDF anterior de R2:", error);
-      }
-    }
+    await deleteStoredPdf({ url: existing[0].pdfUrl, key: existing[0].pdfKey });
     revalidatePath("/quotations");
     return { success: true, message: "Cotización actualizada" };
   } catch (error) {
@@ -848,6 +860,7 @@ export async function updateQuotationDocument(
         workingHours: input.workingHours?.trim() || null,
         validityDays,
         pdfUrl: null,
+        pdfKey: null,
         pdfGeneratedAt: null,
       })
       .where(eq(quotations.id, id));
@@ -864,12 +877,12 @@ export async function issueQuotation(id: string): Promise<ActionResult> {
   const denied = await denyUnless("quotations:write");
   if (denied) return denied;
   try {
-    const quotation = await getQuotationById(id);
+    const quotation = await loadQuotationDetail(id);
     if (!quotation) return { success: false, error: "Cotización no encontrada." };
     if (!quotation.clientId || !quotation.costCenterId || quotation.lines.length === 0) {
       return { success: false, error: "La cotización debe tener cliente, sede y al menos una línea." };
     }
-    await db.update(quotations).set({ status: "SENT", pdfUrl: null, pdfGeneratedAt: null }).where(eq(quotations.id, id));
+    await db.update(quotations).set({ status: "SENT", pdfGeneratedAt: null }).where(eq(quotations.id, id));
     const { storeQuotationPdf: generateAndStoreQuotationPdf } = await import("./pdf");
     const pdf = await generateAndStoreQuotationPdf(id);
     if (!pdf.success) return { success: false, error: pdf.error };
@@ -892,18 +905,12 @@ export async function deleteQuotation(id: string): Promise<ActionResult> {
   if (denied) return denied;
   try {
     const [existing] = await db
-      .select({ pdfUrl: quotations.pdfUrl })
+      .select({ pdfUrl: quotations.pdfUrl, pdfKey: quotations.pdfKey })
       .from(quotations)
       .where(eq(quotations.id, id))
       .limit(1);
     await db.delete(quotations).where(eq(quotations.id, id));
-    if (existing?.pdfUrl) {
-      try {
-        await deleteR2ObjectByUrl(existing.pdfUrl);
-      } catch (error) {
-        console.warn("No se pudo eliminar el PDF de R2:", error);
-      }
-    }
+    await deleteStoredPdf({ url: existing?.pdfUrl, key: existing?.pdfKey });
     revalidatePath("/quotations");
     return { success: true, message: "Cotización eliminada" };
   } catch (error) {

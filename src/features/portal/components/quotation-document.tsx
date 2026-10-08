@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { portalQuotationPdfAction } from "@/features/portal/actions";
+import { withDownload } from "@/lib/pdf-paths";
 import {
   ArrowLeft,
   Download,
@@ -25,7 +26,7 @@ const formatDateTime = (ts: number | null | undefined) =>
 
 function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = url;
+  link.href = withDownload(url, filename);
   link.target = "_blank";
   link.rel = "noopener";
   link.download = filename;
@@ -61,7 +62,7 @@ export function PortalQuotationDocument({
   }, [pdfUrl]);
 
   useEffect(() => {
-    if (pdfUrl && pdfUrl.startsWith("http")) return;
+    if (pdfUrl) return;
     startTransition(async () => {
       const res = await portalQuotationPdfAction(detail.id);
       if (res.success) {

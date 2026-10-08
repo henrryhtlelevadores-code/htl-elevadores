@@ -19,6 +19,7 @@ import {
 } from "@/db/index";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
+import { contractPdfPath } from "@/lib/pdf-paths";
 import { generateUuid } from "@/lib/uuid";
 import { generateDocumentNumber } from "@/lib/document-number";
 import {
@@ -48,10 +49,22 @@ async function nextContractNumber(): Promise<string> {
   return buildContractNumber();
 }
 
+/**
+ * Lo que el navegador recibe como `finalPdfUrl`: la ruta de la app que valida
+ * la sesión y entrega el PDF, nunca la URL del bucket.
+ */
+function clientFinalPdfUrl(row: {
+  id: string;
+  finalPdfUrl: string | null;
+  finalPdfKey: string | null;
+}): string | null {
+  return row.finalPdfKey || row.finalPdfUrl ? contractPdfPath(row.id) : null;
+}
+
 export async function getContracts(): Promise<ContractWithRelations[]> {
   await requirePermission("contracts:read", "maintenance:read");
   try {
-    return await db
+    const rows = await db
       .select({
         id: contracts.id,
         contractNumber: contracts.contractNumber,
@@ -75,6 +88,7 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
         documentStatus: contracts.documentStatus,
         documentOverrides: contracts.documentOverrides,
         finalPdfUrl: contracts.finalPdfUrl,
+        finalPdfKey: contracts.finalPdfKey,
         createdAt: contracts.createdAt,
         deletedAt: contracts.deletedAt,
         cost_center_name: costCenters.name,
@@ -84,6 +98,7 @@ export async function getContracts(): Promise<ContractWithRelations[]> {
       .innerJoin(costCenters, eq(contracts.costCenterId, costCenters.id))
       .innerJoin(serviceTypes, eq(contracts.serviceTypeId, serviceTypes.id))
       .orderBy(desc(contracts.createdAt));
+    return rows.map((row) => ({ ...row, finalPdfUrl: clientFinalPdfUrl(row) }));
   } catch (error) {
     console.error("Error al obtener contratos:", error);
     return [];
@@ -547,6 +562,7 @@ export async function getContractById(id: string): Promise<ContractDetail | null
         documentStatus: contracts.documentStatus,
         documentOverrides: contracts.documentOverrides,
         finalPdfUrl: contracts.finalPdfUrl,
+        finalPdfKey: contracts.finalPdfKey,
         createdAt: contracts.createdAt,
         deletedAt: contracts.deletedAt,
         cost_center_name: costCenters.name,
@@ -567,7 +583,7 @@ export async function getContractById(id: string): Promise<ContractDetail | null
 
     const elevators = await getContractElevators(id);
 
-    return { ...row, elevators };
+    return { ...row, finalPdfUrl: clientFinalPdfUrl(row), elevators };
   } catch (error) {
     console.error("Error al obtener contrato:", error);
     return null;

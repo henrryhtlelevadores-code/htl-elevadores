@@ -19,6 +19,7 @@ import {
   quotations,
   contracts,
 } from "@/db/index";
+import { portalContractPdfPath } from "@/lib/pdf-paths";
 
 export interface PortalLoginInfo {
   id: string;
@@ -329,7 +330,12 @@ export async function getPortalDashboardData(
     getPortalQuotations(costCenterId),
 
     db
-      .select({ id: contracts.id, name: contracts.contractNumber, url: contracts.finalPdfUrl })
+      .select({
+        id: contracts.id,
+        name: contracts.contractNumber,
+        finalPdfUrl: contracts.finalPdfUrl,
+        finalPdfKey: contracts.finalPdfKey,
+      })
       .from(contracts)
       .where(and(eq(contracts.costCenterId, costCenterId), isNull(contracts.deletedAt))),
   ]);
@@ -341,7 +347,16 @@ export async function getPortalDashboardData(
     informes: informeRows,
     quotations: quotationRows,
     documents: documents.flatMap((document) =>
-      document.url ? [{ id: document.id, name: document.name, url: document.url }] : []
+      // Ruta de la app que valida la sesión; nunca la URL del bucket.
+      document.finalPdfKey || document.finalPdfUrl
+        ? [
+            {
+              id: document.id,
+              name: document.name,
+              url: portalContractPdfPath(costCenterId, document.id),
+            },
+          ]
+        : []
     ),
   };
 }

@@ -51,6 +51,7 @@ export async function loadQuotationDetail(id: string): Promise<QuotationDetail |
         showTaxBreakdown: quotations.showTaxBreakdown,
         configSnapshot: quotations.configSnapshot,
         pdfUrl: quotations.pdfUrl,
+        pdfKey: quotations.pdfKey,
         pdfGeneratedAt: quotations.pdfGeneratedAt,
         createdAt: quotations.createdAt,
         client_name: clients.legalName,

@@ -6,7 +6,12 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { db, quotations } from "@/db/index";
 import { eq } from "drizzle-orm";
 import { getErrorMessage } from "@/lib/errors";
-import { uploadPdfToR2, buildQuotationPdfKey } from "@/lib/r2";
+import {
+  deleteStoredPdf,
+  isPrivatePdfStorageConfigured,
+  newPrivatePdfKey,
+  uploadPrivatePdf,
+} from "@/lib/r2";
 import { loadQuotationDetail, loadQuotationImages } from "./queries";
 import {
   QuotationPDF,
@@ -27,16 +32,6 @@ function resolveLogoUrl(): string {
 function resolveSignatureUrl(): string {
   const r2Url = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? process.env.R2_PUBLIC_URL ?? "";
   return process.env.NEXT_PUBLIC_R2_FIRM_URL || process.env.R2_FIRM_URL || `${r2Url}/empresa/firma.PNG`;
-}
-
-function isR2Configured(): boolean {
-  return Boolean(
-    process.env.R2_S3_API &&
-      process.env.R2_ACCESS_KEY_ID &&
-      process.env.R2_SECRET_ACCESS_KEY &&
-      process.env.R2_BUCKET_NAME &&
-      process.env.R2_PUBLIC_URL
-  );
 }
 
 async function buildQuotationPdfData(
@@ -124,50 +119,18 @@ async function renderQuotationPdf(quotationId: string): Promise<Buffer> {
   );
 }
 
-/**
- * Devuelve un data URL para previsualizar o descargar el PDF. Reutiliza el
- * PDF persistido en BD (R2) si existe y la cotización no cambió. Si R2 no
- * está configurado, siempre genera el PDF en memoria.
- */
-export async function quotationPdfDataUrl(
-  quotationId: string
-): Promise<{ dataUrl: string; reused: boolean } | { error: string }> {
-  try {
-    const quotation = await loadQuotationDetail(quotationId);
-    if (!quotation) {
-      return { error: "Cotización no encontrada" };
-    }
-
-    if (
-      isR2Configured() &&
-      quotation.pdfUrl &&
-      quotation.pdfGeneratedAt &&
-      quotation.pdfGeneratedAt >= (quotation.createdAt ?? 0)
-    ) {
-      const dataUrl = `${quotation.pdfUrl}#toolbar=0`;
-      return { dataUrl, reused: true };
-    }
-
-    const buffer = await renderQuotationPdf(quotationId);
-    return {
-      dataUrl: `data:application/pdf;base64,${buffer.toString("base64")}`,
-      reused: false,
-    };
-  } catch (error) {
-    console.error("Error al generar PDF de cotización:", error);
-    return { error: getErrorMessage(error) };
-  }
-}
+export type StoredQuotationPdf =
+  | { success: true; pdfKey: string; generatedAt: number; reused: boolean }
+  | { success: false; error: string };
 
 /**
- * Reutiliza el PDF persistido en R2 si ya existe y la cotización no cambió
- * desde la última generación. En caso contrario regenera el PDF, sustituye
- * el archivo en R2 (mismo nombre de clave) y actualiza la URL.
+ * Deja el PDF de la cotización en el bucket privado y devuelve su clave.
+ * Reutiliza el ya guardado si la cotización no cambió desde entonces; si no,
+ * lo genera con una clave nueva y aleatoria y borra el anterior.
+ *
+ * NO comprueba permisos: quien llama debe haber autorizado antes.
  */
-export async function storeQuotationPdf(quotationId: string): Promise<
-  | { success: true; pdfUrl: string; generatedAt: number; reused: boolean }
-  | { success: false; error: string }
-> {
+export async function storeQuotationPdf(quotationId: string): Promise<StoredQuotationPdf> {
   try {
     const quotation = await loadQuotationDetail(quotationId);
     if (!quotation) {
@@ -175,38 +138,41 @@ export async function storeQuotationPdf(quotationId: string): Promise<
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const cachedPdfUrl = quotation.pdfUrl;
     const cacheIsFresh =
-      cachedPdfUrl &&
-      cachedPdfUrl.startsWith("http") &&
+      quotation.pdfKey &&
       (quotation.pdfGeneratedAt ?? 0) >= (quotation.createdAt ?? 0);
 
-    if (cacheIsFresh) {
+    if (cacheIsFresh && quotation.pdfKey) {
       return {
         success: true,
-        pdfUrl: cachedPdfUrl,
+        pdfKey: quotation.pdfKey,
         generatedAt: quotation.pdfGeneratedAt ?? now,
         reused: true,
       };
     }
 
+    if (!isPrivatePdfStorageConfigured()) {
+      return {
+        success: false,
+        error:
+          "El almacenamiento privado de PDFs no está configurado (R2_PRIVATE_BUCKET_NAME).",
+      };
+    }
+
     const buffer = await renderQuotationPdf(quotationId);
-    const key = buildQuotationPdfKey(quotation.quotationNumber);
-    const hostedUrl = isR2Configured()
-      ? await uploadPdfToR2(key, buffer)
-      : `data:application/pdf;base64,${buffer.toString("base64")}`;
-    const pdfUrl = hostedUrl.startsWith("http")
-      ? `${hostedUrl}?v=${now}`
-      : hostedUrl;
+    const pdfKey = newPrivatePdfKey("quotations");
+    await uploadPrivatePdf(pdfKey, buffer);
     await db
       .update(quotations)
-      .set({ pdfUrl, pdfGeneratedAt: now })
+      .set({ pdfKey, pdfUrl: null, pdfGeneratedAt: now })
       .where(eq(quotations.id, quotationId));
+    // El PDF anterior (privado o del bucket público antiguo) ya no se usa.
+    await deleteStoredPdf({ url: quotation.pdfUrl, key: quotation.pdfKey });
 
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${quotationId}`);
 
-    return { success: true, pdfUrl, generatedAt: now, reused: false };
+    return { success: true, pdfKey, generatedAt: now, reused: false };
   } catch (error) {
     console.error("Error al generar y almacenar PDF de cotización:", error);
     const message = error instanceof Error ? error.message : String(error);

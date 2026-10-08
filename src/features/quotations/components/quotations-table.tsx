@@ -1,5 +1,6 @@
 "use client";
 
+import { withDownload } from "@/lib/pdf-paths";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -82,7 +83,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = url;
+  link.href = withDownload(url, filename);
   link.target = "_blank";
   link.rel = "noopener";
   link.download = filename;

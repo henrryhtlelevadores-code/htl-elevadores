@@ -122,7 +122,7 @@ export function ContractDetailView({ contract }: ContractDetailViewProps) {
 
       if (res.success) {
         toast.success("Contrato bloqueado y PDF generado", {
-          description: `El PDF está disponible en: ${res.pdfUrl}`,
+          description: "Ya puedes descargarlo desde esta pantalla.",
         });
         router.refresh();
       } else {

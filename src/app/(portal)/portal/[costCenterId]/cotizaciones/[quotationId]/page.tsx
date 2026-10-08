@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getPortalSessionCostCenterId } from "@/features/portal/server";
 import { getPortalQuotation } from "@/features/portal/quotations";
+import { portalQuotationPdfPath } from "@/lib/pdf-paths";
 import { PortalQuotationDocument } from "@/features/portal/components/quotation-document";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,10 @@ export default async function PortalQuotationPage({ params }: PortalQuotationPag
   const detail = {
     id: quotation.id,
     quotationNumber: quotation.quotationNumber,
-    pdfUrl: quotation.pdfUrl ?? null,
+    // Ruta de la app que valida la sesión; nunca la URL del bucket.
+    pdfUrl: quotation.pdfKey
+      ? portalQuotationPdfPath(session, quotation.id, quotation.pdfGeneratedAt)
+      : null,
     pdfGeneratedAt: quotation.pdfGeneratedAt ?? null,
   };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDownload } from "@/lib/pdf-paths";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { QuotationDetail } from "../actions";
@@ -65,7 +66,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
-  link.href = url;
+  link.href = withDownload(url, filename);
   link.target = "_blank";
   link.rel = "noopener";
   link.download = filename;

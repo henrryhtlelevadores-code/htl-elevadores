@@ -6,7 +6,12 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { db, contracts } from "@/db/index";
 import { eq } from "drizzle-orm";
 import { getErrorMessage } from "@/lib/errors";
-import { uploadPdfToR2, buildContractPdfKey } from "@/lib/r2";
+import {
+  isPrivatePdfStorageConfigured,
+  newPrivatePdfKey,
+  uploadPrivatePdf,
+} from "@/lib/r2";
+import { contractPdfPath } from "@/lib/pdf-paths";
 import { PreventiveContractPDF } from "./components/preventive-contract-pdf";
 import { buildContractTemplateData, buildOverridesSnapshot } from "./template";
 import { getContractById } from "./actions";
@@ -67,10 +72,20 @@ export async function generateAndLockContractPdf(contractId: string, input: Cont
       };
     }
 
+    if (!isPrivatePdfStorageConfigured()) {
+      return {
+        success: false,
+        error:
+          "El almacenamiento privado de PDFs no está configurado (R2_PRIVATE_BUCKET_NAME).",
+      };
+    }
+
     const buffer = await renderContractPdf(contractId, input);
 
-    const key = buildContractPdfKey(contract.contractNumber);
-    const pdfUrl = await uploadPdfToR2(key, buffer);
+    // Clave aleatoria en el bucket privado: no se deriva del número de contrato.
+    const finalPdfKey = newPrivatePdfKey("contracts");
+    await uploadPrivatePdf(finalPdfKey, buffer);
+    const pdfUrl = contractPdfPath(contractId);
 
     const template = buildContractTemplateData(contract, {
       signerName: input.signerName,
@@ -88,7 +103,7 @@ export async function generateAndLockContractPdf(contractId: string, input: Cont
         signatureDate: input.signatureDate,
         documentOverrides: overridesSnapshot,
         documentStatus: "LOCKED",
-        finalPdfUrl: pdfUrl,
+        finalPdfKey,
       })
       .where(eq(contracts.id, contractId));
 

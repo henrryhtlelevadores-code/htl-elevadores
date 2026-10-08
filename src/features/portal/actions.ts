@@ -5,6 +5,7 @@ import { createPortalSession, getPortalSessionCostCenterId } from "./server";
 import { getPortalQuotation } from "./quotations";
 import { storeQuotationPdf } from "@/features/quotations/pdf";
 import { getErrorMessage } from "@/lib/errors";
+import { portalQuotationPdfPath } from "@/lib/pdf-paths";
 import { getClientIp } from "@/lib/client-ip";
 import {
   checkLoginAllowed,
@@ -61,5 +62,12 @@ export async function portalQuotationPdfAction(quotationId: string) {
   if (!quotation) {
     return { success: false as const, error: "Cotización no encontrada" };
   }
-  return storeQuotationPdf(quotation.id);
+  const result = await storeQuotationPdf(quotation.id);
+  if (!result.success) return result;
+  return {
+    success: true as const,
+    pdfUrl: portalQuotationPdfPath(costCenterId, quotation.id, result.generatedAt),
+    generatedAt: result.generatedAt,
+    reused: result.reused,
+  };
 }
