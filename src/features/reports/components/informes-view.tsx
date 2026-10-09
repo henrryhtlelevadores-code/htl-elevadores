@@ -46,6 +46,7 @@ import {
   FileText,
   Loader2,
   MapPin,
+  Mic,
   PenLine,
   StickyNote,
   User,
@@ -102,6 +103,12 @@ function formatDuration(milliseconds: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
+/** Duración de una nota de voz: "0:42". */
+function formatClipLength(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function formatDayTime(date: string | null, time?: string | null): string {
@@ -1082,6 +1089,34 @@ function ElevatorReviewCard({
           )}
         </div>
 
+        {/* Notas de voz grabadas desde la app */}
+        {elevator.audios.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <Mic className="size-3.5" />
+              Notas de voz ({elevator.audios.length})
+            </div>
+            <div className="space-y-2">
+              {elevator.audios.map((audio, index) => (
+                <div key={audio.id} className="rounded-lg border border-border bg-background p-2.5">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span className="font-semibold">Nota {index + 1}</span>
+                    <span>{formatClipLength(audio.durationMs)}</span>
+                  </div>
+                  {audio.url ? (
+                    <audio controls preload="none" src={audio.url} className="h-9 w-full" />
+                  ) : (
+                    <p className="text-xs italic text-muted-foreground">No se pudo cargar el audio.</p>
+                  )}
+                  {audio.transcript && (
+                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed">“{audio.transcript}”</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Checklist con observaciones */}
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1134,13 +1169,22 @@ function PhotoSection({
       </h4>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {photos.map((photo, index) => (
-          <div key={photo.id} className="group relative">
+          <div key={photo.id} className="group relative min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photo.url}
-              alt={`${title} ${index + 1}`}
+              alt={photo.description ?? `${title} ${index + 1}`}
               className="aspect-square w-full rounded-lg border border-border object-cover"
             />
+            {/* Comentario que el técnico escribió al tomar la foto. */}
+            {photo.description && (
+              <p
+                className="mt-1 line-clamp-3 break-words text-[11px] leading-snug text-muted-foreground"
+                title={photo.description}
+              >
+                {photo.description}
+              </p>
+            )}
             {!readOnly && (
               <button
                 type="button"

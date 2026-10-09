@@ -51,7 +51,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data: https://fonts.gstatic.com",
   `connect-src 'self' ${[...r2PublicOrigins, ...voiceModelOrigins].join(" ")}${isDev ? " ws: wss:" : ""}`,
   `frame-src 'self' data: blob: ${r2SignedOrigins.join(" ")}`,
-  "media-src 'self' blob:",
+  `media-src 'self' blob: ${r2SignedOrigins.join(" ")}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

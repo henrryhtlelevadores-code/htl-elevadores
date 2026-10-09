@@ -7,6 +7,7 @@ import {
   workOrderElevators,
   workOrderTasks,
   workOrderElevatorPhotos,
+  workOrderElevatorAudios,
   maintenanceModules,
   costCenters,
   clients,
@@ -16,7 +17,7 @@ import {
 } from "@/db/index";
 import { getErrorMessage } from "@/lib/errors";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
-import { buildEvidenceKey, uploadToR2 } from "@/lib/r2";
+import { buildEvidenceKey, getSignedPrivateUrl, isPrivatePdfStorageConfigured, uploadToR2 } from "@/lib/r2";
 import { generateUuid } from "@/lib/uuid";
 import { eq, asc, desc, and, isNull, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
@@ -50,6 +51,16 @@ export type ReportPhoto = {
   createdAt: number | null;
 };
 
+/** Nota de voz grabada desde la app; `url` es firmada y dura una hora. */
+export type ReportAudio = {
+  id: string;
+  url: string | null;
+  durationMs: number;
+  transcript: string | null;
+  transcriptStatus: string;
+  createdAt: number;
+};
+
 export type ReportElevator = {
   id: string;
   workOrderId: string;
@@ -61,6 +72,7 @@ export type ReportElevator = {
   finding: string | null;
   evidencePhotoUrls: string[];
   photos: ReportPhoto[];
+  audios: ReportAudio[];
   completedAt: number | null;
   tasks: ReportElevatorTask[];
 };
@@ -176,6 +188,37 @@ async function isWorkOrderEditable(workOrderId: string): Promise<boolean> {
   return row?.approvalStatus !== "APPROVED";
 }
 
+const AUDIO_URL_TTL_SECONDS = 60 * 60;
+
+async function loadElevatorAudios(elevatorIds: string[]): Promise<Map<string, ReportAudio[]>> {
+  const byElevator = new Map<string, ReportAudio[]>();
+  if (elevatorIds.length === 0) return byElevator;
+  const rows = await db
+    .select()
+    .from(workOrderElevatorAudios)
+    .where(inArray(workOrderElevatorAudios.workOrderElevatorId, elevatorIds))
+    .orderBy(asc(workOrderElevatorAudios.createdAt));
+  const canSign = isPrivatePdfStorageConfigured();
+  for (const audio of rows) {
+    const url = canSign
+      ? await getSignedPrivateUrl(audio.key, { contentType: "audio/mp4", expiresIn: AUDIO_URL_TTL_SECONDS }).catch(
+          () => null
+        )
+      : null;
+    const list = byElevator.get(audio.workOrderElevatorId) ?? [];
+    list.push({
+      id: audio.id,
+      url,
+      durationMs: audio.durationMs,
+      transcript: audio.transcript,
+      transcriptStatus: audio.transcriptStatus,
+      createdAt: audio.createdAt,
+    });
+    byElevator.set(audio.workOrderElevatorId, list);
+  }
+  return byElevator;
+}
+
 export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport[]> {
   await requirePermission("reports:read");
   try {
@@ -274,6 +317,14 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
       photosByElevator.set(photo.workOrderElevatorId, list);
     }
 
+    // Notas de voz solo de los equipos de las órdenes listadas: cada una
+    // necesita una URL firmada (el bucket es privado).
+    const completedIds = new Set(woRows.map((row) => row.id));
+    const listedElevatorIds = elevatorRows
+      .filter((e) => completedIds.has(e.workOrderId))
+      .map((e) => e.id);
+    const audiosByElevator = await loadElevatorAudios(listedElevatorIds);
+
     const tasksByElevator = new Map<string, ReportElevatorTask[]>();
     for (const task of taskRows) {
       const list = tasksByElevator.get(task.workOrderElevatorId) ?? [];
@@ -303,6 +354,7 @@ export async function getCompletedWorkOrders(): Promise<CompletedWorkOrderReport
         finding: e.finding,
         evidencePhotoUrls: (e.evidencePhotoUrls as string[] | null) ?? [],
         photos: photosByElevator.get(e.id) ?? [],
+        audios: audiosByElevator.get(e.id) ?? [],
         completedAt: e.completedAt,
         tasks: tasksByElevator.get(e.id) ?? [],
       };
