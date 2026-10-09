@@ -55,6 +55,8 @@ const STATUS_STYLES: Record<string, string> = {
   SENT: "bg-blue-100 text-blue-800 border-blue-300",
   ACCEPTED: "bg-emerald-100 text-emerald-800 border-emerald-300",
   REJECTED: "bg-red-100 text-red-800 border-red-300",
+  // Su cliente o sede fue dado de baja.
+  INACTIVE: "bg-zinc-100 text-zinc-600 border-zinc-300",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -62,6 +64,7 @@ const STATUS_LABELS: Record<string, string> = {
   SENT: "Enviada",
   ACCEPTED: "Aceptada",
   REJECTED: "Rechazada",
+  INACTIVE: "Inactiva",
 };
 
 function openPdf(url: string, filename: string) {

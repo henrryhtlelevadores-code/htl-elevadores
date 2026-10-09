@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { type Ubigeo } from "@/db";
-import { type ClientWithStats, createClient, updateClient, deleteClient } from "../actions";
+import { type ClientWithStats, createClient, updateClient, deleteClient, previewClientRemoval } from "../actions";
+import { RemovalSummary, useRemovalPreview } from "./removal-summary";
 import { clientFormSchema, type ClientFormValues } from "../schema";
 import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
@@ -84,6 +85,7 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
   const [editingClient, setEditingClient] = useState<ClientWithStats | null>(null);
   const [deletingClient, setDeletingClient] = useState<ClientWithStats | null>(null);
   const [isPending, startTransition] = useTransition();
+  const clientRemoval = useRemovalPreview(deletingClient?.id ?? null, previewClientRemoval);
 
   const createForm = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as unknown as Resolver<ClientFormValues>,
@@ -185,8 +187,8 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
     startTransition(async () => {
       const res = await deleteClient(deletingClient.id);
       if (res.success) {
-        toast.success("Cliente eliminado", {
-          description: `Se eliminó el cliente "${deletingClient.legalName}".`,
+        toast.success(res.removal?.mode === "disabled" ? "Cliente deshabilitado" : "Cliente eliminado", {
+          description: res.message,
         });
         setDeletingClient(null);
       } else {
@@ -815,11 +817,11 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
               Eliminar Cliente
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              ¿Confirmas la eliminación de{" "}
-              <strong className="text-foreground">{deletingClient?.legalName}</strong>?
-              Esta acción no se puede deshacer.
+              ¿Confirmas la baja de <strong className="text-foreground">{deletingClient?.legalName}</strong>?
             </DialogDescription>
           </DialogHeader>
+
+          <RemovalSummary kind="client" {...clientRemoval} />
 
           <DialogFooter className="pt-3 gap-2">
             <Button
@@ -834,12 +836,12 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
             <Button
               type="button"
               size="sm"
-              disabled={isPending}
+              disabled={isPending || !clientRemoval.removal}
               onClick={handleDeleteConfirm}
               className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2"
             >
               {isPending && <Loader2 className="size-3.5 animate-spin" />}
-              Eliminar Definitivamente
+              {clientRemoval.removal?.mode === "disabled" ? "Deshabilitar Cliente" : "Eliminar Definitivamente"}
             </Button>
           </DialogFooter>
         </DialogContent>

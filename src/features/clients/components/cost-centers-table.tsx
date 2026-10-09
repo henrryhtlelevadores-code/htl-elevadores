@@ -7,7 +7,8 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { type Client, type Ubigeo } from "@/db";
 import { type CostCenterView as CostCenter } from "../types";
-import { createCostCenter, updateCostCenter, deleteCostCenter } from "../actions";
+import { createCostCenter, updateCostCenter, deleteCostCenter, previewCostCenterRemoval } from "../actions";
+import { RemovalSummary, useRemovalPreview } from "./removal-summary";
 import { costCenterFormSchema, type CostCenterFormValues } from "../schema";
 import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { DataTable } from "@/components/ui/data-table";
@@ -61,6 +62,7 @@ export function CostCentersTable({
   const [editingCenter, setEditingCenter] = useState<CostCenter | null>(null);
   const [deletingCenter, setDeletingCenter] = useState<CostCenter | null>(null);
   const [isPending, startTransition] = useTransition();
+  const centerRemoval = useRemovalPreview(deletingCenter?.id ?? null, previewCostCenterRemoval);
 
   const distritoFor = useMemo(() => {
     const map: Record<string, string> = {};
@@ -122,7 +124,9 @@ export function CostCentersTable({
     startTransition(async () => {
       const res = await deleteCostCenter(deletingCenter.id);
       if (res.success) {
-        toast.success("Sede eliminada", { description: `Se eliminó "${deletingCenter.name}".` });
+        toast.success(res.removal?.mode === "disabled" ? "Sede deshabilitada" : "Sede eliminada", {
+          description: res.message,
+        });
         setDeletingCenter(null);
       } else {
         toast.error("Error al eliminar", { description: res.error });
@@ -475,19 +479,19 @@ export function CostCentersTable({
               Eliminar Sede
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              ¿Estás seguro de eliminar la sede{" "}
-              <strong className="text-foreground">{deletingCenter?.name}</strong>?
-              Si tiene equipos vinculados no podrá eliminarse.
+              ¿Confirmas la baja de la sede <strong className="text-foreground">{deletingCenter?.name}</strong>?
             </DialogDescription>
           </DialogHeader>
+
+          <RemovalSummary kind="costCenter" {...centerRemoval} />
 
           <DialogFooter className="pt-3 gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setDeletingCenter(null)} className="text-xs border-border">
               Cancelar
             </Button>
-            <Button type="button" size="sm" disabled={isPending} onClick={handleDeleteConfirm} className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2">
+            <Button type="button" size="sm" disabled={isPending || !centerRemoval.removal} onClick={handleDeleteConfirm} className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-2">
               {isPending && <IconLoader2 className="size-3.5 animate-spin" />}
-              Eliminar Definitivamente
+              {centerRemoval.removal?.mode === "disabled" ? "Deshabilitar Sede" : "Eliminar Definitivamente"}
             </Button>
           </DialogFooter>
         </DialogContent>

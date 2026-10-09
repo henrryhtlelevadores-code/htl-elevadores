@@ -29,6 +29,15 @@ import { hashPassword } from "@/features/users/password";
 import { validateNewPassword } from "@/lib/password-policy";
 import type { CostCenterView } from "./types";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
+import type { DbTransaction } from "@/features/contracts/cancel";
+import { removeClient, removeCostCenter, type ClientRemoval, type CostCenterRemoval } from "./removal";
+
+/** Una baja toca equipos, contratos, rutas, OTs y cotizaciones. */
+function revalidateRemoval() {
+  for (const path of ["/clients", "/equipment", "/contracts", "/routes", "/work-orders", "/quotations", "/reports"]) {
+    revalidatePath(path);
+  }
+}
 
 export type ClientWithStats = Client & {
   cost_centers_count?: number;
@@ -123,7 +132,10 @@ export async function getClients(): Promise<ClientWithStats[]> {
         cost_centers_count: count(costCenters.id),
       })
       .from(clients)
-      .leftJoin(costCenters, eq(clients.id, costCenters.clientId))
+      .leftJoin(
+        costCenters,
+        and(eq(clients.id, costCenters.clientId), isNull(costCenters.deletedAt))
+      )
       .where(isNull(clients.deletedAt))
       .groupBy(clients.id)
       .orderBy(asc(clients.legalName));
@@ -204,13 +216,54 @@ export async function updateClient(id: string, data: Partial<ClientFormValues>) 
   }
 }
 
+/** Señal para deshacer la transacción de una vista previa. */
+class PreviewRollback extends Error {}
+
+/**
+ * Ejecuta la baja dentro de una transacción que luego se deshace: la vista
+ * previa muestra exactamente lo que haría la baja real, sin duplicar reglas.
+ */
+async function previewRemoval<T>(run: (tx: DbTransaction, now: number) => Promise<T>): Promise<T> {
+  let result: T | undefined;
+  try {
+    await db.transaction(async (tx) => {
+      result = await run(tx, Math.floor(Date.now() / 1000));
+      throw new PreviewRollback();
+    });
+  } catch (error) {
+    if (!(error instanceof PreviewRollback)) throw error;
+  }
+  return result as T;
+}
+
+export async function previewClientRemoval(
+  id: string
+): Promise<{ success: true; removal: ClientRemoval } | { success: false; error: string }> {
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
+  try {
+    return { success: true, removal: await previewRemoval((tx, now) => removeClient(tx, id, now)) };
+  } catch (error) {
+    console.error("Error al revisar la baja del cliente:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function deleteClient(id: string) {
   const denied = await denyUnless("clients:write");
   if (denied) return denied;
   try {
-    await db.update(clients).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(clients.id, id));
-    revalidatePath("/clients");
-    return { success: true, message: "Cliente eliminado correctamente" };
+    const now = Math.floor(Date.now() / 1000);
+    const removal = await db.transaction((tx) => removeClient(tx, id, now));
+    revalidateRemoval();
+    return {
+      success: true,
+      removal,
+      message:
+        removal.mode === "deleted"
+          ? "Cliente eliminado definitivamente"
+          : "Cliente deshabilitado; su historial se conserva",
+    };
   } catch (error) {
     console.error("Error al eliminar cliente:", error);
     return { success: false, error: getErrorMessage(error) };
@@ -299,13 +352,34 @@ export async function updateCostCenter(id: string, data: Partial<CostCenterFormV
   }
 }
 
+export async function previewCostCenterRemoval(
+  id: string
+): Promise<{ success: true; removal: CostCenterRemoval } | { success: false; error: string }> {
+  const denied = await denyUnless("clients:write");
+  if (denied) return denied;
+  try {
+    return { success: true, removal: await previewRemoval((tx, now) => removeCostCenter(tx, id, now)) };
+  } catch (error) {
+    console.error("Error al revisar la baja de la sede:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function deleteCostCenter(id: string) {
   const denied = await denyUnless("clients:write");
   if (denied) return denied;
   try {
-    await db.update(costCenters).set({ deletedAt: Math.floor(Date.now() / 1000) }).where(eq(costCenters.id, id));
-    revalidatePath("/clients");
-    return { success: true, message: "Centro de costo eliminado correctamente" };
+    const now = Math.floor(Date.now() / 1000);
+    const removal = await db.transaction((tx) => removeCostCenter(tx, id, now));
+    revalidateRemoval();
+    return {
+      success: true,
+      removal,
+      message:
+        removal.mode === "deleted"
+          ? "Sede eliminada definitivamente"
+          : "Sede deshabilitada; su historial se conserva",
+    };
   } catch (error) {
     console.error("Error al eliminar centro de costo:", error);
     return { success: false, error: getErrorMessage(error) };
