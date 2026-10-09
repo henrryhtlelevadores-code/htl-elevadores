@@ -4,7 +4,7 @@
  * que envía el cliente. SVG queda fuera a propósito: puede llevar scripts.
  */
 
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 export interface DetectedImage {
   contentType: "image/jpeg" | "image/png" | "image/webp";
@@ -39,7 +39,7 @@ export function validateImageUpload(bytes: Uint8Array): ImageValidation {
     return { ok: false, error: "El archivo está vacío." };
   }
   if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    return { ok: false, error: "La imagen supera el tamaño máximo de 5 MB." };
+    return { ok: false, error: "La imagen supera el tamaño máximo de 4 MB." };
   }
   const image = detectImageType(bytes);
   if (!image) {

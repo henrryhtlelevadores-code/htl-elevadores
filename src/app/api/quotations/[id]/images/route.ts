@@ -24,7 +24,7 @@ const notFound = () =>
   NextResponse.json({ error: "Cotización no encontrada." }, { status: 404 });
 
 const tooLarge = () =>
-  NextResponse.json({ error: "La imagen supera el tamaño máximo de 5 MB." }, { status: 413 });
+  NextResponse.json({ error: "La imagen supera el tamaño máximo de 4 MB." }, { status: 413 });
 
 export async function GET(
   _request: Request,

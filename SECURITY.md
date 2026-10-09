@@ -123,7 +123,7 @@ La regla de fotos difiere de la vista web del técnico: en la app el mínimo de 
 
 ### Imágenes de cotización
 
-Máximo 5 MB; solo JPEG, PNG y WebP, decidido por los primeros bytes del archivo (no por `Content-Type` ni extensión). SVG se rechaza. Nombre y extensión se generan en servidor.
+Máximo 4 MB (por debajo del tope de 4,5 MB por petición de Vercel); solo JPEG, PNG y WebP, decidido por los primeros bytes del archivo (no por `Content-Type` ni extensión). SVG se rechaza. Nombre y extensión se generan en servidor.
 
 ## Cabeceras y CSRF
 

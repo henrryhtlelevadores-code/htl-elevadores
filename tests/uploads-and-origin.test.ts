@@ -36,7 +36,7 @@ describe("validación de imágenes por contenido", () => {
     expect(detectImageType(bytes(wav))).toBeNull();
   });
 
-  it("rechaza archivos vacíos y los que superan 5 MB", () => {
+  it("rechaza archivos vacíos y los que superan 4 MB", () => {
     expect(validateImageUpload(new Uint8Array())).toMatchObject({ ok: false });
     const big = new Uint8Array(MAX_IMAGE_BYTES + 1);
     big.set(JPEG);
