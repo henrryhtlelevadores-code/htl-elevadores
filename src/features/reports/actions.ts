@@ -19,6 +19,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { buildEvidenceKey, getSignedPrivateUrl, isPrivatePdfStorageConfigured, uploadToR2 } from "@/lib/r2";
 import { generateUuid } from "@/lib/uuid";
+import { transcribeStoredAudio } from "@/features/audios/transcribe";
 import { eq, asc, desc, and, isNull, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
@@ -487,6 +488,38 @@ export async function updateAudioTranscript(audioId: string, transcript: string)
     return { success: true, message: "Transcripción guardada." };
   } catch (error) {
     console.error("Error al guardar la transcripción:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+/**
+ * Transcribe (o vuelve a transcribir) una nota de voz con Whisper y devuelve
+ * el texto. Reemplaza la transcripción actual: el administrador lo pide.
+ */
+export async function transcribeAudioNow(
+  audioId: string
+): Promise<{ success: true; transcript: string | null } | { success: false; error: string }> {
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
+  try {
+    const [audio] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
+      .from(workOrderElevatorAudios)
+      .innerJoin(workOrderElevators, eq(workOrderElevators.id, workOrderElevatorAudios.workOrderElevatorId))
+      .where(eq(workOrderElevatorAudios.id, audioId))
+      .limit(1);
+    if (!audio) return { success: false, error: "La nota de voz ya no existe." };
+    if (!(await isWorkOrderEditable(audio.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
+    const outcome = await transcribeStoredAudio(audioId, { overwrite: true });
+    if (outcome.status === "DONE") {
+      revalidatePath("/reports");
+      return { success: true, transcript: outcome.transcript };
+    }
+    return { success: false, error: outcome.status === "FAILED" ? outcome.error : outcome.reason };
+  } catch (error) {
+    console.error("Error al transcribir:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

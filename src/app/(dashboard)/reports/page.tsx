@@ -6,6 +6,8 @@ import { getServiceTypes } from "@/features/work-orders/actions";
 import { requirePageAccess } from "@/features/auth/guard";
 
 export const dynamic = "force-dynamic";
+// Las server actions de la página heredan este límite: "Transcribir" espera a Whisper.
+export const maxDuration = 60;
 
 export default async function ReportsPage() {
   await requirePageAccess("reports:read");

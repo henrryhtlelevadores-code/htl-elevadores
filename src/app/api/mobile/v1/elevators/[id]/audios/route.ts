@@ -3,6 +3,8 @@ import { invalid, mobileRoute, ok } from "@/features/mobile/http";
 import { addAudio } from "@/features/mobile/service";
 
 export const dynamic = "force-dynamic";
+// Whisper transcribe la nota después de responder (after); le damos margen.
+export const maxDuration = 60;
 
 /** Sube una nota de voz del equipo (multipart: file, id, durationMs, ...). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

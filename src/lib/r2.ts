@@ -226,6 +226,12 @@ export async function getSignedPrivateUrl(
   );
 }
 
+/** Lee un objeto del bucket privado (p. ej. una nota de voz para transcribir). */
+export async function readPrivateObject(key: string): Promise<Uint8Array | null> {
+  const result = await R2.send(new GetObjectCommand({ Bucket: privateBucket(), Key: key }));
+  return result.Body ? await result.Body.transformToByteArray() : null;
+}
+
 /** Clave dentro del bucket público a partir de su URL pública. */
 export function publicKeyFromUrl(url: string): string | null {
   try {

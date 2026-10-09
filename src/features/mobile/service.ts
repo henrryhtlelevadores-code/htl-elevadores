@@ -20,6 +20,8 @@ import {
 } from "@/features/technician/server/queries";
 import { checklistQuestion, parseChecklistItems } from "@/features/safety/checklist-content";
 import { MAX_IMAGE_BYTES, validateImageUpload } from "@/lib/image-validation";
+import { isTranscriptionConfigured } from "@/lib/transcription";
+import { transcribeAfterResponse } from "@/features/audios/transcribe";
 import {
   buildElevatorPhotoKey,
   buildSignatureKey,
@@ -588,12 +590,15 @@ export async function addAudio(technicianId: string, elevatorId: string, form: F
       workOrderElevatorId: elevatorId,
       key,
       durationMs: Number.isFinite(durationMs) && durationMs > 0 ? Math.trunc(durationMs) : 0,
+      // Con Whisper configurado la app muestra "Transcribiendo…" hasta que termine.
+      transcriptStatus: isTranscriptionConfigured() ? "PENDING" : "NONE",
       createdAt: clientTime(form.get("createdAt")),
     })
     .onConflictDoNothing()
     .returning({ id: workOrderElevatorAudios.id });
   // Dos subidas simultáneas del mismo audio: la segunda no deja huérfanos.
   if (inserted.length === 0) await deletePrivatePdf(key).catch(() => undefined);
+  else transcribeAfterResponse(id);
   revalidatePanel();
   return "Audio agregado.";
 }

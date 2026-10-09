@@ -11,6 +11,7 @@ import {
   type ReportPhoto,
   type ReportAudio,
   updateAudioTranscript,
+  transcribeAudioNow,
   updateElevatorFinding,
   updateWorkOrderClosingNotes,
   updateTaskObservation,
@@ -1171,7 +1172,25 @@ function AudioNoteEditor({
   const [draft, setDraft] = useState(audio.transcript ?? "");
   const [saved, setSaved] = useState(audio.transcript ?? "");
   const [saving, setSaving] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [status, setStatus] = useState(audio.transcriptStatus);
   const dirty = draft.trim() !== saved.trim();
+
+  async function transcribe() {
+    setTranscribing(true);
+    setStatus("PENDING");
+    const res = await transcribeAudioNow(audio.id);
+    setTranscribing(false);
+    if (res.success) {
+      setStatus("DONE");
+      setDraft(res.transcript ?? "");
+      setSaved(res.transcript ?? "");
+      toast.success(res.transcript ? "Transcripción lista" : "No se detectó voz en la nota");
+    } else {
+      setStatus("FAILED");
+      toast.error("No se pudo transcribir", { description: res.error });
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -1187,9 +1206,18 @@ function AudioNoteEditor({
 
   return (
     <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span className="font-semibold">Nota {index + 1}</span>
-        <span>{formatClipLength(audio.durationMs)}</span>
+        <span className="flex items-center gap-2">
+          {status === "PENDING" && (
+            <span className="inline-flex items-center gap-1 text-[#0066CC] dark:text-blue-400">
+              <Loader2 className="size-3 animate-spin" />
+              Transcribiendo…
+            </span>
+          )}
+          {status === "FAILED" && <span className="text-red-600 dark:text-red-400">No se pudo transcribir</span>}
+          {formatClipLength(audio.durationMs)}
+        </span>
       </div>
       {audio.url ? (
         <audio controls preload="none" src={audio.url} className="h-9 w-full" />
@@ -1207,6 +1235,18 @@ function AudioNoteEditor({
       />
       {!readOnly && (
         <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={transcribing}
+            onClick={transcribe}
+            className="mr-auto text-xs text-[#0066CC] dark:text-blue-400"
+            title="Transcribe la nota con Whisper; reemplaza el texto actual"
+          >
+            {transcribing ? <Loader2 className="size-3 animate-spin" /> : <Mic className="size-3" />}
+            {saved ? "Volver a transcribir" : "Transcribir"}
+          </Button>
           <Button
             type="button"
             variant="outline"
