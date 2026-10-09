@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { toast } from "sonner";
 import { type CostCenterView as CostCenter } from "../types";
 import { setCostCenterPassword, clearCostCenterPassword } from "../actions";
@@ -46,7 +47,7 @@ export function CredentialsManager({ costCenter }: CredentialsManagerProps) {
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   const [copied, setCopied] = useState<null | "code" | "link">(null);
   const [generatedPin, setGeneratedPin] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const portalUrl = `${window.location.origin}/portal/${costCenter.id}/login`;
 

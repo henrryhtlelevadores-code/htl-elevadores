@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
+import { useStepGuard } from "@/lib/use-step-guard";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -371,9 +373,10 @@ export function QuotationCreateDialog({
   currentUser,
 }: QuotationCreateDialogProps) {
   const currentUserId = currentUser?.id ?? null;
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const router = useRouter();
   const [step, setStep] = useState(0);
+  const stepGuard = useStepGuard(step);
   const [showPricingInfo, setShowPricingInfo] = useState(false);
   const [expandedProviders, setExpandedProviders] = useState<Record<number, boolean>>({});
 
@@ -552,7 +555,11 @@ export function QuotationCreateDialog({
     onOpenChange(false);
   }
 
-  async function handleNext() {
+  function handleNext() {
+    return stepGuard.next(advanceStep);
+  }
+
+  async function advanceStep() {
     let ok = true;
     if (step === 1) {
       const currentLines = form.getValues("lines") ?? [];
@@ -586,6 +593,12 @@ export function QuotationCreateDialog({
   }
 
   function handleSubmit(values: QuotationFormValues) {
+    // Enter en un campo envía el <form> desde cualquier paso: solo avanza.
+    if (step < STEPS.length - 1) {
+      void handleNext();
+      return;
+    }
+    if (stepGuard.justArrived()) return;
     startTransition(async () => {
       const res = editingDetail
         ? await updateQuotation(editingDetail.id, values)

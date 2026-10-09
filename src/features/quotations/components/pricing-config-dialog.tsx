@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { toast } from "sonner";
 import { Loader2, Save, Settings2, ShieldCheck, Wrench } from "lucide-react";
 import { upsertPricingConfig, upsertLaborConfig } from "../actions";
@@ -106,7 +107,7 @@ export function PricingConfigDialog({
   const [form, setForm] = useState<FormState>(() =>
     rulesToForm(currentRules, initialHourlyCost)
   );
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const [wasOpen, setWasOpen] = useState(open);
 
   if (open !== wasOpen) {

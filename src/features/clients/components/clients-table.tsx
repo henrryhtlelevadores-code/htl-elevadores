@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
+import { useStepGuard } from "@/lib/use-step-guard";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -82,9 +84,10 @@ interface ClientsTableProps {
 export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState(0);
+  const stepGuard = useStepGuard(createStep);
   const [editingClient, setEditingClient] = useState<ClientWithStats | null>(null);
   const [deletingClient, setDeletingClient] = useState<ClientWithStats | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const clientRemoval = useRemovalPreview(deletingClient?.id ?? null, previewClientRemoval);
 
   const createForm = useForm<ClientFormValues>({
@@ -122,7 +125,11 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
   const wantsHeadquarters = createForm.watch("createDefaultHeadquarters");
   const visibleSteps = wantsHeadquarters ? CREATE_STEPS : CREATE_STEPS.slice(0, 1);
 
-  async function handleCreateNext() {
+  function handleCreateNext() {
+    return stepGuard.next(advanceCreateStep);
+  }
+
+  async function advanceCreateStep() {
     const ok = await createForm.trigger([
       "legalName",
       "taxIdType",
@@ -147,9 +154,10 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
 
   function handleCreateSubmit(values: ClientFormValues) {
     if (createStep < visibleSteps.length - 1) {
-      handleCreateNext();
+      void handleCreateNext();
       return;
     }
+    if (stepGuard.justArrived()) return;
     startTransition(async () => {
       const res = await createClient(values);
       if (res.success) {

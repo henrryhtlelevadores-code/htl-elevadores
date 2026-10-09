@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -68,7 +69,7 @@ export function TaskFormDialog({
   zones,
 }: TaskFormDialogProps) {
   const isEditing = !!task;
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const form = useForm<MaintenanceTaskFormValues>({
     resolver: zodResolver(maintenanceTaskFormSchema),

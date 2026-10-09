@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -152,7 +153,7 @@ export function ContractsTable({
   const [cancellingContract, setCancellingContract] = useState<ContractWithRelations | null>(null);
   const [viewingContract, setViewingContract] = useState<ContractWithRelations | null>(null);
   const [activeTab, setActiveTab] = useState<ContractTab>("ACTIVE");
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const router = useRouter();
 
   const tabs = useMemo<Array<{ key: ContractTab; label: string; predicate: (c: ContractWithRelations) => boolean }>>(

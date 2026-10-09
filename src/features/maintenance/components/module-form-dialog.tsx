@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -56,7 +57,7 @@ export function ModuleFormDialog({
   elevatorTypes,
 }: ModuleFormDialogProps) {
   const isEditing = !!module;
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const form = useForm<MaintenanceModuleFormValues>({
     resolver: zodResolver(maintenanceModuleFormSchema),

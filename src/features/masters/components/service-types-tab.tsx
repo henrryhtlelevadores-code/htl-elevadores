@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -64,7 +65,7 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingType, setEditingType] = useState<ServiceType | null>(null);
   const [deletingType, setDeletingType] = useState<ServiceType | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const createForm = useForm<ServiceTypeFormValues>({
     resolver: zodResolver(serviceTypeFormSchema),

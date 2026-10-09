@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -120,7 +121,7 @@ export function ContractElevatorsTable({
   const [priceInput, setPriceInput] = useState("");
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [planElevator, setPlanElevator] = useState<ContractElevatorWithRelations | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const costCenterEquipment = useMemo(
     () => equipmentOptions.filter((eq) => eq.costCenterId === contract?.costCenterId),

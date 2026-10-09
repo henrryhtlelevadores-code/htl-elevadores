@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -48,7 +49,7 @@ export function ContactsTable({ costCenterId, contacts }: ContactsTableProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<CostCenterContact | null>(null);
   const [deletingContact, setDeletingContact] = useState<CostCenterContact | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const createForm = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),

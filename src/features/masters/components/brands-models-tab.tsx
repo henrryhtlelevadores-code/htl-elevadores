@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -95,7 +96,7 @@ function BrandsTable({ brands, models, onSelectBrand }: BrandsTableProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [deletingBrand, setDeletingBrand] = useState<Brand | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const createForm = useForm<BrandFormValues>({
     resolver: zodResolver(brandFormSchema),
@@ -498,7 +499,7 @@ function ModelsPanel({ brand, models, onBack }: ModelsPanelProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelWithBrand | null>(null);
   const [deletingModel, setDeletingModel] = useState<ModelWithBrand | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const createForm = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -61,7 +62,7 @@ export function CostCentersTable({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingCenter, setEditingCenter] = useState<CostCenter | null>(null);
   const [deletingCenter, setDeletingCenter] = useState<CostCenter | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const centerRemoval = useRemovalPreview(deletingCenter?.id ?? null, previewCostCenterRemoval);
 
   const distritoFor = useMemo(() => {

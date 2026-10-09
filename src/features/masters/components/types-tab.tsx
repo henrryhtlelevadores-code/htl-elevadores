@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -46,7 +47,7 @@ export function TypesTab({ initialTypes }: TypesTabProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingType, setEditingType] = useState<ElevatorType | null>(null);
   const [deletingType, setDeletingType] = useState<ElevatorType | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const createForm = useForm<ElevatorTypeFormValues>({
     resolver: zodResolver(elevatorTypeFormSchema),

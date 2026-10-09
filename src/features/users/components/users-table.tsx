@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -142,7 +143,7 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
   // Última contraseña tomada del generador; si el campo aún la contiene se
   // avisa al servidor de que es generada.
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const passwordForm = useForm<ChangeUserPasswordValues>({
     resolver: zodResolver(changeUserPasswordSchema),

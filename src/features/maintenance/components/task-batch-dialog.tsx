@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { toast } from "sonner";
 import { createMaintenanceTasksBatch } from "../actions";
 import {
@@ -142,7 +143,7 @@ export function TaskBatchDialog({
 }: TaskBatchDialogProps) {
   const [zoneId, setZoneId] = useState(defaultZone);
   const [rawJson, setRawJson] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const parsed = useMemo(() => parseBatch(rawJson), [rawJson]);
 

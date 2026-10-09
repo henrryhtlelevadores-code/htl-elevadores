@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2, Loader2, MapPinned } from "lucide-react";
@@ -24,7 +25,7 @@ export function MaintenanceZonesTab({ initialZones, elevatorTypes }: { initialZo
   const router = useRouter();
   const [zones, setZones] = useState(initialZones);
   const [editing, setEditing] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const [form, setForm] = useState<ZoneForm & { elevatorTypeId: string }>({ code: "", name: "", orderIndex: 0, isActive: true, elevatorTypeId: elevatorTypes[0]?.id ?? "" });
   const [selectedType, setSelectedType] = useState(elevatorTypes[0]?.id ?? "all");
   const visibleZones = selectedType === "all" ? zones : zones.filter((zone) => zone.elevatorTypeId === selectedType);

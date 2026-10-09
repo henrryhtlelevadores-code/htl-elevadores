@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -89,7 +90,7 @@ export function SafetyTemplatesTable({ initialTemplates, elevatorTypes }: Safety
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<SafetyTemplateWithType | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState<SafetyTemplateWithType | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
 
   const form = useForm<SafetyTemplateFormValues>({
     resolver: zodResolver(safetyTemplateFormSchema),

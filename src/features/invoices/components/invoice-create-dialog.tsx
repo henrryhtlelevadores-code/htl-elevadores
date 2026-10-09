@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
+import { useStepGuard } from "@/lib/use-step-guard";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -145,8 +147,9 @@ export function InvoiceCreateDialog({
   costCenters,
   formData,
 }: InvoiceCreateDialogProps) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useSubmitTransition();
   const [step, setStep] = useState(0);
+  const stepGuard = useStepGuard(step);
 
   type InvoiceFormInput = z.input<typeof invoiceFormSchema>;
   type InvoiceFormOutput = z.output<typeof invoiceFormSchema>;
@@ -225,7 +228,11 @@ export function InvoiceCreateDialog({
     onOpenChange(false);
   }
 
-  async function handleNext() {
+  function handleNext() {
+    return stepGuard.next(advanceStep);
+  }
+
+  async function advanceStep() {
     let ok = true;
     if (step === 0) {
       ok = await form.trigger([
@@ -282,9 +289,10 @@ export function InvoiceCreateDialog({
 
   function handleSubmit(values: InvoiceFormValues) {
     if (step < STEPS.length - 1) {
-      handleNext();
+      void handleNext();
       return;
     }
+    if (stepGuard.justArrived()) return;
     startTransition(async () => {
       const res = await createInvoice(values);
       if (res.success) {
