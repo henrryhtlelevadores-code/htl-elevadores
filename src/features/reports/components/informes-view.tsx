@@ -1038,6 +1038,7 @@ function ElevatorReviewCard({
             </Button>
           </div>
           <Textarea
+            id={`finding-${elevator.id}`}
             rows={2}
              value={finding}
              onChange={(e) => onFindingChange(e.target.value)}
@@ -1109,10 +1110,23 @@ function ElevatorReviewCard({
                   key={audio.id}
                   audio={audio}
                   index={index}
+                  origin={audioOrigin(audio, elevator.photos)}
                   readOnly={readOnly}
-                  onUseInFindings={(text) =>
-                    onFindingChange(finding.trim() ? `${finding.trim()}\n${text}` : text)
-                  }
+                  onUseInFindings={(text) => {
+                    const current = finding.trim();
+                    if (current.includes(text)) {
+                      toast.info("Ese texto ya está en Hallazgos");
+                    } else {
+                      onFindingChange(current ? `${current}\n${text}` : text);
+                      toast.success("Agregado a Hallazgos", {
+                        description: "Revisa el texto en Hallazgos (arriba) y pulsa Guardar.",
+                      });
+                    }
+                    // El campo de Hallazgos queda arriba, fuera de la vista: se lleva ahí.
+                    const field = document.getElementById(`finding-${elevator.id}`);
+                    field?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    field?.focus({ preventScroll: true });
+                  }}
                 />
               ))}
             </div>
@@ -1158,14 +1172,29 @@ function ElevatorReviewCard({
  * su transcripción y se puede pasar a Hallazgos, que es lo único que llega
  * al cliente.
  */
+const PHOTO_TAG_LABEL: Record<string, string> = { BEFORE: "Antes", AFTER: "Después", POINT: "Puntual" };
+
+type AudioOrigin = { label: string; photo: ReportPhoto | null };
+
+/** De dónde viene la nota: de Hallazgos o de una foto ("Foto Después 2"). */
+function audioOrigin(audio: ReportAudio, photos: ReportPhoto[]): AudioOrigin {
+  const photo = audio.photoId ? photos.find((p) => p.id === audio.photoId) : undefined;
+  if (!photo) return { label: "Grabada en Hallazgos", photo: null };
+  const sameTag = photos.filter((p) => p.tag === photo.tag);
+  const n = sameTag.findIndex((p) => p.id === photo.id) + 1;
+  return { label: `De la foto ${PHOTO_TAG_LABEL[photo.tag] ?? ""} ${n}`.replace(/\s+/g, " "), photo };
+}
+
 function AudioNoteEditor({
   audio,
   index,
+  origin,
   readOnly,
   onUseInFindings,
 }: {
   audio: ReportAudio;
   index: number;
+  origin: AudioOrigin;
   readOnly: boolean;
   onUseInFindings: (text: string) => void;
 }) {
@@ -1207,7 +1236,20 @@ function AudioNoteEditor({
   return (
     <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="font-semibold">Nota {index + 1}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {origin.photo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={origin.photo.url}
+              alt=""
+              className="size-8 shrink-0 rounded border border-border object-cover"
+            />
+          )}
+          <span className="min-w-0">
+            <span className="font-semibold text-foreground">Nota {index + 1}</span>
+            <span className="block truncate">{origin.label}</span>
+          </span>
+        </span>
         <span className="flex items-center gap-2">
           {status === "PENDING" && (
             <span className="inline-flex items-center gap-1 text-[#0066CC] dark:text-blue-400">

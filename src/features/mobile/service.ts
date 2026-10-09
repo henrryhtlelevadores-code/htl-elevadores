@@ -203,6 +203,8 @@ export async function getWorkOrder(technicianId: string, workOrderId: string) {
           })
         : null,
       durationMs: audio.durationMs,
+      // null = nota de Hallazgos; si no, la foto desde la que se grabó.
+      photoId: audio.photoId,
       transcript: audio.transcript,
       transcriptStatus: audio.transcriptStatus,
       createdAt: audio.createdAt,
@@ -583,12 +585,15 @@ export async function addAudio(technicianId: string, elevatorId: string, form: F
   await uploadPrivateObject(key, bytes, "audio/mp4");
 
   const durationMs = Number(form.get("durationMs"));
+  const rawPhotoId = form.get("photoId");
+  const photoId = typeof rawPhotoId === "string" && rawPhotoId ? requireUuid(rawPhotoId, "La foto") : null;
   const inserted = await db
     .insert(workOrderElevatorAudios)
     .values({
       id,
       workOrderElevatorId: elevatorId,
       key,
+      photoId,
       durationMs: Number.isFinite(durationMs) && durationMs > 0 ? Math.trunc(durationMs) : 0,
       // Con Whisper configurado la app muestra "Transcribiendo…" hasta que termine.
       transcriptStatus: isTranscriptionConfigured() ? "PENDING" : "NONE",

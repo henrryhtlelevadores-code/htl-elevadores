@@ -57,6 +57,8 @@ export type ReportAudio = {
   id: string;
   url: string | null;
   durationMs: number;
+  /** null = grabada en Hallazgos; si no, la foto desde la que se grabó. */
+  photoId: string | null;
   transcript: string | null;
   transcriptStatus: string;
   createdAt: number;
@@ -211,6 +213,7 @@ async function loadElevatorAudios(elevatorIds: string[]): Promise<Map<string, Re
       id: audio.id,
       url,
       durationMs: audio.durationMs,
+      photoId: audio.photoId,
       transcript: audio.transcript,
       transcriptStatus: audio.transcriptStatus,
       createdAt: audio.createdAt,

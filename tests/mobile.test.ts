@@ -412,6 +412,24 @@ describe("fotos y audios", () => {
     expect(notAudio.status).toBe(422);
   });
 
+  it("guarda de qué foto viene la nota de voz (o null si es de Hallazgos)", async () => {
+    const order = await startedOrder();
+    const photoId = randomUUID();
+    await addPhoto(formRequest({ id: photoId, tag: "POINT" }, JPEG, "foto.jpg"), params(order.elevatorId));
+    const fromPhoto = randomUUID();
+    const fromFindings = randomUUID();
+    await addAudio(formRequest({ id: fromPhoto, durationMs: "900", photoId }, M4A, "a.m4a"), params(order.elevatorId));
+    await addAudio(formRequest({ id: fromFindings, durationMs: "900" }, M4A, "b.m4a"), params(order.elevatorId));
+
+    const detail = await (await getOrder(new Request(url), params(order.workOrderId))).json();
+    const byId = Object.fromEntries(detail.elevators[0].audios.map((a: { id: string }) => [a.id, a]));
+    expect(byId[fromPhoto].photoId).toBe(photoId);
+    expect(byId[fromFindings].photoId).toBeNull();
+
+    const bad = await addAudio(formRequest({ id: randomUUID(), photoId: "../x" }, M4A, "c.m4a"), params(order.elevatorId));
+    expect(bad.status).toBe(422);
+  });
+
   it("elimina una nota de voz y da por bueno el borrado repetido", async () => {
     const order = await startedOrder();
     const audioId = randomUUID();

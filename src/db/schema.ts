@@ -900,6 +900,8 @@ export const workOrderElevatorAudios = sqliteTable(
       .references(() => workOrderElevators.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     durationMs: integer("duration_ms").notNull().default(0),
+    // NULL = nota de Hallazgos; si no, id de la foto desde la que se grabó.
+    photoId: text("photo_id"),
     transcript: text("transcript"),
     // 'NONE' (sin transcripción) | 'PENDING' | 'DONE' | 'FAILED'
     transcriptStatus: text("transcript_status").notNull().default("NONE"),
