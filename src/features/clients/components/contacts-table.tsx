@@ -170,6 +170,7 @@ export function ContactsTable({ costCenterId, contacts }: ContactsTableProps) {
       },
       {
         accessorKey: "isActive",
+        enableGlobalFilter: false,
         header: "Estado",
         cell: ({ row }) => {
           const active = row.getValue<boolean>("isActive");
@@ -238,7 +239,7 @@ export function ContactsTable({ costCenterId, contacts }: ContactsTableProps) {
         <DataTable
           columns={columns}
           data={contacts}
-          searchPlaceholder="Buscar contacto..."
+          searchPlaceholder="Buscar por nombre, rol, teléfono o correo..."
           extraActions={
             <Button
               onClick={handleOpenCreate}

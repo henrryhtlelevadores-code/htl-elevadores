@@ -155,7 +155,7 @@ export function CostCentersTable({
               title="Gestionar sede"
             >
               <IconBuildingSkyscraper className="size-4 text-[#0066CC] shrink-0" />
-              <span className="font-semibold truncate">{row.getValue("name")}</span>
+              <span className="font-semibold leading-snug whitespace-normal break-words">{row.getValue("name")}</span>
             </button>
           );
         },
@@ -164,13 +164,14 @@ export function CostCentersTable({
         accessorKey: "address",
         header: "Dirección",
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground max-w-[240px] truncate block">
+          <span className="block max-w-[280px] whitespace-normal break-words text-xs text-muted-foreground">
             {row.getValue<string>("address")}
           </span>
         ),
       },
       {
         accessorKey: "ubigeoId",
+        enableGlobalFilter: false,
         header: "Distrito",
         cell: ({ row }) => {
           const ubigeoId = row.getValue<string | null>("ubigeoId");
@@ -279,7 +280,8 @@ export function CostCentersTable({
       <DataTable
         columns={columns}
         data={costCenters}
-        searchPlaceholder="Buscar por sede o dirección..."
+        searchPlaceholder="Buscar por sede, dirección o distrito..."
+        getSearchText={(center) => (center.ubigeoId ? distritoFor[center.ubigeoId] : null)}
         extraActions={
           <Button
             onClick={handleOpenCreate}
@@ -298,14 +300,14 @@ export function CostCentersTable({
             <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <button type="button" onClick={() => onSelectCostCenter?.(center)} className="flex items-center gap-2 text-left hover:text-[#0066CC]">
-                    <IconBuildingSkyscraper className="size-4 text-[#0066CC] shrink-0" />
-                    <span className="truncate text-sm font-semibold">{center.name}</span>
+                  <button type="button" onClick={() => onSelectCostCenter?.(center)} className="flex items-start gap-2 text-left hover:text-[#0066CC]">
+                    <IconBuildingSkyscraper className="mt-0.5 size-4 shrink-0 text-[#0066CC]" />
+                    <span className="min-w-0 break-words text-sm font-semibold leading-snug">{center.name}</span>
                   </button>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{center.address || "Sin dirección"}</p>
-                  <p className="truncate text-xs text-muted-foreground">{ubigeoLabel}</p>
+                  <p className="mt-1 break-words text-xs text-muted-foreground">{center.address || "Sin dirección"}</p>
+                  <p className="break-words text-xs text-muted-foreground">{ubigeoLabel}</p>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => onSelectCostCenter?.(center)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
+                <Button size="sm" variant="outline" onClick={() => onSelectCostCenter?.(center)} className="h-9 min-w-11 shrink-0 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
                   Gestionar
                   <IconChevronRight className="size-3.5" />
                 </Button>

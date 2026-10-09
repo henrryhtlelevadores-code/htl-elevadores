@@ -242,6 +242,7 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
       },
       {
         accessorKey: "cost_centers_count",
+        enableGlobalFilter: false,
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -329,14 +330,14 @@ export function ClientsTable({ clients, ubigeos, onSelectClient }: ClientsTableP
             <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="size-3.5 text-[#0066CC] shrink-0" />
-                    <span className="truncate text-sm font-semibold">{item.legalName}</span>
+                  <div className="flex items-start gap-2">
+                    <Building2 className="mt-0.5 size-3.5 shrink-0 text-[#0066CC]" />
+                    <span className="min-w-0 break-words text-sm font-semibold leading-snug">{item.legalName}</span>
                   </div>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{item.taxId || "Sin RUC"}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.billingEmail || "—"}</p>
+                  <p className="mt-1 break-words text-xs text-muted-foreground">{item.taxId || "Sin RUC"}</p>
+                  <p className="break-all text-xs text-muted-foreground">{item.billingEmail || "—"}</p>
                 </div>
-                <Button size="xs" variant="outline" onClick={() => onSelectClient(item)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
+                <Button size="xs" variant="outline" onClick={() => onSelectClient(item)} className="h-9 min-w-11 shrink-0 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
                   <Eye className="size-3" />
                   Ver Detalle
                 </Button>

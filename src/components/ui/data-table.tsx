@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { matchesSearch, normalizeSearchText } from "@/lib/search";
 import {
   ChevronLeft,
   ChevronRight,
@@ -44,6 +45,8 @@ interface DataTableProps<TData, TValue> {
   hideSearch?: boolean;
   emptyState?: React.ReactNode;
   mobileCard?: (row: Row<TData>) => React.ReactNode;
+  /** Texto extra que encuentra el buscador, p. ej. el nombre de un distrito cuya columna guarda solo el id. */
+  getSearchText?: (row: TData) => string | null | undefined;
 }
 
 // Fondos opacos de las columnas fijas. Reproducen el color que resulta de
@@ -144,11 +147,38 @@ export function DataTable<TData, TValue>({
   hideSearch = false,
   emptyState,
   mobileCard,
+  getSearchText,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = React.useState<string>("");
   const [rowSelection, setRowSelection] = React.useState({});
+
+  // Texto buscable de cada fila, armado una vez por fila: TanStack evalúa el
+  // filtro global columna por columna, pero aquí se decide por fila completa.
+  const searchTextCache = React.useMemo(
+    () => new WeakMap<Row<TData>, string>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- se vacía cuando cambian los datos o las columnas
+    [data, columns, getSearchText]
+  );
+  const rowSearchText = React.useCallback(
+    (row: Row<TData>) => {
+      let text = searchTextCache.get(row);
+      if (text === undefined) {
+        const parts = row
+          .getAllCells()
+          .filter((cell) => cell.column.getCanGlobalFilter())
+          .map((cell) => cell.getValue())
+          .filter((value) => typeof value === "string" || typeof value === "number");
+        const extra = getSearchText?.(row.original);
+        if (extra) parts.push(extra);
+        text = normalizeSearchText(parts.join(" "));
+        searchTextCache.set(row, text);
+      }
+      return text;
+    },
+    [searchTextCache, getSearchText]
+  );
 
   const table = useReactTable({
     data,
@@ -163,6 +193,13 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
+    // Por defecto TanStack decide qué columnas se buscan mirando solo la
+    // primera fila: si al primer cliente le falta el correo, nunca se podía
+    // buscar por correo. Aquí cuentan todas las columnas con dato, salvo las
+    // que declaran `enableGlobalFilter: false`.
+    getColumnCanGlobalFilter: () => true,
+    globalFilterFn: (row, _columnId, filterValue) =>
+      matchesSearch(rowSearchText(row), String(filterValue ?? "")),
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),

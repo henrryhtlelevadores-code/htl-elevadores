@@ -151,7 +151,7 @@ export function ClientUnifiedView({
               Clientes
             </button>
             <IconChevronRight className="size-3 shrink-0" />
-            <span className="text-foreground font-semibold truncate max-w-[160px] sm:max-w-[320px]">
+            <span className="text-foreground font-semibold truncate max-w-[160px] sm:max-w-[320px]" title={selectedClient.legalName}>
               {toTitleCase(selectedClient.legalName)}
             </span>
           </div>

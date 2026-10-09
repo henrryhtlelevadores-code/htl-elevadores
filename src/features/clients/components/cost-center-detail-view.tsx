@@ -137,7 +137,7 @@ export function CostCenterDetailView({
               <IconBuildingSkyscraper className="size-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground truncate">
+              <h2 className="text-lg sm:text-xl font-bold leading-tight tracking-tight text-foreground break-words">
                 {toTitleCase(costCenter.name)}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
