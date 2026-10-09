@@ -9,6 +9,8 @@ import {
   type ReportElevator,
   type ReportElevatorTask,
   type ReportPhoto,
+  type ReportAudio,
+  updateAudioTranscript,
   updateElevatorFinding,
   updateWorkOrderClosingNotes,
   updateTaskObservation,
@@ -1096,22 +1098,21 @@ function ElevatorReviewCard({
               <Mic className="size-3.5" />
               Notas de voz ({elevator.audios.length})
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Solo para revisión interna: el cliente no ve los audios ni las transcripciones, solo el texto de
+              Hallazgos aprobado.
+            </p>
             <div className="space-y-2">
               {elevator.audios.map((audio, index) => (
-                <div key={audio.id} className="rounded-lg border border-border bg-background p-2.5">
-                  <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span className="font-semibold">Nota {index + 1}</span>
-                    <span>{formatClipLength(audio.durationMs)}</span>
-                  </div>
-                  {audio.url ? (
-                    <audio controls preload="none" src={audio.url} className="h-9 w-full" />
-                  ) : (
-                    <p className="text-xs italic text-muted-foreground">No se pudo cargar el audio.</p>
-                  )}
-                  {audio.transcript && (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed">“{audio.transcript}”</p>
-                  )}
-                </div>
+                <AudioNoteEditor
+                  key={audio.id}
+                  audio={audio}
+                  index={index}
+                  readOnly={readOnly}
+                  onUseInFindings={(text) =>
+                    onFindingChange(finding.trim() ? `${finding.trim()}\n${text}` : text)
+                  }
+                />
               ))}
             </div>
           </div>
@@ -1147,6 +1148,87 @@ function ElevatorReviewCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Nota de voz en la revisión del informe: se escucha, se corrige o escribe
+ * su transcripción y se puede pasar a Hallazgos, que es lo único que llega
+ * al cliente.
+ */
+function AudioNoteEditor({
+  audio,
+  index,
+  readOnly,
+  onUseInFindings,
+}: {
+  audio: ReportAudio;
+  index: number;
+  readOnly: boolean;
+  onUseInFindings: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(audio.transcript ?? "");
+  const [saved, setSaved] = useState(audio.transcript ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = draft.trim() !== saved.trim();
+
+  async function save() {
+    setSaving(true);
+    const res = await updateAudioTranscript(audio.id, draft);
+    setSaving(false);
+    if (res.success) {
+      setSaved(draft.trim());
+      toast.success("Transcripción guardada");
+    } else {
+      toast.error("No se pudo guardar", { description: res.error });
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span className="font-semibold">Nota {index + 1}</span>
+        <span>{formatClipLength(audio.durationMs)}</span>
+      </div>
+      {audio.url ? (
+        <audio controls preload="none" src={audio.url} className="h-9 w-full" />
+      ) : (
+        <p className="text-xs italic text-muted-foreground">No se pudo cargar el audio.</p>
+      )}
+      <Textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={readOnly}
+        rows={2}
+        maxLength={4000}
+        placeholder={readOnly ? "Sin transcripción." : "Escribe o corrige la transcripción de esta nota…"}
+        className="bg-card border-border text-xs leading-relaxed focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+      />
+      {!readOnly && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={!draft.trim()}
+            onClick={() => onUseInFindings(draft.trim())}
+            className="text-xs"
+          >
+            Agregar a Hallazgos
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            disabled={!dirty || saving}
+            onClick={save}
+            className="text-xs bg-[#0066CC] hover:bg-[#0055AA] text-white"
+          >
+            {saving && <Loader2 className="size-3 animate-spin" />}
+            Guardar transcripción
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

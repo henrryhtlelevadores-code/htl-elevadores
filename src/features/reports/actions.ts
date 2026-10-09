@@ -458,6 +458,39 @@ export async function updateElevatorFinding(
   }
 }
 
+/**
+ * El administrador corrige o escribe la transcripción de una nota de voz.
+ * Es material interno: el portal del cliente nunca muestra audios ni
+ * transcripciones, solo el texto de Hallazgos aprobado.
+ */
+export async function updateAudioTranscript(audioId: string, transcript: string): Promise<ActionResult> {
+  const denied = await denyUnless("reports:write");
+  if (denied) return denied;
+  try {
+    const [audio] = await db
+      .select({ workOrderId: workOrderElevators.workOrderId })
+      .from(workOrderElevatorAudios)
+      .innerJoin(workOrderElevators, eq(workOrderElevators.id, workOrderElevatorAudios.workOrderElevatorId))
+      .where(eq(workOrderElevatorAudios.id, audioId))
+      .limit(1);
+    if (!audio) return { success: false, error: "La nota de voz ya no existe." };
+    if (!(await isWorkOrderEditable(audio.workOrderId))) {
+      return { success: false, error: "La OT aprobada ya no admite cambios." };
+    }
+    const text = transcript.trim().slice(0, 4000);
+    await db
+      .update(workOrderElevatorAudios)
+      .set({ transcript: text || null, transcriptStatus: text ? "DONE" : "NONE" })
+      .where(eq(workOrderElevatorAudios.id, audioId));
+
+    revalidatePath("/reports");
+    return { success: true, message: "Transcripción guardada." };
+  } catch (error) {
+    console.error("Error al guardar la transcripción:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function updateWorkOrderClosingNotes(
   workOrderId: string,
   closingNotes: string

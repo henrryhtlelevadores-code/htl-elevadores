@@ -19,7 +19,9 @@ import {
   workOrderElevators,
   workOrders,
 } from "@/db";
-import { getCompletedWorkOrders } from "@/features/reports/actions";
+import { eq } from "drizzle-orm";
+import { getCompletedWorkOrders, updateAudioTranscript } from "@/features/reports/actions";
+import { getPortalWorkOrderDocument } from "@/features/portal/queries";
 import { resetRequest } from "./helpers/request";
 import { createCostCenter, createUser, loginAs } from "./helpers/fixtures";
 
@@ -62,7 +64,7 @@ async function completedOrderWithEvidence() {
     durationMs: 12_000,
     createdAt: Math.floor(Date.now() / 1000),
   });
-  return { workOrderId, audioId };
+  return { workOrderId, audioId, costCenterId: center.id };
 }
 
 beforeEach(async () => {
@@ -81,5 +83,29 @@ describe("informes", () => {
     expect(elevator?.audios).toHaveLength(1);
     expect(elevator?.audios[0]).toMatchObject({ id: audioId, durationMs: 12_000, transcriptStatus: "NONE" });
     expect(elevator?.audios[0]?.url).toMatch(/^https:\/\/signed\.example\/work-orders\//);
+  });
+
+  it("el administrador corrige la transcripción", async () => {
+    const { audioId } = await completedOrderWithEvidence();
+    expect(await updateAudioTranscript(audioId, "  Se cambió el freno  ")).toMatchObject({ success: true });
+    const [row] = await db.select().from(workOrderElevatorAudios).where(eq(workOrderElevatorAudios.id, audioId));
+    expect(row).toMatchObject({ transcript: "Se cambió el freno", transcriptStatus: "DONE" });
+
+    expect(await updateAudioTranscript(audioId, "   ")).toMatchObject({ success: true });
+    const [cleared] = await db.select().from(workOrderElevatorAudios).where(eq(workOrderElevatorAudios.id, audioId));
+    expect(cleared).toMatchObject({ transcript: null, transcriptStatus: "NONE" });
+  });
+
+  it("el portal del cliente nunca recibe audios ni transcripciones", async () => {
+    const { workOrderId, audioId, costCenterId } = await completedOrderWithEvidence();
+    await updateAudioTranscript(audioId, "TEXTO-INTERNO-DEL-AUDIO");
+    await db.update(workOrders).set({ approvalStatus: "APPROVED" }).where(eq(workOrders.id, workOrderId));
+
+    const doc = await getPortalWorkOrderDocument(costCenterId, workOrderId);
+    expect(doc).not.toBeNull();
+    const json = JSON.stringify(doc);
+    expect(json).not.toMatch(/audio/i);
+    expect(json).not.toContain("TEXTO-INTERNO-DEL-AUDIO");
+    expect(json).toContain("Desgaste en la guía de cabina");
   });
 });
