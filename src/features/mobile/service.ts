@@ -598,6 +598,29 @@ export async function addAudio(technicianId: string, elevatorId: string, form: F
   return "Audio agregado.";
 }
 
+export async function removeAudio(technicianId: string, audioId: string) {
+  const id = requireUuid(audioId, "El audio");
+  const [audio] = await db
+    .select({
+      id: workOrderElevatorAudios.id,
+      key: workOrderElevatorAudios.key,
+      elevatorId: workOrderElevatorAudios.workOrderElevatorId,
+    })
+    .from(workOrderElevatorAudios)
+    .where(eq(workOrderElevatorAudios.id, id))
+    .limit(1);
+  // Ya no existe: el borrado repetido se da por bueno.
+  if (!audio) return "El audio ya no existe.";
+
+  const elevator = await ownedElevator(technicianId, audio.elevatorId);
+  if (elevator.workOrderStatus === "COMPLETED") throw invalid("La orden ya fue completada.");
+
+  await db.delete(workOrderElevatorAudios).where(eq(workOrderElevatorAudios.id, audio.id));
+  await deletePrivatePdf(audio.key).catch(() => undefined);
+  revalidatePanel();
+  return "Audio eliminado.";
+}
+
 // ==========================================
 // Cierre
 // ==========================================

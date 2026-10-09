@@ -50,6 +50,7 @@ import { POST as completeElevator } from "@/app/api/mobile/v1/elevators/[id]/com
 import { POST as addPhoto } from "@/app/api/mobile/v1/elevators/[id]/photos/route";
 import { POST as addAudio } from "@/app/api/mobile/v1/elevators/[id]/audios/route";
 import { DELETE as deletePhoto } from "@/app/api/mobile/v1/photos/[id]/route";
+import { DELETE as deleteAudio } from "@/app/api/mobile/v1/audios/[id]/route";
 import { getSessionUser } from "@/features/auth/server";
 import { SESSION_COOKIE } from "@/features/auth/session";
 import { changeUserPassword } from "@/features/users/actions";
@@ -409,6 +410,28 @@ describe("fotos y audios", () => {
 
     const notAudio = await addAudio(formRequest({ id: randomUUID() }, JPEG, "nota.m4a"), params(order.elevatorId));
     expect(notAudio.status).toBe(422);
+  });
+
+  it("elimina una nota de voz y da por bueno el borrado repetido", async () => {
+    const order = await startedOrder();
+    const audioId = randomUUID();
+    await addAudio(formRequest({ id: audioId, durationMs: "1500" }, M4A, "nota.m4a"), params(order.elevatorId));
+
+    expect((await deleteAudio(new Request(url), params(audioId))).status).toBe(200);
+    expect(await db.select().from(workOrderElevatorAudios).where(eq(workOrderElevatorAudios.id, audioId))).toHaveLength(0);
+    expect((await deleteAudio(new Request(url), params(audioId))).status).toBe(200); // ya no existe
+    expect((await deleteAudio(new Request(url), params("no-es-uuid"))).status).toBe(422);
+  });
+
+  it("no deja borrar la nota de voz de otro técnico", async () => {
+    const order = await startedOrder();
+    const audioId = randomUUID();
+    await addAudio(formRequest({ id: audioId, durationMs: "1500" }, M4A, "nota.m4a"), params(order.elevatorId));
+
+    const other = await createUser({ permissions: TECHNICIAN });
+    await signIn(other.email);
+    expect((await deleteAudio(new Request(url), params(audioId))).status).toBe(404);
+    expect(await db.select().from(workOrderElevatorAudios).where(eq(workOrderElevatorAudios.id, audioId))).toHaveLength(1);
   });
 });
 
