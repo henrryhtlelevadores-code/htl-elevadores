@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -17,6 +17,8 @@ import {
   Trash2,
   CalendarDays,
   List,
+  SlidersHorizontal,
+  X,
   CalendarClock,
   Clock,
   CheckSquare,
@@ -140,6 +142,16 @@ function toISO(d: Date): string {
   return `${y}-${m}-${da}`;
 }
 
+/** Lunes a domingo de la semana actual, en ISO. */
+function getWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const mondayIndex = (now.getDay() + 6) % 7;
+  const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayIndex);
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 6);
+  return { start: toISO(startDate), end: toISO(endDate) };
+}
+
 function formatShortDate(date: string | null): string {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return "—";
   const [y, m, d] = date.split("-").map(Number);
@@ -192,6 +204,20 @@ export function WorkOrdersCalendar({
   const [viewingDay, setViewingDay] = useState<{ iso: string; label: string } | null>(null);
   const [deletingWorkOrder, setDeletingWorkOrder] = useState<WorkOrderWithRelations | null>(null);
   const [technicianFilter, setTechnicianFilter] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [weekFilter, setWeekFilter] = useState(false);
+  const [dayFilter, setDayFilter] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
+  const [costCenterFilter, setCostCenterFilter] = useState("");
+  const [serviceTypeFilter, setServiceTypeFilter] = useState("");
+
+  // En móvil la vista por defecto debe ser "Lista", no el calendario.
+  // Se ajusta tras el montaje para evitar mismatch en la hidratación SSR.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setView("list");
+    }
+  }, []);
 
   const form = useForm<WorkOrderFormValues>({
     resolver: zodResolver(workOrderFormSchema),
@@ -234,6 +260,74 @@ export function WorkOrdersCalendar({
       : initialWorkOrders.filter((workOrder) => workOrder.technicianId === technicianFilter),
     [initialWorkOrders, technicianFilter]
   );
+
+  const activeFilterCount =
+    (weekFilter ? 1 : 0) +
+    (dayFilter ? 1 : 0) +
+    (clientFilter ? 1 : 0) +
+    (costCenterFilter ? 1 : 0) +
+    (serviceTypeFilter ? 1 : 0);
+
+  const clientCostCenters = useMemo(() => {
+    if (!clientFilter) return formData.costCenters;
+    return formData.costCenters.filter((cc) => cc.clientId === clientFilter);
+  }, [clientFilter, formData.costCenters]);
+
+  const listWorkOrders = useMemo(() => {
+    const week = getWeekRange();
+    const clientCcIds = clientFilter
+      ? new Set(clientCostCenters.map((cc) => cc.id))
+      : null;
+    return filteredWorkOrders.filter((wo) => {
+      if (dayFilter && wo.scheduledDate !== dayFilter) return false;
+      if (
+        weekFilter &&
+        (!wo.scheduledDate || wo.scheduledDate < week.start || wo.scheduledDate > week.end)
+      ) {
+        return false;
+      }
+      if (costCenterFilter && wo.costCenterId !== costCenterFilter) return false;
+      if (clientFilter && !clientCcIds?.has(wo.costCenterId)) return false;
+      if (serviceTypeFilter && wo.serviceTypeId !== serviceTypeFilter) return false;
+      return true;
+    });
+  }, [
+    filteredWorkOrders,
+    dayFilter,
+    weekFilter,
+    clientFilter,
+    clientCostCenters,
+    costCenterFilter,
+    serviceTypeFilter,
+  ]);
+
+  function handleClientFilterChange(clientId: string) {
+    setClientFilter(clientId);
+    if (
+      costCenterFilter &&
+      !formData.costCenters.some((cc) => cc.id === costCenterFilter && cc.clientId === clientId)
+    ) {
+      setCostCenterFilter("");
+    }
+  }
+
+  function toggleWeekFilter() {
+    setWeekFilter((v) => !v);
+    setDayFilter("");
+  }
+
+  function handleDayFilterChange(iso: string) {
+    setDayFilter(iso);
+    setWeekFilter(false);
+  }
+
+  function clearListFilters() {
+    setWeekFilter(false);
+    setDayFilter("");
+    setClientFilter("");
+    setCostCenterFilter("");
+    setServiceTypeFilter("");
+  }
 
   const woByDayKey = useMemo(() => {
     const map = new Map<string, WorkOrderWithRelations[]>();
@@ -461,7 +555,6 @@ export function WorkOrdersCalendar({
         header: () => <div className="text-right">Acciones</div>,
         cell: ({ row }) => {
           const workOrder = row.original;
-          const canStart = workOrder.status === "PENDING";
           const inProgress = workOrder.status === "IN_PROGRESS";
           const notCompleted = workOrder.status !== "COMPLETED" && workOrder.status !== "CANCELLED";
           return (
@@ -475,17 +568,6 @@ export function WorkOrdersCalendar({
                 <Eye className="size-3" />
                 Detalle
               </Button>
-              {canStart && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => handleStatusChange(workOrder, "IN_PROGRESS")}
-                  className="h-7 px-2.5 text-xs font-semibold gap-1.5 shadow-2xs"
-                >
-                  <Loader2 className="size-3" />
-                  Iniciar
-                </Button>
-              )}
               {inProgress && (
                 <Button
                   variant="outline"
@@ -545,7 +627,7 @@ export function WorkOrdersCalendar({
           <button
             type="button"
             onClick={() => setView("calendar")}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`hidden md:inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
               view === "calendar"
                 ? "bg-[#0066CC] text-white"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -579,7 +661,7 @@ export function WorkOrdersCalendar({
         </div>
       </div>
 
-      {view === "calendar" ? (
+      <div className={view === "calendar" ? "hidden md:block" : "hidden"}>
         <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
           {/* Navegación de mes */}
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -705,13 +787,131 @@ export function WorkOrdersCalendar({
             })}
           </div>
         </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={filteredWorkOrders}
-          searchPlaceholder="Buscar por N° OT, cliente, centro de costo o técnico..."
-        />
-      )}
+        </div>
+        <div className={view === "list" ? "" : "md:hidden"}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen((o) => !o)}
+              className="h-8 gap-1.5 text-xs font-semibold"
+            >
+              <SlidersHorizontal className="size-3.5" />
+              {filtersOpen ? "Ocultar filtros" : "Mostrar filtros"}
+              {activeFilterCount > 0 && (
+                <span className="inline-flex size-4 items-center justify-center rounded-full bg-[#0066CC] text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {filtersOpen && (
+            <div className="space-y-3 rounded-xl border border-border bg-card p-3 shadow-xs">
+              {/* Rango / tiempo */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-full text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:w-auto">
+                  Rango
+                </span>
+                <Button
+                  variant={weekFilter ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleWeekFilter}
+                  className={`text-xs h-8 ${weekFilter ? "bg-[#0066CC] text-white font-semibold" : ""}`}
+                >
+                  Esta semana
+                </Button>
+                <div className="w-44">
+                  <DatePicker
+                    value={dayFilter}
+                    onChange={handleDayFilterChange}
+                    className="text-xs"
+                    placeholder="Día específico"
+                  />
+                </div>
+              </div>
+
+              {/* Cliente y centro de costo encadenados */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Cliente
+                  </span>
+                  <SearchableSelect
+                    items={formData.clients}
+                    value={clientFilter}
+                    onValueChange={handleClientFilterChange}
+                    getLabel={(c) => c.legalName}
+                    getValue={(c) => c.id}
+                    placeholder="Todos los clientes"
+                    searchPlaceholder="Buscar cliente..."
+                    emptyText="Sin clientes"
+                    allowClear
+                    clearLabel="Todos los clientes"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Centro de costo
+                  </span>
+                  <SearchableSelect
+                    items={clientCostCenters}
+                    value={costCenterFilter}
+                    onValueChange={setCostCenterFilter}
+                    getLabel={(cc) => `${cc.name}${clientFilter ? "" : ` — ${cc.client_name}`}`}
+                    getValue={(cc) => cc.id}
+                    getKeywords={(cc) => cc.client_name}
+                    placeholder={clientFilter ? "Todas las sedes del cliente" : "Todas las sedes"}
+                    searchPlaceholder="Buscar sede..."
+                    emptyText="Sin sedes"
+                    allowClear
+                    clearLabel={clientFilter ? "Todas las sedes del cliente" : "Todas las sedes"}
+                  />
+                </div>
+              </div>
+
+              {/* Tipo de servicio */}
+              <div className="space-y-1.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Tipo de servicio
+                </span>
+                <SearchableSelect
+                  items={formData.serviceTypes}
+                  value={serviceTypeFilter}
+                  onValueChange={setServiceTypeFilter}
+                  getLabel={(s) => `${s.name} (${s.code})`}
+                  getValue={(s) => s.id}
+                  placeholder="Todos los tipos"
+                  searchPlaceholder="Buscar tipo de servicio..."
+                  emptyText="Sin tipos"
+                  allowClear
+                  clearLabel="Todos los tipos"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearListFilters}
+                  disabled={activeFilterCount === 0}
+                  className="gap-1.5 text-xs"
+                >
+                  <X className="size-3.5" />
+                  Limpiar filtros
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DataTable
+            columns={columns}
+            data={listWorkOrders}
+            searchPlaceholder="Buscar por N° OT, cliente, centro de costo o técnico..."
+          />
+        </div>
+        </div>
 
       {/* Dialog: Crear Orden de Trabajo */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>

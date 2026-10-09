@@ -647,42 +647,55 @@ export function InformesView({
           showCloseButton={false}
           className="bg-card border-border sm:max-w-[820px] text-foreground shadow-lg max-h-[92dvh] overflow-y-auto"
         >
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
-            {viewing && viewing.approvalStatus !== "PENDING" && (
-              <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                Aprobada
-              </span>
-            )}
-            {viewing && viewing.approvalStatus === "PENDING" && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setApprovalDate(Date.now());
-                  setApprovalOpen(true);
-                }}
-              >
-                Aprobar y publicar
-              </Button>
-            )}
-            <button
-              onClick={() => setViewingId(null)}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeft className="size-3" />
-              Cerrar
-            </button>
-          </div>
-
           {viewing && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base font-bold flex items-center gap-2">
-                  <ClipboardList className="size-4 text-[#0066CC]" />
-                  {viewing.otNumber}
-                  <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                    Completada
-                  </span>
-                </DialogTitle>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  {/* Fila 1 (móvil): título + botón cerrar */}
+                  <div className="flex items-center justify-between w-full gap-2 md:w-auto">
+                    <DialogTitle className="flex min-w-0 items-center gap-2 text-base font-bold">
+                      <ClipboardList className="size-4 shrink-0 text-[#0066CC]" />
+                      <span className="truncate">{viewing.otNumber}</span>
+                    </DialogTitle>
+                    <button
+                      onClick={() => setViewingId(null)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground md:hidden"
+                    >
+                      <ChevronLeft className="size-3" />
+                      Cerrar
+                    </button>
+                  </div>
+
+                  {/* Fila 2 (móvil): badges de estado */}
+                  <div className="flex flex-wrap items-center gap-2 mt-1 md:mt-0">
+                    {viewing.approvalStatus !== "PENDING" && (
+                      <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                        Aprobada
+                      </span>
+                    )}
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                      Completada
+                    </span>
+                    {viewing.approvalStatus === "PENDING" && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setApprovalDate(Date.now());
+                          setApprovalOpen(true);
+                        }}
+                      >
+                        Aprobar y publicar
+                      </Button>
+                    )}
+                    <button
+                      onClick={() => setViewingId(null)}
+                      className="hidden items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:text-foreground md:inline-flex"
+                    >
+                      <ChevronLeft className="size-3" />
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
                 <DialogDescription className="text-xs text-muted-foreground">
                   {viewing.client_name} — {viewing.cost_center_name}
                   {viewing.technician_name
