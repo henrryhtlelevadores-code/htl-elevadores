@@ -28,8 +28,8 @@ import {
   type ContractFormValues,
   type ContractElevatorFormValues,
 } from "./schema";
-import { eq, asc, desc, isNull, isNotNull, and, or, gte, inArray } from "drizzle-orm";
-import { preventiveRouteStops, workOrders, workOrderElevators } from "@/db/index";
+import { eq, asc, desc, isNull, isNotNull, and } from "drizzle-orm";
+import { cancelContractRecords } from "./cancel";
 
 export type ContractWithRelations = Contract & {
   cost_center_name?: string | null;
@@ -218,71 +218,14 @@ export async function cancelContract(id: string) {
   if (denied) return denied;
   try {
     const now = Math.floor(Date.now() / 1000);
-
-    const elevatorRows = await db
-      .select({
-        id: contractElevators.id,
-        elevatorUnityId: contractElevators.elevatorUnityId,
-      })
-      .from(contractElevators)
-      .where(eq(contractElevators.contractId, id));
-
-    const ceIds = elevatorRows.map((r) => r.id);
-    const elevatorIds = elevatorRows.map((r) => r.elevatorUnityId);
-
-    if (ceIds.length > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-
-      const [prev] = await db
-        .select({ id: serviceTypes.id })
-        .from(serviceTypes)
-        .where(eq(serviceTypes.code, "PREV"))
-        .limit(1);
-      const prevServiceTypeId = prev?.id;
-
-      const typeFilter = prevServiceTypeId
-        ? or(eq(workOrders.serviceTypeId, prevServiceTypeId), eq(serviceTypes.code, "PREV"))
-        : eq(serviceTypes.code, "PREV");
-
-      const futurePending = await db
-        .select({ id: workOrders.id })
-        .from(workOrders)
-        .innerJoin(workOrderElevators, eq(workOrderElevators.workOrderId, workOrders.id))
-        .where(
-          and(
-            inArray(workOrderElevators.elevatorUnityId, elevatorIds),
-            eq(workOrders.status, "PENDING"),
-            gte(workOrders.scheduledDate, today),
-            isNull(workOrders.deletedAt),
-            typeFilter
-          )
-        );
-
-      const pendingIds = [...new Set(futurePending.map((r) => r.id))];
-      if (pendingIds.length > 0) {
-        await db
-          .update(workOrders)
-          .set({ deletedAt: now })
-          .where(inArray(workOrders.id, pendingIds));
-      }
-
-      await db
-        .delete(preventiveRouteStops)
-        .where(inArray(preventiveRouteStops.contractElevatorId, ceIds));
-      await db.delete(contractElevators).where(inArray(contractElevators.id, ceIds));
-    }
-
-    await db
-      .update(contracts)
-      .set({ status: "CANCELLED", deletedAt: now })
-      .where(eq(contracts.id, id));
+    const { unlinkedElevators: n } = await db.transaction((tx) => cancelContractRecords(tx, id, now));
 
     revalidatePath("/contracts");
     revalidatePath("/routes");
     revalidatePath("/work-orders");
     return {
       success: true,
-      message: `Contrato anulado. ${ceIds.length} ${ceIds.length === 1 ? "equipo desvinculado" : "equipos desvinculados"}`,
+      message: `Contrato anulado. ${n} ${n === 1 ? "equipo desvinculado" : "equipos desvinculados"}`,
     };
   } catch (error) {
     console.error("Error al anular contrato:", error);
