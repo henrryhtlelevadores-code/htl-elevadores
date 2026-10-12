@@ -41,6 +41,8 @@ export function stripBlankProducts<T extends { products?: unknown[] }>(lines: T[
 
 const quotationLineSchema = z.object({
   elevatorUnityId: z.string().optional().or(z.literal("")),
+  /** Tipo de servicio de la línea (opcional). Si tiene precio, se propone en modo manual. */
+  serviceTypeId: z.string().optional().or(z.literal("")),
   description: z
     .string()
     .min(2, "La descripción es obligatoria")
@@ -56,30 +58,49 @@ const quotationLineSchema = z.object({
   overridePrice: z.boolean().default(false),
   lineOverridePrice: nonNegativeNumber("El precio final"),
   lineOverrideReason: z.string().max(200, "Máximo 200 caracteres").optional().or(z.literal("")),
+  /** Descuento propio de la línea, sobre su precio final con IGV. */
+  discountMode: z.enum(["NONE", "PERCENT", "AMOUNT"]).default("NONE"),
+  discountValue: z
+    .string()
+    .optional()
+    .refine((v) => !v || Number(v) >= 0, { message: "El descuento no puede ser negativo" }),
   products: z.array(quotationProductSchema),
 });
 
 const hasMeaningfulProducts = (line: { products: z.infer<typeof quotationProductSchema>[] }) =>
   line.products.some((p) => p.description.trim() !== "" && Number(p.unitCost) > 0);
 
-export const quotationFormSchema = z
-  .object({
-    clientId: z.string().min(1, "El cliente es obligatorio"),
-    costCenterId: z.string().optional().or(z.literal("")),
-    advisorId: z.string().optional().or(z.literal("")),
-    issueDate: z.string().min(1, "La fecha de emisión es obligatoria"),
-    validUntil: z.string().min(1, "La fecha de validez es obligatoria"),
-    status: z.string().optional().or(z.literal("")),
-    discountMode: z.enum(["PERCENT", "AMOUNT", "FINAL"]).default("PERCENT"),
-    discountRate: nonNegativeNumber("El descuento"),
-    discountAmount: nonNegativeNumber("El monto del descuento"),
-    targetTotal: nonNegativeNumber("El precio final"),
-    targetTotalIncludesIgv: z.boolean().default(true),
-    showTaxBreakdown: z.boolean().default(true),
-    closeMessage: z.string().max(5000, "El mensaje de cierre es demasiado largo").optional().or(z.literal("")),
-    lines: z.array(quotationLineSchema).min(1, "Agrega al menos un equipo o servicio"),
-  })
-  .superRefine((data, ctx) => {
+const quotationBaseSchema = z.object({
+  clientId: z.string().min(1, "El cliente es obligatorio"),
+  costCenterId: z.string().optional().or(z.literal("")),
+  advisorId: z.string().optional().or(z.literal("")),
+  issueDate: z.string().min(1, "La fecha de emisión es obligatoria"),
+  validUntil: z.string().min(1, "La fecha de validez es obligatoria"),
+  status: z.string().optional().or(z.literal("")),
+  discountMode: z.enum(["PERCENT", "AMOUNT", "FINAL"]).default("PERCENT"),
+  discountRate: nonNegativeNumber("El descuento"),
+  discountAmount: nonNegativeNumber("El monto del descuento"),
+  targetTotal: nonNegativeNumber("El precio final"),
+  targetTotalIncludesIgv: z.boolean().default(true),
+  showTaxBreakdown: z.boolean().default(true),
+  closeMessage: z.string().max(5000, "El mensaje de cierre es demasiado largo").optional().or(z.literal("")),
+  // Una cotización nace sin líneas (se agregan en su detalle); emitirla sí exige al menos una.
+  lines: z.array(quotationLineSchema),
+});
+
+/** Datos generales: lo único que edita el popup de crear / editar. */
+export const quotationHeaderSchema = quotationBaseSchema.pick({
+  clientId: true,
+  costCenterId: true,
+  advisorId: true,
+  issueDate: true,
+  validUntil: true,
+  status: true,
+});
+
+export type QuotationHeaderValues = z.infer<typeof quotationHeaderSchema>;
+
+export const quotationFormSchema = quotationBaseSchema.superRefine((data, ctx) => {
     if (data.discountMode === "FINAL" && !(Number(data.targetTotal) > 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -97,6 +118,14 @@ export const quotationFormSchema = z
 
     data.lines.forEach((line, index) => {
       const linePath = (field: string) => ["lines", index, field];
+
+      if (line.discountMode === "PERCENT" && Number(line.discountValue) > 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: linePath("discountValue"),
+          message: "El descuento debe estar entre 0% y 100%",
+        });
+      }
 
       if (line.lineMode === "MANUAL_PRICE") {
         if (!(Number(line.manualPrice) > 0)) {

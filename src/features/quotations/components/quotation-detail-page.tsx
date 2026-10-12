@@ -1,11 +1,31 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ClipboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useForm, type FieldErrors } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { generateAndStoreQuotationPdf } from "../quotation-pdf-actions";
-import { issueQuotation, updateQuotationDocument, type QuotationDetail } from "../actions";
+import {
+  issueQuotation,
+  updateQuotation,
+  updateQuotationDocument,
+  type QuotationDetail,
+  type QuotationFormOptions,
+} from "../actions";
+import { quotationFormSchema, stripBlankProducts } from "../schema";
+import {
+  detailToValues,
+  money,
+  useQuotationSummary,
+  type QuotationFormInput,
+  type QuotationFormOutput,
+} from "./quotation-form-shared";
+import { QuotationLinesEditor } from "./quotation-lines-editor";
+import { QuotationDiscountEditor } from "./quotation-discount-editor";
+import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,9 +37,40 @@ import type { quotationImages } from "@/db/schema";
 
 type QuotationImage = InferSelectModel<typeof quotationImages>;
 
-function defaultWelcome(quotation: QuotationDetail) {
-  const service = quotation.lines[0]?.description || "servicio de mantenimiento";
-  return `Sr. ${quotation.client_name ?? "Cliente"}\n\nEstimados Señores:\n\nMediante la presente hacemos llegar nuestra cotización por ${service}.\n\nInformación Adicional del ${service}\n\n- Tareas realizadas 01\n- Tareas realizadas 02`;
+function defaultWelcome(clientName: string | null, firstLineDescription: string | undefined) {
+  const service = firstLineDescription?.trim() || "servicio de mantenimiento";
+  return `Sr. ${clientName ?? "Cliente"}\n\nEstimados Señores:\n\nMediante la presente hacemos llegar nuestra cotización por ${service}.\n\nInformación Adicional del ${service}\n\n- Tareas realizadas 01\n- Tareas realizadas 02`;
+}
+
+const TABS = [
+  { id: "documento", label: "Documento" },
+  { id: "lineas", label: "Líneas de Cotización" },
+  { id: "descuento", label: "Descuento" },
+  { id: "preview", label: "Vista previa" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+/** Primer error del formulario de líneas/descuento y el tab donde se corrige. */
+function firstPricingError(
+  errors: FieldErrors<QuotationFormInput>
+): { tab: TabId; message: string } {
+  const lineErrors = Array.isArray(errors.lines) ? errors.lines : [];
+  for (const [index, lineError] of lineErrors.entries()) {
+    if (!lineError) continue;
+    const entries = Object.entries(lineError as Record<string, { message?: string } | undefined>);
+    const [field, error] = entries.find(([, value]) => value?.message) ?? entries[0] ?? [];
+    return {
+      tab: field === "discountMode" || field === "discountValue" ? "descuento" : "lineas",
+      message: `Línea ${index + 1}: ${
+        error?.message ?? (field === "products" ? "revisa los materiales." : "revisa los datos.")
+      }`,
+    };
+  }
+  const headerError = [errors.discountRate, errors.discountAmount, errors.targetTotal].find(
+    (error) => error?.message
+  );
+  return { tab: "descuento", message: headerError?.message ?? "Revisa los datos antes de guardar." };
 }
 
 const DEFAULT_CLOSE_MESSAGE = "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios. Sin otro particular, me despido.";
@@ -27,13 +78,17 @@ const DEFAULT_CLOSE_MESSAGE = "Sabemos lo importante que es el funcionamiento de
 export function QuotationDetailPage({
   quotation,
   images,
+  options,
+  defaultHourlyCost,
 }: {
   quotation: QuotationDetail;
   images: QuotationImage[];
+  options: QuotationFormOptions;
+  defaultHourlyCost: number;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState("documento");
-  const [isPending, startTransition] = useTransition();
+  const [tab, setTab] = useState<TabId>("documento");
+  const [isPending, startTransition] = useSubmitTransition();
   const [pdfUrl, setPdfUrl] = useState(quotation.pdfUrl ?? "");
   const [quotationImages, setQuotationImages] = useState(images);
   const [uploading, setUploading] = useState<Set<string>>(new Set());
@@ -43,15 +98,67 @@ export function QuotationDetailPage({
   const [captionOpen, setCaptionOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<QuotationImage | null>(null);
   const [emitOpen, setEmitOpen] = useState(false);
-  const [form, setForm] = useState({
-    welcomeMessage: quotation.welcomeMessage ?? defaultWelcome(quotation),
+  // welcomeMessage / executionTime en null = texto propuesto, que sigue a la primera
+  // línea hasta que el usuario lo edita o se guarda el documento.
+  const [form, setForm] = useState<{
+    welcomeMessage: string | null;
+    closeMessage: string;
+    paymentTerms: string;
+    executionTime: string | null;
+    workingHours: string;
+    validityDays: string;
+  }>({
+    welcomeMessage: quotation.welcomeMessage,
     closeMessage: quotation.closeMessage ?? DEFAULT_CLOSE_MESSAGE,
     paymentTerms: quotation.paymentTerms ?? "80% a la aceptación | 20% a la culminación",
-    executionTime: quotation.executionTime ?? `Un (01) día por ${quotation.lines[0]?.elevator_name || "equipo"} aproximadamente`,
+    executionTime: quotation.executionTime,
     workingHours: quotation.workingHours ?? "Diurno / nocturno",
     validityDays: String(quotation.validityDays ?? 15),
   });
+  const [savedForm, setSavedForm] = useState(form);
+  // Una cotización recién creada aún no tiene estos textos en la base: el primer
+  // guardado (o generar el PDF) los persiste aunque nadie los haya tocado.
+  const [documentPersisted, setDocumentPersisted] = useState(
+    [
+      quotation.welcomeMessage,
+      quotation.closeMessage,
+      quotation.paymentTerms,
+      quotation.executionTime,
+      quotation.workingHours,
+    ].some((value) => value != null)
+  );
   const welcomeRef = useRef<HTMLTextAreaElement>(null);
+
+  // Líneas y descuentos: un solo formulario que comparten sus dos tabs.
+  const pricingForm = useForm<QuotationFormInput, unknown, QuotationFormOutput>({
+    resolver: zodResolver(quotationFormSchema),
+    defaultValues: detailToValues(quotation, defaultHourlyCost),
+  });
+  const { currentLines, summary } = useQuotationSummary(pricingForm, options.pricing);
+  const firstLine = currentLines?.[0];
+  const firstEquipmentName = firstLine?.elevatorUnityId
+    ? options.equipment.find((e) => e.id === firstLine.elevatorUnityId)?.name
+    : null;
+  const doc = {
+    ...form,
+    welcomeMessage:
+      form.welcomeMessage ?? defaultWelcome(quotation.client_name, firstLine?.description),
+    executionTime:
+      form.executionTime ?? `Un (01) día por ${firstEquipmentName || "equipo"} aproximadamente`,
+  };
+  const pricingDirty = pricingForm.formState.isDirty;
+  const documentDirty = (Object.keys(form) as Array<keyof typeof form>).some(
+    (key) => form[key] !== savedForm[key]
+  );
+  const hasUnsavedChanges = pricingDirty || documentDirty;
+  const needsSave = hasUnsavedChanges || !documentPersisted;
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
 
   function setField(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -62,8 +169,8 @@ export function QuotationDetailPage({
     if (!element) return;
     const start = element.selectionStart;
     const end = element.selectionEnd;
-    const selected = form.welcomeMessage.slice(start, end);
-    const value = `${form.welcomeMessage.slice(0, start)}${before}${selected}${after}${form.welcomeMessage.slice(end)}`;
+    const selected = doc.welcomeMessage.slice(start, end);
+    const value = `${doc.welcomeMessage.slice(0, start)}${before}${selected}${after}${doc.welcomeMessage.slice(end)}`;
     setField("welcomeMessage", value);
     requestAnimationFrame(() => {
       element.focus();
@@ -72,22 +179,70 @@ export function QuotationDetailPage({
     });
   }
 
-  function saveDocument() {
+  /** Guarda las líneas y descuentos. Devuelve false si la validación o el servidor fallan. */
+  async function savePricing(): Promise<boolean> {
+    // Las filas de material vacías no se validan: se descartan, igual que en el servidor.
+    const currentLines = pricingForm.getValues("lines") ?? [];
+    const cleaned = stripBlankProducts(currentLines as Parameters<typeof stripBlankProducts>[0]);
+    if (cleaned.some((line, i) => line !== currentLines[i])) {
+      pricingForm.setValue("lines", cleaned as never, { shouldDirty: true, shouldValidate: false });
+    }
+    const saved = await new Promise<boolean>((resolve) => {
+      void pricingForm.handleSubmit(
+        async (values) => {
+          const result = await updateQuotation(quotation.id, values);
+          if (!result.success) toast.error("No se pudo guardar", { description: result.error });
+          resolve(result.success);
+        },
+        (errors) => {
+          const { tab: errorTab, message } = firstPricingError(errors);
+          setTab(errorTab);
+          toast.error("No se puede guardar", { description: message });
+          resolve(false);
+        }
+      )();
+    });
+    if (saved) pricingForm.reset(pricingForm.getValues());
+    return saved;
+  }
+
+  async function saveDocumentFields(): Promise<boolean> {
+    const result = await updateQuotationDocument(quotation.id, {
+      ...doc,
+      validityDays: Number(doc.validityDays),
+    });
+    if (result.success) {
+      setForm(doc);
+      setSavedForm(doc);
+      setDocumentPersisted(true);
+    } else toast.error("No se pudo guardar", { description: result.error });
+    return result.success;
+  }
+
+  /** Guarda lo que haya cambiado en cualquiera de los tabs. */
+  async function saveAll(): Promise<boolean> {
+    if (!needsSave) return true;
+    if (pricingDirty && !(await savePricing())) return false;
+    if ((documentDirty || !documentPersisted) && !(await saveDocumentFields())) return false;
+    setPdfUrl("");
+    router.refresh();
+    return true;
+  }
+
+  function saveChanges() {
     startTransition(async () => {
-      const result = await updateQuotationDocument(quotation.id, {
-        ...form,
-        validityDays: Number(form.validityDays),
-      });
-      if (result.success) {
-        setPdfUrl("");
-        toast.success(result.message);
-        router.refresh();
-      } else toast.error("No se pudo guardar", { description: result.error });
+      if (!needsSave) {
+        toast.info("No hay cambios por guardar");
+        return;
+      }
+      if (await saveAll()) toast.success("Cambios guardados");
     });
   }
 
   function generatePdf() {
     startTransition(async () => {
+      // El PDF se arma con lo guardado: primero se guardan los cambios pendientes.
+      if (!(await saveAll())) return;
       const result = await generateAndStoreQuotationPdf(quotation.id);
       if (result.success) {
         setPdfUrl(result.pdfUrl);
@@ -174,6 +329,7 @@ export function QuotationDetailPage({
   function confirmEmit() {
     setEmitOpen(false);
     startTransition(async () => {
+      if (!(await saveAll())) return;
       const result = await issueQuotation(quotation.id);
       if (result.success) { toast.success(result.message); router.refresh(); }
       else toast.error("No se pudo emitir", { description: result.error });
@@ -192,18 +348,23 @@ export function QuotationDetailPage({
             <p className="truncate text-xs text-muted-foreground">{quotation.cost_center_name ?? "Sin centro de costos"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden text-right sm:block">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</div>
+              <div className="text-sm font-bold">{money(summary.header.total)}</div>
+            </div>
             <Badge variant="outline">{quotation.status === "DRAFT" ? "BORRADOR" : quotation.status}</Badge>
             {quotation.status === "DRAFT" ? <Button size="sm" onClick={emitQuotation} className="gap-1.5"><Send className="size-3.5" />Emitir</Button> : null}
-            <Button size="sm" disabled={isPending} onClick={saveDocument} className="gap-1.5">
+            <Button size="sm" disabled={isPending} onClick={saveChanges} className="gap-1.5">
               {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              Guardar cambios
+              {needsSave ? "Guardar cambios" : "Guardado"}
             </Button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 border-b border-border">
-          {["documento", "preview"].map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${tab === item ? "border-[#810303] text-[#810303]" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground"}`}>
-              {item === "preview" ? "Vista previa" : "Documento"}
+        <div className="flex gap-2 overflow-x-auto border-b border-border">
+          {TABS.map((item) => (
+            <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${tab === item.id ? "border-[#810303] text-[#810303]" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground"}`}>
+              {item.label}
+              {item.id === "lineas" ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{summary.byLine.size}</span> : null}
             </button>
           ))}
         </div>
@@ -212,25 +373,37 @@ export function QuotationDetailPage({
       {tab === "documento" ? (
         <div className="space-y-5 rounded-lg border border-border p-5">
           <div>
+             <p className="mb-1 text-xs font-medium">Mensaje de bienvenida</p>
              <div className="mb-2 flex gap-2 rounded-t border border-b-0 border-border bg-muted/30 p-2">
               <Button type="button" size="sm" variant="outline" className="px-3 hover:bg-muted" title="Negrita (Ctrl+B)" aria-label="Negrita (Ctrl+B)" onClick={() => insertMarkdown("**", "**")}>B</Button>
               <Button type="button" size="sm" variant="outline" className="px-3 italic hover:bg-muted" title="Cursiva (Ctrl+I)" aria-label="Cursiva (Ctrl+I)" onClick={() => insertMarkdown("*", "*")}>I</Button>
               <Button type="button" size="sm" variant="outline" className="px-3 hover:bg-muted" title="Lista con viñetas" aria-label="Lista con viñetas" onClick={() => insertMarkdown("- ")}>•</Button>
               <Button type="button" size="sm" variant="outline" className="px-3 hover:bg-muted" title="Lista numerada" aria-label="Lista numerada" onClick={() => insertMarkdown("1. ")}>1.</Button>
             </div>
-             <Textarea ref={welcomeRef} rows={12} className="min-h-[200px] resize-y" value={form.welcomeMessage} onChange={(e) => setField("welcomeMessage", e.target.value)} placeholder="Escribe la introducción en Markdown..." />
+             <Textarea ref={welcomeRef} rows={12} aria-label="Mensaje de bienvenida" className="min-h-[200px] resize-y" value={doc.welcomeMessage} onChange={(e) => setField("welcomeMessage", e.target.value)} placeholder="Escribe la introducción en Markdown..." />
           </div>
            <div className="grid gap-3 sm:grid-cols-2">
-             <label className="text-xs font-medium">Forma de Pago<Textarea rows={2} className="resize-y" value={form.paymentTerms} onChange={(e) => setField("paymentTerms", e.target.value)} /></label>
-             <label className="text-xs font-medium">Ejecución<Textarea rows={2} className="resize-y" value={form.executionTime} onChange={(e) => setField("executionTime", e.target.value)} /></label>
-             <label className="text-xs font-medium">Horario<Input value={form.workingHours} onChange={(e) => setField("workingHours", e.target.value)} /></label>
-              <label className="text-xs font-medium">Validez (días)<Input type="number" min={1} value={form.validityDays} onChange={(e) => setField("validityDays", e.target.value)} /></label>
+             <label className="text-xs font-medium">Forma de Pago<Textarea rows={2} className="resize-y" value={doc.paymentTerms} onChange={(e) => setField("paymentTerms", e.target.value)} /></label>
+             <label className="text-xs font-medium">Ejecución<Textarea rows={2} className="resize-y" value={doc.executionTime} onChange={(e) => setField("executionTime", e.target.value)} /></label>
+             <label className="text-xs font-medium">Horario<Input value={doc.workingHours} onChange={(e) => setField("workingHours", e.target.value)} /></label>
+              <label className="text-xs font-medium">Validez (días)<Input type="number" min={1} value={doc.validityDays} onChange={(e) => setField("validityDays", e.target.value)} /></label>
            </div>
-            <label className="block text-xs font-medium">Mensaje de cierre<Textarea rows={5} className="resize-y" value={form.closeMessage} onChange={(e) => setField("closeMessage", e.target.value)} placeholder="Escribe el mensaje de cierre de la cotización..." /></label>
+            <label className="block text-xs font-medium">Mensaje de cierre<Textarea rows={5} className="resize-y" value={doc.closeMessage} onChange={(e) => setField("closeMessage", e.target.value)} placeholder="Escribe el mensaje de cierre de la cotización..." /></label>
             <section className="space-y-3 rounded-xl border border-border bg-muted/10 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-medium">Imágenes referenciales</h2><p className="mt-1 text-[11px] text-muted-foreground">Se mostrarán en esta sección del PDF, junto con el comentario de cada imagen.</p></div><button type="button" onClick={() => { setCaptionFile(null); setCaptionDraft(""); setCaptionOpen(true); }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void uploadImages(e.dataTransfer.files); }} className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-2 text-[11px] font-medium text-muted-foreground transition-colors hover:border-[#0066CC] hover:bg-muted/40 hover:text-foreground"><Upload className="size-4" />Agregar imagen</button></div>{uploading.size > 0 ? <div className="flex items-center gap-2 rounded border border-dashed p-3 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />Subiendo...</div> : null}<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{quotationImages.map((image) => <div key={image.id} className="group relative h-32 w-32 overflow-hidden rounded-lg border border-border bg-muted sm:h-36 sm:w-36"><img src={image.url} alt={image.caption ?? "Referencial"} className="size-full object-contain transition duration-200 group-hover:brightness-75" />{image.caption ? <p className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[10px] text-white">{image.caption}</p> : null}<button type="button" disabled={deleting.has(image.id)} className="absolute left-1/2 top-1/2 size-11 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-600 p-3 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 disabled:opacity-50" onClick={() => void deleteImage(image)} aria-label="Eliminar imagen">{deleting.has(image.id) ? <Loader2 className="size-5 animate-spin" /> : <Trash2 className="size-5" />}</button></div>)}</div><p className="text-[11px] text-amber-700">⚠ Puedes pegar una imagen desde el portapapeles dentro de “Agregar imagen”.</p></section>
         </div>
+      ) : tab === "lineas" || tab === "descuento" ? (
+        <Form {...pricingForm}>
+          <form onSubmit={(event) => { event.preventDefault(); saveChanges(); }} className="rounded-lg border border-border p-5">
+            {tab === "lineas" ? (
+              <QuotationLinesEditor form={pricingForm} options={options} defaultHourlyCost={defaultHourlyCost} />
+            ) : (
+              <QuotationDiscountEditor form={pricingForm} options={options} />
+            )}
+          </form>
+        </Form>
       ) : tab === "preview" ? (
         <div className="space-y-3">
+          {hasUnsavedChanges ? <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">Tienes cambios sin guardar. Al generar el PDF se guardarán primero.</p> : null}
           <div className="flex gap-2"><Button onClick={generatePdf} disabled={isPending} className="gap-2">{isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}Generar PDF</Button>{pdfUrl ? <a href={pdfUrl} target="_blank" rel="noopener" className="inline-flex items-center rounded-md border border-border px-3 text-xs font-semibold">Descargar PDF</a> : null}</div>
           {pdfUrl ? <iframe title="Vista previa de cotización" src={pdfUrl} className="h-[760px] w-full rounded-lg border border-border" /> : <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">Genera el PDF para verlo aquí.</div>}
         </div>

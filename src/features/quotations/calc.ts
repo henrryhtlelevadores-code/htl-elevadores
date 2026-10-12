@@ -17,7 +17,14 @@ export const DISCOUNT_MODES = [
   { value: "FINAL", label: "Precio final" },
 ] as const;
 
+export const LINE_DISCOUNT_MODES = [
+  { value: "NONE", label: "Sin descuento" },
+  { value: "PERCENT", label: "Porcentaje (%)" },
+  { value: "AMOUNT", label: "Monto fijo (S/)" },
+] as const;
+
 export type LineMode = (typeof LINE_MODES)[number]["value"];
+export type LineDiscountMode = (typeof LINE_DISCOUNT_MODES)[number]["value"];
 export type DiscountMode = (typeof DISCOUNT_MODES)[number]["value"];
 
 export interface PricingRules {
@@ -55,6 +62,10 @@ export interface QuotationLineCalcInput {
   supplierName?: string | null;
   /** Override del precio final con IGV sobre una línea CALCULATED. */
   lineOverridePrice?: number | null;
+  /** Descuento propio de la línea, aplicado sobre su precio final con IGV. */
+  discountMode?: LineDiscountMode | string | null;
+  /** Porcentaje 0-100 (PERCENT) o monto en soles con IGV (AMOUNT). */
+  discountValue?: number | null;
   overheadRate?: number;
   commissionRate?: number;
   profitRate?: number;
@@ -82,7 +93,18 @@ export interface QuotationLineCalcResult {
   clientPrice: number;
   hourlyCostUsed: number;
   hasOverride: boolean;
+  /** Precio final con IGV antes del descuento de la línea. */
+  listPrice: number;
+  discountMode: LineDiscountMode;
+  discountValue: number;
+  /** Descuento efectivo en soles con IGV; clientValue/igv/clientPrice ya lo restan. */
+  discountAmount: number;
 }
+
+type LineBeforeDiscount = Omit<
+  QuotationLineCalcResult,
+  "listPrice" | "discountMode" | "discountValue" | "discountAmount"
+>;
 
 /** Derivación interna: MANUAL_PRICE con proveedor es un pass-through. */
 export const isManualPassthrough = (
@@ -100,12 +122,50 @@ export const isManualPassthrough = (
  *                (lineOverridePrice) pisa el resultado con el precio final.
  * MANUAL_PRICE → el administrador define el precio final; el proveedor es
  *                opcional y solo clasifica la línea como pass-through.
+ *
+ * En ambos modos, el descuento de la línea se resta al final del precio con IGV.
  */
 export function calculateQuotationLine(
   line: QuotationLineCalcInput,
   hourlyCost: number,
   rules: PricingRules = DEFAULT_PRICING_RULES
 ): QuotationLineCalcResult {
+  const base = calculateLineBeforeDiscount(line, hourlyCost, rules);
+  const listPrice = base.clientPrice;
+  const mode: LineDiscountMode =
+    line.discountMode === "PERCENT" || line.discountMode === "AMOUNT" ? line.discountMode : "NONE";
+  const value = Math.max(0, Number(line.discountValue) || 0);
+  const requested =
+    mode === "PERCENT"
+      ? round2((listPrice * Math.min(value, 100)) / 100)
+      : mode === "AMOUNT"
+        ? round2(value)
+        : 0;
+  const discountAmount = Math.min(requested, listPrice);
+
+  if (!(discountAmount > 0)) {
+    return { ...base, listPrice, discountMode: "NONE", discountValue: 0, discountAmount: 0 };
+  }
+
+  const clientPrice = round2(listPrice - discountAmount);
+  const clientValue = round2(clientPrice / (1 + rules.igvRate));
+  return {
+    ...base,
+    listPrice,
+    discountMode: mode,
+    discountValue: value,
+    discountAmount,
+    clientValue,
+    igv: round2(clientPrice - clientValue),
+    clientPrice,
+  };
+}
+
+function calculateLineBeforeDiscount(
+  line: QuotationLineCalcInput,
+  hourlyCost: number,
+  rules: PricingRules
+): LineBeforeDiscount {
   const lineMode: LineMode = line.lineMode ?? "CALCULATED";
   const igvRate = rules.igvRate;
 
@@ -124,7 +184,9 @@ export function calculateQuotationLine(
   if (lineMode === "MANUAL_PRICE") {
     const base = manualPrice ?? 0;
     const clientValue = manualPriceIncludesIgv ? round2(base / (1 + igvRate)) : round2(base);
-    const igv = round2(clientValue * igvRate);
+    // Con IGV incluido, el IGV es la diferencia: así el precio final es exactamente
+    // el digitado (recalcularlo desde la base daba S/ 100.01 para un precio de 100).
+    const igv = manualPriceIncludesIgv ? round2(base - clientValue) : round2(clientValue * igvRate);
     return {
       lineMode,
       isPassthrough,

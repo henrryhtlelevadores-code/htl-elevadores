@@ -7,7 +7,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { type ServiceType } from "@/db";
-import { serviceTypeFormSchema, type ServiceTypeFormValues } from "../schema";
+import {
+  serviceTypeFormSchema,
+  parseServicePrice,
+  type ServiceTypeFormValues,
+} from "../schema";
 import { createServiceType, updateServiceType, deleteServiceType } from "../actions";
 import { DataTable } from "@/components/ui/data-table";
 
@@ -59,6 +63,8 @@ const createDefaultValues = (): ServiceTypeFormValues => ({
   requiresContract: false,
   defaultSlaMins: "",
   isBillableByDefault: true,
+  showInQuotations: false,
+  price: "",
 });
 
 export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
@@ -86,6 +92,8 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
       requiresContract: type.requiresContract ?? false,
       defaultSlaMins: type.defaultSlaMins != null ? type.defaultSlaMins : "",
       isBillableByDefault: type.isBillableByDefault ?? true,
+      showInQuotations: type.showInQuotations ?? false,
+      price: type.price ?? "",
     });
   }
 
@@ -190,6 +198,30 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
         cell: ({ row }) => {
           const sla = row.getValue<number | null>("defaultSlaMins");
           return <span className="text-xs font-mono text-muted-foreground">{sla ?? "—"}</span>;
+        },
+      },
+      {
+        accessorKey: "price",
+        header: "Precio (S/)",
+        cell: ({ row }) => {
+          const price = parseServicePrice(row.getValue<string | null>("price"));
+          return (
+            <span className="text-xs font-mono text-muted-foreground">
+              {price != null ? price.toFixed(2) : "—"}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "showInQuotations",
+        header: "Cotizaciones",
+        cell: ({ row }) => {
+          const shown = row.getValue<boolean | null>("showInQuotations");
+          return (
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${shown ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-muted/50 text-muted-foreground border-border"}`}>
+              {shown ? "Sí" : "No"}
+            </span>
+          );
         },
       },
       {
@@ -378,12 +410,57 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={createForm.control}
+                  name="isBillableByDefault"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Facturable por Defecto</FormLabel>
+                      <FormControl>
+                        <Select
+                          value={field.value ? "true" : "false"}
+                          onValueChange={(v) => field.onChange(v === "true")}
+                        >
+                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Sí</SelectItem>
+                            <SelectItem value="false">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={createForm.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Precio estándar (S/)</FormLabel>
+                      <FormControl>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="Sin precio fijo"
+                          {...field}
+                          className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={createForm.control}
-                name="isBillableByDefault"
+                name="showInQuotations"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Facturable por Defecto</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Aparece en Cotizaciones</FormLabel>
                     <FormControl>
                       <Select
                         value={field.value ? "true" : "false"}
@@ -398,6 +475,9 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                         </SelectContent>
                       </Select>
                     </FormControl>
+                    <p className="text-[11px] text-muted-foreground">
+                      Si es Sí, se puede elegir en las líneas de una cotización. El precio es opcional.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -548,12 +628,57 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={createForm.control}
+                  name="isBillableByDefault"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Facturable por Defecto</FormLabel>
+                      <FormControl>
+                        <Select
+                          value={field.value ? "true" : "false"}
+                          onValueChange={(v) => field.onChange(v === "true")}
+                        >
+                          <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Sí</SelectItem>
+                            <SelectItem value="false">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={createForm.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold">Precio estándar (S/)</FormLabel>
+                      <FormControl>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="Sin precio fijo"
+                          {...field}
+                          className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={createForm.control}
-                name="isBillableByDefault"
+                name="showInQuotations"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Facturable por Defecto</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Aparece en Cotizaciones</FormLabel>
                     <FormControl>
                       <Select
                         value={field.value ? "true" : "false"}
@@ -568,6 +693,9 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                         </SelectContent>
                       </Select>
                     </FormControl>
+                    <p className="text-[11px] text-muted-foreground">
+                      Si es Sí, se puede elegir en las líneas de una cotización. El precio es opcional.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}

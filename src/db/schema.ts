@@ -184,6 +184,14 @@ export const serviceTypes = sqliteTable("service_types", {
   billingTrigger: text("billing_trigger").default("MANUAL"),
   billingDelayDays: integer("billing_delay_days").default(0),
   allowedDocumentTypes: text("allowed_document_types").default("FACTURA,BOLETA,NOTA_VENTA_INTERNA"),
+  /**
+   * Precio estandarizado (S/) que se propone en Cotizaciones al cobrar en modo
+   * manual. Opcional: NULL = sin precio fijo (p. ej. un correctivo). La columna es
+   * TEXT en la base: se lee siempre con `parseServicePrice`.
+   */
+  price: text("price"),
+  /** Si el tipo de servicio se ofrece al armar las líneas de una cotización. */
+  showInQuotations: integer("show_in_quotations", { mode: "boolean" }).default(false),
   createdAt: integer("created_at").default(unixNow()),
 });
 
@@ -604,6 +612,10 @@ export const quotationLines = sqliteTable("quotation_lines", {
     .notNull()
     .references(() => quotations.id, { onDelete: "cascade" }),
   elevatorUnityId: text("elevator_unity_id").references(() => elevatorUnities.id),
+  /** Tipo de servicio de la línea (opcional); el listado de cotizaciones filtra por él. */
+  serviceTypeId: text("service_type_id").references(() => serviceTypes.id, {
+    onDelete: "set null",
+  }),
   equipmentSerial: text("equipment_serial"),
   description: text("description"),
   orderIndex: integer("order_index").default(0),
@@ -615,6 +627,12 @@ export const quotationLines = sqliteTable("quotation_lines", {
   supplierCost: real("supplier_cost"),
   lineOverridePrice: real("line_override_price"),
   lineOverrideReason: text("line_override_reason"),
+  /** Descuento de la línea: NULL = sin descuento, 'PERCENT' o 'AMOUNT'. */
+  lineDiscountMode: text("line_discount_mode"),
+  /** Valor digitado: porcentaje (PERCENT) o soles con IGV (AMOUNT). */
+  lineDiscountValue: real("line_discount_value"),
+  /** Descuento efectivo en soles con IGV. clientValue/igv/clientPrice ya lo restan. */
+  lineDiscountAmount: real("line_discount_amount").default(0),
 
   totalHours: real("total_hours").default(0),
   hourlyCost: real("hourly_cost").default(0),

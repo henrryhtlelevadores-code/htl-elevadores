@@ -1,5 +1,10 @@
 import { notFound } from "next/navigation";
-import { getQuotationById, getQuotationImages } from "@/features/quotations/actions";
+import {
+  getLaborConfig,
+  getQuotationById,
+  getQuotationFormData,
+  getQuotationImages,
+} from "@/features/quotations/actions";
 import { QuotationDetailPage } from "@/features/quotations/components/quotation-detail-page";
 import { requirePageAccess } from "@/features/auth/guard";
 
@@ -14,6 +19,17 @@ export default async function QuotationDetailRoute({
   const { id } = await params;
   const quotation = await getQuotationById(id);
   if (!quotation) notFound();
-  const images = await getQuotationImages(id);
-  return <QuotationDetailPage quotation={quotation} images={images} />;
+  const [images, options, hourlyCost] = await Promise.all([
+    getQuotationImages(id),
+    getQuotationFormData(),
+    getLaborConfig(),
+  ]);
+  return (
+    <QuotationDetailPage
+      quotation={quotation}
+      images={images}
+      options={options}
+      defaultHourlyCost={hourlyCost}
+    />
+  );
 }

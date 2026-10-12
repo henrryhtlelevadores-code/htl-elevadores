@@ -25,6 +25,7 @@ import {
   elevatorTypeFormSchema,
   modelFormSchema,
   serviceTypeFormSchema,
+  parseServicePrice,
   ubigeoFormSchema,
   ubigeoBulkImportSchema,
   type BrandFormValues,
@@ -400,6 +401,11 @@ export async function getServiceTypes(): Promise<ServiceType[]> {
   }
 }
 
+const serviceTypePriceToDb = (value: string): string | null => {
+  const price = parseServicePrice(value);
+  return price === null ? null : String(price);
+};
+
 export async function createServiceType(data: ServiceTypeFormValues) {
   const denied = await denyUnless("masters:write");
   if (denied) return denied;
@@ -414,6 +420,8 @@ export async function createServiceType(data: ServiceTypeFormValues) {
       requiresContract: validated.requiresContract,
       defaultSlaMins: validated.defaultSlaMins ? Number(validated.defaultSlaMins) : null,
       isBillableByDefault: validated.isBillableByDefault,
+      price: serviceTypePriceToDb(validated.price),
+      showInQuotations: validated.showInQuotations,
     });
 
     revalidatePath("/masters");
@@ -439,7 +447,17 @@ export async function updateServiceType(id: string, data: Partial<ServiceTypeFor
       defaultSlaMins?: number | null;
       isBillableByDefault?: boolean;
       isActive?: boolean;
+      price?: string | null;
+      showInQuotations?: boolean;
     } = {};
+    if (data.showInQuotations !== undefined) updateData.showInQuotations = data.showInQuotations;
+    if (data.price !== undefined) {
+      const parsedPrice = serviceTypeFormSchema.shape.price.safeParse(data.price);
+      if (!parsedPrice.success) {
+        return { success: false, error: "Ingresa un precio mayor a 0 o déjalo vacío" };
+      }
+      updateData.price = serviceTypePriceToDb(parsedPrice.data);
+    }
     if (data.code) updateData.code = data.code.trim().toUpperCase();
     if (data.name) updateData.name = data.name.trim();
     if (data.category) updateData.category = data.category;

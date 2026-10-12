@@ -11,6 +11,7 @@ import {
   costCenters,
   users,
   elevatorUnities,
+  serviceTypes,
   laborConfig,
   pricingConfig,
   quotations,
@@ -20,13 +21,20 @@ import {
   type QuotationLine,
   type QuotationLineProduct,
 } from "@/db/index";
-import { eq, isNull, desc, count, asc, and } from "drizzle-orm";
+import { eq, isNull, desc, count, asc, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { generateDocumentNumber } from "@/lib/document-number";
 import { deleteStoredPdf } from "@/lib/r2";
 import { quotationPdfPath } from "@/lib/pdf-paths";
-import { quotationFormSchema, stripBlankProducts, type QuotationFormValues } from "./schema";
+import {
+  quotationFormSchema,
+  quotationHeaderSchema,
+  stripBlankProducts,
+  type QuotationFormValues,
+  type QuotationHeaderValues,
+} from "./schema";
+import { parseServicePrice } from "@/features/masters/schema";
 import {
   calculateQuotationLine,
   calculateQuotationHeader,
@@ -188,6 +196,8 @@ export type QuotationWithRelations = Quotation & {
   cost_center_name: string | null;
   advisor_name: string | null;
   lineCount: number;
+  /** Tipos de servicio distintos que usan sus líneas. */
+  serviceTypes: Array<{ id: string; name: string }>;
 };
 
 /**
@@ -249,7 +259,28 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
       .leftJoin(quotationLines, eq(quotationLines.quotationId, quotations.id))
       .groupBy(quotations.id)
       .orderBy(desc(quotations.createdAt));
-    return rows.map((row) => ({ ...row, pdfUrl: clientPdfUrl(row) }));
+
+    const serviceRows = await db
+      .selectDistinct({
+        quotationId: quotationLines.quotationId,
+        id: serviceTypes.id,
+        name: serviceTypes.name,
+      })
+      .from(quotationLines)
+      .innerJoin(serviceTypes, eq(quotationLines.serviceTypeId, serviceTypes.id))
+      .orderBy(asc(serviceTypes.name));
+    const servicesByQuotation = new Map<string, Array<{ id: string; name: string }>>();
+    for (const { quotationId, ...service } of serviceRows) {
+      const list = servicesByQuotation.get(quotationId) ?? [];
+      list.push(service);
+      servicesByQuotation.set(quotationId, list);
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      pdfUrl: clientPdfUrl(row),
+      serviceTypes: servicesByQuotation.get(row.id) ?? [],
+    }));
   } catch (error) {
     console.error("Error al obtener cotizaciones:", error);
     return [];
@@ -308,6 +339,7 @@ export async function getQuotationLineModeSummary(): Promise<Record<string, Line
 export type QuotationLineWithRelations = QuotationLine & {
   elevator_name: string | null;
   elevator_internal_code: string | null;
+  service_type_name: string | null;
   products: QuotationLineProduct[];
 };
 
@@ -347,12 +379,24 @@ export interface QuotationFormOptions {
     internalCode: string | null;
     name: string | null;
   }>;
+  /**
+   * Tipos de servicio activos. Solo los marcados `showInQuotations` se ofrecen al
+   * elegir; el resto viaja para poder nombrar los que ya usa alguna línea.
+   */
+  serviceTypes: Array<{
+    id: string;
+    code: string;
+    name: string;
+    /** Precio estandarizado, si el servicio tiene uno. */
+    price: number | null;
+    showInQuotations: boolean;
+  }>;
   pricing: PricingRules;
 }
 
 export async function getQuotationFormData(): Promise<QuotationFormOptions> {
   await requirePermission("quotations:read");
-  const [clientRows, costCenterRows, advisorRows, equipmentRows] = await Promise.all([
+  const [clientRows, costCenterRows, advisorRows, equipmentRows, serviceTypeRows] = await Promise.all([
     db
       .select({ id: clients.id, legalName: clients.legalName, taxId: clients.taxId })
       .from(clients)
@@ -385,6 +429,17 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
       .from(elevatorUnities)
       .where(isNull(elevatorUnities.deletedAt))
       .orderBy(asc(elevatorUnities.internalCode)),
+    db
+      .select({
+        id: serviceTypes.id,
+        code: serviceTypes.code,
+        name: serviceTypes.name,
+        price: serviceTypes.price,
+        showInQuotations: serviceTypes.showInQuotations,
+      })
+      .from(serviceTypes)
+      .where(eq(serviceTypes.isActive, true))
+      .orderBy(asc(serviceTypes.name)),
   ]);
 
   return {
@@ -398,6 +453,13 @@ export async function getQuotationFormData(): Promise<QuotationFormOptions> {
     })),
     advisors: advisorRows,
     equipment: equipmentRows,
+    serviceTypes: serviceTypeRows.map((s) => ({
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      price: parseServicePrice(s.price),
+      showInQuotations: s.showInQuotations ?? false,
+    })),
     pricing: await getPricingConfig(),
   };
 }
@@ -433,6 +495,8 @@ async function buildQuotationData(validated: QuotationFormValues, hourlyCostOver
         supplierName: l.supplierName || null,
         supplierCost: Number(l.supplierCost) || null,
         lineOverridePrice: l.overridePrice ? Number(l.lineOverridePrice) || null : null,
+        discountMode: l.discountMode,
+        discountValue: Number(l.discountValue) || 0,
         products: l.products.map((p) => ({
           quantity: Number(p.quantity),
           unitCost: Number(p.unitCost),
@@ -444,6 +508,7 @@ async function buildQuotationData(validated: QuotationFormValues, hourlyCostOver
 
     return {
       elevatorUnityId: l.elevatorUnityId || null,
+      serviceTypeId: l.serviceTypeId || null,
       description: l.description,
       orderIndex: i,
       lineMode: calc.lineMode,
@@ -458,6 +523,9 @@ async function buildQuotationData(validated: QuotationFormValues, hourlyCostOver
           ? round2(Number(l.lineOverridePrice))
           : null,
       lineOverrideReason: l.lineOverrideReason?.trim() || null,
+      lineDiscountMode: calc.discountMode === "NONE" ? null : calc.discountMode,
+      lineDiscountValue: calc.discountMode === "NONE" ? null : calc.discountValue,
+      lineDiscountAmount: calc.discountAmount,
       totalHours: Number(l.totalHours),
       hourlyCost: calc.hourlyCostUsed,
       laborCost: calc.laborCost,
@@ -541,6 +609,10 @@ function validateLineRules(validated: QuotationFormValues): string | null {
   for (const [index, line] of validated.lines.entries()) {
     const n = index + 1;
 
+    if (line.discountMode === "PERCENT" && Number(line.discountValue) > 100) {
+      return `Línea ${n}: el descuento debe estar entre 0% y 100%.`;
+    }
+
     if (line.lineMode === "MANUAL_PRICE") {
       if (!(Number(line.manualPrice) > 0)) {
         return `Línea ${n}: falta el precio final.`;
@@ -571,6 +643,11 @@ function validateDiscountRules(
   validated: QuotationFormValues,
   payload: Awaited<ReturnType<typeof buildQuotationData>>
 ): string | null {
+  for (const [index, line] of payload.lines.entries()) {
+    if (line.lineDiscountAmount > 0 && !(line.clientPrice > 0)) {
+      return `Línea ${index + 1}: el descuento no puede ser igual o mayor al precio.`;
+    }
+  }
   const subtotal = round2(payload.lines.reduce((sum, line) => sum + line.clientValue, 0));
   const snapshot = payload.configSnapshot
     ? (JSON.parse(payload.configSnapshot) as { igvRate?: number })
@@ -651,6 +728,7 @@ export async function createQuotation(
           id: lineId,
           quotationId,
           elevatorUnityId: line.elevatorUnityId,
+          serviceTypeId: line.serviceTypeId,
           description: line.description,
           orderIndex: line.orderIndex,
           lineMode: line.lineMode,
@@ -661,6 +739,9 @@ export async function createQuotation(
           supplierCost: line.supplierCost,
           lineOverridePrice: line.lineOverridePrice,
           lineOverrideReason: line.lineOverrideReason,
+          lineDiscountMode: line.lineDiscountMode,
+          lineDiscountValue: line.lineDiscountValue,
+          lineDiscountAmount: line.lineDiscountAmount,
           totalHours: line.totalHours,
           hourlyCost: line.hourlyCost,
           laborCost: line.laborCost,
@@ -782,6 +863,7 @@ export async function updateQuotation(
           id: lineId,
           quotationId: id,
           elevatorUnityId: line.elevatorUnityId,
+          serviceTypeId: line.serviceTypeId,
           description: line.description,
           orderIndex: line.orderIndex,
           lineMode: line.lineMode,
@@ -792,6 +874,9 @@ export async function updateQuotation(
           supplierCost: line.supplierCost,
           lineOverridePrice: line.lineOverridePrice,
           lineOverrideReason: line.lineOverrideReason,
+          lineDiscountMode: line.lineDiscountMode,
+          lineDiscountValue: line.lineDiscountValue,
+          lineDiscountAmount: line.lineDiscountAmount,
           totalHours: line.totalHours,
           hourlyCost: line.hourlyCost,
           laborCost: line.laborCost,
@@ -825,12 +910,93 @@ export async function updateQuotation(
       }
     }
 
-    await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
+    if (statements.length > 0) {
+      await db.batch(statements as unknown as [SqliteBatchItem, ...SqliteBatchItem[]]);
+    }
     await deleteStoredPdf({ url: existing[0].pdfUrl, key: existing[0].pdfKey });
     revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
     return { success: true, message: "Cotización actualizada" };
   } catch (error) {
     console.error("Error al actualizar cotización:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+/**
+ * Actualiza solo los datos generales (cliente, sede, asesor, fechas, estado).
+ * Las líneas y los descuentos se editan en el detalle. Si cambia el cliente o la
+ * sede, las líneas cuyo equipo quedó fuera de ese alcance pierden el equipo.
+ */
+export async function updateQuotationHeader(
+  id: string,
+  data: QuotationHeaderValues
+): Promise<ActionResult> {
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
+  try {
+    const validated = quotationHeaderSchema.parse(data);
+    const [existing] = await db
+      .select({
+        id: quotations.id,
+        status: quotations.status,
+        pdfUrl: quotations.pdfUrl,
+        pdfKey: quotations.pdfKey,
+      })
+      .from(quotations)
+      .where(eq(quotations.id, id))
+      .limit(1);
+    if (!existing) return { success: false, error: "Cotización no encontrada." };
+
+    const costCenterId = validated.costCenterId || null;
+    await db
+      .update(quotations)
+      .set({
+        clientId: validated.clientId,
+        costCenterId,
+        advisorId: (await resolveAdvisorId(validated.advisorId)) ?? undefined,
+        issueDate: toTimestamp(validated.issueDate),
+        validUntil: toTimestamp(validated.validUntil),
+        status: validated.status || existing.status || "DRAFT",
+        pdfUrl: null,
+        pdfKey: null,
+        pdfGeneratedAt: null,
+      })
+      .where(eq(quotations.id, id));
+
+    const lineEquipment = await db
+      .select({ lineId: quotationLines.id, costCenterId: elevatorUnities.costCenterId })
+      .from(quotationLines)
+      .innerJoin(elevatorUnities, eq(quotationLines.elevatorUnityId, elevatorUnities.id))
+      .where(eq(quotationLines.quotationId, id));
+    if (lineEquipment.length > 0) {
+      const scope = costCenterId
+        ? new Set([costCenterId])
+        : new Set(
+            (
+              await db
+                .select({ id: costCenters.id })
+                .from(costCenters)
+                .where(eq(costCenters.clientId, validated.clientId))
+            ).map((c) => c.id)
+          );
+      const outOfScope = lineEquipment
+        .filter((l) => !scope.has(l.costCenterId))
+        .map((l) => l.lineId);
+      if (outOfScope.length > 0) {
+        await db
+          .update(quotationLines)
+          .set({ elevatorUnityId: null })
+          .where(inArray(quotationLines.id, outOfScope));
+      }
+    }
+
+    await deleteStoredPdf({ url: existing.pdfUrl, key: existing.pdfKey });
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
+    return { success: true, message: "Datos generales actualizados" };
+  } catch (error) {
+    console.error("Error al actualizar datos generales de cotización:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

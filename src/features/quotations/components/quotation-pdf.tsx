@@ -79,6 +79,10 @@ export interface QuotationPdfLine {
   supplierCost?: number | null;
   lineOverridePrice?: number | null;
   lineOverrideReason?: string | null;
+  lineDiscountMode?: string | null;
+  lineDiscountValue?: number;
+  /** Descuento de la línea en soles con IGV; clientPrice ya lo resta. */
+  lineDiscountAmount?: number;
   totalHours: number;
   hourlyCost: number;
   productCost: number;
@@ -311,6 +315,37 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: PDF_FONT,
     color: DARK,
+  },
+  lineDiscountRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 7,
+    paddingTop: 6,
+    borderTopWidth: 0.5,
+    borderTopColor: BORDER,
+  },
+  lineDiscountRowNext: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 3,
+  },
+  lineListPrice: {
+    fontSize: 8.5,
+    color: MUTED,
+    textDecoration: "line-through",
+  },
+  lineDiscountValue: {
+    fontSize: 8.5,
+    color: DARK,
+  },
+  lineFinalPriceAfterDiscount: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 3,
+    paddingBottom: 6,
   },
   tableHeader: {
     flexDirection: "row",
@@ -682,6 +717,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
         <Text style={styles.sectionTitle}>Detalle de Cotización</Text>
         {data.lines.map((line, index) => {
           const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";
+          const lineDiscount = Number(line.lineDiscountAmount) || 0;
            return (
              <View style={styles.lineBlock} key={index} minPresenceAhead={90}>
               <View
@@ -701,7 +737,27 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                   </View>
                 ) : null}
                 <Text style={styles.lineDescription}>{line.description}</Text>
-                <View style={styles.lineFinalPrice}>
+                {lineDiscount > 0 ? (
+                  <>
+                    <View style={styles.lineDiscountRow}>
+                      <Text style={styles.linePriceLabel}>PRECIO DE LISTA</Text>
+                      <Text style={styles.lineListPrice}>
+                        {money(line.clientPrice + lineDiscount)}
+                      </Text>
+                    </View>
+                    <View style={styles.lineDiscountRowNext}>
+                      <Text style={styles.linePriceLabel}>
+                        {line.lineDiscountMode === "PERCENT"
+                          ? `DESCUENTO (${Number(line.lineDiscountValue ?? 0)}%)`
+                          : "DESCUENTO"}
+                      </Text>
+                      <Text style={styles.lineDiscountValue}>-{money(lineDiscount)}</Text>
+                    </View>
+                  </>
+                ) : null}
+                <View
+                  style={lineDiscount > 0 ? styles.lineFinalPriceAfterDiscount : styles.lineFinalPrice}
+                >
                   <Text style={styles.linePriceLabel}>
                     {line.equipment ? "PRECIO POR EQUIPO" : "PRECIO POR SERVICIO"}
                     {line.manualPriceIncludesIgv ? (

@@ -7,6 +7,7 @@ import {
   users,
   ubigeos,
   elevatorUnities,
+  serviceTypes,
   quotations,
   quotationLines,
   quotationLineProducts,
@@ -76,6 +77,7 @@ export async function loadQuotationDetail(id: string): Promise<QuotationDetail |
         id: quotationLines.id,
         quotationId: quotationLines.quotationId,
         elevatorUnityId: quotationLines.elevatorUnityId,
+        serviceTypeId: quotationLines.serviceTypeId,
         equipmentSerial: quotationLines.equipmentSerial,
         description: quotationLines.description,
         orderIndex: quotationLines.orderIndex,
@@ -87,6 +89,9 @@ export async function loadQuotationDetail(id: string): Promise<QuotationDetail |
         supplierCost: quotationLines.supplierCost,
         lineOverridePrice: quotationLines.lineOverridePrice,
         lineOverrideReason: quotationLines.lineOverrideReason,
+        lineDiscountMode: quotationLines.lineDiscountMode,
+        lineDiscountValue: quotationLines.lineDiscountValue,
+        lineDiscountAmount: quotationLines.lineDiscountAmount,
         totalHours: quotationLines.totalHours,
         hourlyCost: quotationLines.hourlyCost,
         laborCost: quotationLines.laborCost,
@@ -105,9 +110,11 @@ export async function loadQuotationDetail(id: string): Promise<QuotationDetail |
         createdAt: quotationLines.createdAt,
         elevator_name: elevatorUnities.name,
         elevator_internal_code: elevatorUnities.internalCode,
+        service_type_name: serviceTypes.name,
       })
       .from(quotationLines)
       .leftJoin(elevatorUnities, eq(quotationLines.elevatorUnityId, elevatorUnities.id))
+      .leftJoin(serviceTypes, eq(quotationLines.serviceTypeId, serviceTypes.id))
       .where(eq(quotationLines.quotationId, id))
       .orderBy(asc(quotationLines.orderIndex));
 

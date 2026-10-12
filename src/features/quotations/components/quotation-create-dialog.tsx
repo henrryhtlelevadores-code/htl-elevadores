@@ -1,32 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useSubmitTransition } from "@/lib/use-submit-transition";
-import { useStepGuard } from "@/lib/use-step-guard";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, useWatch } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import type { z } from "zod";
 import {
-  quotationFormSchema,
-  stripBlankProducts,
+  quotationHeaderSchema,
   QUOTATION_STATUS,
-  DEFAULT_QUOTATION_TERMS,
-  type QuotationFormValues,
+  type QuotationHeaderValues,
 } from "../schema";
-import { createQuotation, updateQuotation } from "../actions";
+import { createQuotation, updateQuotationHeader } from "../actions";
 import type { QuotationDetail, QuotationFormOptions } from "../actions";
-import {
-  calculateQuotationLine,
-  calculateQuotationHeader,
-  LINE_MODES,
-  DISCOUNT_MODES,
-  type LineMode,
-} from "../calc";
+import { plusDays, SectionTitle, todayInput, tsToInput } from "./quotation-form-shared";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -50,25 +38,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ArrowUp,
-  Calculator,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Info,
-  Loader2,
-  Pill,
-  Plus,
-  ReceiptText,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { FileText, Loader2, ReceiptText } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface QuotationCreateDialogProps {
   open: boolean;
@@ -76,86 +48,10 @@ interface QuotationCreateDialogProps {
   onSaved?: () => void;
   editingDetail: QuotationDetail | null;
   options: QuotationFormOptions;
-  defaultHourlyCost: number;
   currentUser: { id: string; fullName: string | null } | null;
 }
 
-const money = (value: number) =>
-  value.toLocaleString("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  });
-
-const todayInput = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
-};
-
-const plusDays = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  const offset = d.getTimezoneOffset();
-  return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
-};
-
-const tsToInput = (ts: number | null | undefined) => {
-  if (!ts) return todayInput();
-  const d = new Date(ts * 1000);
-  const offset = d.getTimezoneOffset();
-  return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
-};
-
-function SectionTitle({
-  icon: Icon,
-  title,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-      <Icon className="size-3.5" />
-      {title}
-    </div>
-  );
-}
-
-const STEPS = [
-  { title: "Datos generales", icon: ReceiptText },
-  { title: "Equipos y servicios", icon: Settings2 },
-  { title: "Descuento y confirmar", icon: Calculator },
-] as const;
-
-const emptyProduct = () => ({
-  description: "",
-  quantity: "1",
-  unit: "",
-  unitCost: "",
-});
-
-const makeDefaultLine = (hourlyCost: number) => ({
-  elevatorUnityId: "",
-  description: "",
-  totalHours: "0",
-  hourlyCost: String(hourlyCost || 0),
-  lineMode: "CALCULATED" as LineMode,
-  lineModeReason: "",
-  manualPrice: "",
-  manualPriceIncludesIgv: true,
-  supplierName: "",
-  supplierCost: "",
-  overridePrice: false,
-  lineOverridePrice: "",
-  lineOverrideReason: "",
-  products: [emptyProduct()],
-});
-
-function defaultValues(
-  hourlyCost: number,
-  currentUserId: string | null
-): QuotationFormValues {
+function defaultValues(currentUserId: string | null): QuotationHeaderValues {
   return {
     clientId: "",
     costCenterId: "",
@@ -163,20 +59,10 @@ function defaultValues(
     issueDate: todayInput(),
     validUntil: plusDays(30),
     status: "DRAFT",
-    discountMode: "PERCENT",
-    discountRate: "0",
-    discountAmount: "0",
-    targetTotal: "",
-    targetTotalIncludesIgv: true,
-    showTaxBreakdown: true,
-    lines: [makeDefaultLine(hourlyCost)],
   };
 }
 
-function detailToValues(
-  detail: QuotationDetail,
-  hourlyCost: number
-): QuotationFormValues {
+function detailToValues(detail: QuotationDetail): QuotationHeaderValues {
   return {
     clientId: detail.clientId,
     costCenterId: detail.costCenterId ?? "",
@@ -184,235 +70,31 @@ function detailToValues(
     issueDate: tsToInput(detail.issueDate),
     validUntil: tsToInput(detail.validUntil),
     status: detail.status ?? "DRAFT",
-    discountMode: (detail.discountMode ?? "PERCENT") as QuotationFormValues["discountMode"],
-    discountRate: String(detail.discountRate ?? 0),
-    discountAmount: String(detail.discountAmount ?? 0),
-    targetTotal: detail.targetTotal != null ? String(detail.targetTotal) : "",
-    targetTotalIncludesIgv: detail.targetTotalIncludesIgv ?? true,
-    showTaxBreakdown: detail.showTaxBreakdown ?? true,
-    lines:
-      detail.lines.length > 0
-        ? detail.lines.map((l) => ({
-            elevatorUnityId: l.elevatorUnityId ?? "",
-            description: l.description ?? "",
-            totalHours: String(l.totalHours ?? 0),
-            hourlyCost: String(l.hourlyCost ?? hourlyCost),
-            lineMode: (l.lineMode === "MANUAL_PRICE"
-              ? "MANUAL_PRICE"
-              : "CALCULATED") as LineMode,
-            lineModeReason: l.lineModeReason ?? "",
-            manualPrice: l.manualPrice != null ? String(l.manualPrice) : "",
-            manualPriceIncludesIgv: l.manualPriceIncludesIgv ?? true,
-            supplierName: l.supplierName ?? "",
-            supplierCost: l.supplierCost != null ? String(l.supplierCost) : "",
-            overridePrice: l.lineOverridePrice != null,
-            lineOverridePrice:
-              l.lineOverridePrice != null ? String(l.lineOverridePrice) : "",
-            lineOverrideReason: l.lineOverrideReason ?? "",
-            products:
-              l.products.length > 0
-                ? l.products.map((p) => ({
-                    description: p.description,
-                    quantity: String(p.quantity ?? 1),
-                    unit: p.unit ?? "",
-                    unitCost: String(p.unitCost ?? 0),
-                  }))
-                : [emptyProduct()],
-          }))
-        : [makeDefaultLine(hourlyCost)],
   };
 }
 
-function LineProductsField({
-  control,
-  lineIndex,
-}: {
-  control: ReturnType<
-    typeof useForm<z.input<typeof quotationFormSchema>, unknown, z.output<typeof quotationFormSchema>>
-  >["control"];
-  lineIndex: number;
-}) {
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: `lines.${lineIndex}.products`,
-  });
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-muted-foreground">
-          Materiales / productos
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-xs h-7 gap-1 text-muted-foreground hover:text-foreground"
-          onClick={() => append(emptyProduct())}
-        >
-          <Plus className="size-3.5" />
-          Agregar
-        </Button>
-      </div>
-      <div className="grid grid-cols-12 gap-2 px-0.5">
-        <span className="col-span-6 sm:col-span-5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Descripción
-        </span>
-        <span className="col-span-2 sm:col-span-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Cant.
-        </span>
-        <span
-          className="col-span-2 sm:col-span-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-          title="Unidad de medida del material (und, kg, m, jgo, etc.)"
-        >
-          Und.
-        </span>
-        <span
-          className="col-span-2 sm:col-span-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-          title="Costo unitario: precio en soles por cada unidad de medida"
-        >
-          C. unit. (S/)
-        </span>
-        <span className="col-span-1" />
-      </div>
-      {fields.map((field, index) => (
-        <div key={field.id} className="grid grid-cols-12 gap-2 items-start">
-          <FormField
-            control={control}
-            name={`lines.${lineIndex}.products.${index}.description`}
-            render={({ field: f }) => (
-              <FormItem className="col-span-6 sm:col-span-5">
-                <FormControl>
-                  <Input
-                    placeholder="Descripción del material"
-                    {...f}
-                    className="bg-background border-border text-xs"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={control}
-            name={`lines.${lineIndex}.products.${index}.quantity`}
-            render={({ field: f }) => (
-              <FormItem className="col-span-2 sm:col-span-1">
-                <FormControl>
-                  <Input
-                    placeholder="Cant."
-                    inputMode="decimal"
-                    {...f}
-                    className="bg-background border-border text-xs"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={control}
-            name={`lines.${lineIndex}.products.${index}.unit`}
-            render={({ field: f }) => (
-              <FormItem className="col-span-2 sm:col-span-1">
-                <FormControl>
-                  <Input
-                    placeholder="und, kg, m..."
-                    title="Unidad de medida del material"
-                    {...f}
-                    className="bg-background border-border text-xs"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={control}
-            name={`lines.${lineIndex}.products.${index}.unitCost`}
-            render={({ field: f }) => (
-              <FormItem className="col-span-2 sm:col-span-2">
-                <FormControl>
-                  <Input
-                    placeholder="S/ por unidad"
-                    title="Costo unitario: precio en soles por cada unidad de medida"
-                    inputMode="decimal"
-                    {...f}
-                    className="bg-background border-border text-xs"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="col-span-1 flex justify-center pt-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="size-7 h-7 text-muted-foreground hover:text-destructive"
-              onClick={() => remove(index)}
-              disabled={fields.length <= 1}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
+/**
+ * Popup de datos generales (cliente, sede, asesor, fechas). Crea la cotización
+ * vacía y lleva a su detalle, donde se cargan las líneas y los descuentos.
+ */
 export function QuotationCreateDialog({
   open,
   onOpenChange,
   onSaved,
   editingDetail,
   options,
-  defaultHourlyCost,
   currentUser,
 }: QuotationCreateDialogProps) {
   const currentUserId = currentUser?.id ?? null;
   const [isPending, startTransition] = useSubmitTransition();
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const stepGuard = useStepGuard(step);
-  const [showPricingInfo, setShowPricingInfo] = useState(false);
-  const [expandedProviders, setExpandedProviders] = useState<Record<number, boolean>>({});
 
-  type FormInput = z.input<typeof quotationFormSchema>;
-  type FormOutput = z.output<typeof quotationFormSchema>;
-
-  const form = useForm<FormInput, unknown, FormOutput>({
-    resolver: zodResolver(quotationFormSchema),
-    defaultValues: defaultValues(defaultHourlyCost, currentUserId),
-  });
-
-  const { fields, append, remove, move } = useFieldArray({
-    control: form.control,
-    name: "lines",
+  const form = useForm<QuotationHeaderValues>({
+    resolver: zodResolver(quotationHeaderSchema),
+    defaultValues: defaultValues(currentUserId),
   });
 
   const clientId = useWatch({ control: form.control, name: "clientId" });
-  const costCenterId = useWatch({ control: form.control, name: "costCenterId" });
-  const currentLines = useWatch({ control: form.control, name: "lines" });
-  const discountMode = useWatch({ control: form.control, name: "discountMode" });
-  const discountRate = useWatch({ control: form.control, name: "discountRate" });
-  const discountAmount = useWatch({ control: form.control, name: "discountAmount" });
-  const targetTotal = useWatch({ control: form.control, name: "targetTotal" });
-  const targetTotalIncludesIgv = useWatch({
-    control: form.control,
-    name: "targetTotalIncludesIgv",
-  });
-  const showTaxBreakdown = useWatch({
-    control: form.control,
-    name: "showTaxBreakdown",
-  });
-
-  const lineModes = useMemo(
-    () => (currentLines ?? []).map((l) => (l.lineMode ?? "CALCULATED") as LineMode),
-    [currentLines]
-  );
 
   const filteredCostCenters = useMemo(
     () =>
@@ -422,127 +104,9 @@ export function QuotationCreateDialog({
     [clientId, options.costCenters]
   );
 
-  const equipmentScope = useMemo(() => {
-    if (costCenterId) return new Set([costCenterId]);
-    if (!clientId) return null;
-    return new Set(
-      options.costCenters.filter((cc) => cc.clientId === clientId).map((cc) => cc.id)
-    );
-  }, [clientId, costCenterId, options.costCenters]);
-
-  const filteredEquipment = useMemo(
-    () =>
-      equipmentScope
-        ? options.equipment.filter((e) => equipmentScope.has(e.costCenterId))
-        : options.equipment,
-    [equipmentScope, options.equipment]
-  );
-
-  const equipmentById = useMemo(
-    () => new Map(options.equipment.map((e) => [e.id, e])),
-    [options.equipment]
-  );
-
-  const scopeFor = useCallback(
-    (nextClientId: string | undefined, nextCostCenterId: string | undefined) => {
-      if (nextCostCenterId) return new Set([nextCostCenterId]);
-      if (!nextClientId) return null;
-      return new Set(
-        options.costCenters.filter((cc) => cc.clientId === nextClientId).map((cc) => cc.id)
-      );
-    },
-    [options.costCenters]
-  );
-
-  const clearLinesOutsideScope = useCallback(
-    (scope: Set<string> | null) => {
-      form.getValues("lines").forEach((line, index) => {
-        if (!line.elevatorUnityId) return;
-        const equipment = equipmentById.get(line.elevatorUnityId);
-        if (scope && equipment && !scope.has(equipment.costCenterId)) {
-          form.setValue(`lines.${index}.elevatorUnityId`, "");
-        }
-      });
-    },
-    [equipmentById, form]
-  );
-
-  const summary = useMemo(() => {
-    const lines = (currentLines ?? []).map((l, i) => {
-      const hourlyCost = Number(l.hourlyCost) || 0;
-      const lineMode = (l.lineMode ?? "CALCULATED") as LineMode;
-      const products =
-        lineMode === "MANUAL_PRICE"
-          ? []
-          : (l.products ?? [])
-              .filter((p) => p.description.trim() !== "" || Number(p.unitCost) > 0)
-              .map((p) => ({
-                quantity: Number(p.quantity),
-                unitCost: Number(p.unitCost),
-              }));
-      return {
-        i,
-        calc: calculateQuotationLine(
-          {
-            totalHours: Number(l.totalHours) || 0,
-            hourlyCost,
-            products,
-            lineMode,
-            manualPrice: Number(l.manualPrice) || null,
-            manualPriceIncludesIgv: l.manualPriceIncludesIgv ?? true,
-            supplierName: l.supplierName || null,
-            supplierCost: Number(l.supplierCost) || null,
-            lineOverridePrice: l.overridePrice
-              ? Number(l.lineOverridePrice) || null
-              : null,
-          },
-          hourlyCost,
-          options.pricing
-        ),
-      };
-    });
-    const byLine = new Map(lines.map((l) => [l.i, l.calc]));
-    const header = calculateQuotationHeader(
-      lines.map((l) => ({ clientValue: l.calc.clientValue })),
-      {
-        discountMode: (discountMode ?? "PERCENT") as QuotationFormValues["discountMode"],
-        discountRate: Number(discountRate) || 0,
-        discountAmount: Number(discountAmount) || 0,
-        targetTotal: Number(targetTotal) || null,
-        targetTotalIncludesIgv: targetTotalIncludesIgv ?? true,
-      },
-      options.pricing
-    );
-    return { byLine, header };
-  }, [
-    currentLines,
-    discountMode,
-    discountRate,
-    discountAmount,
-    targetTotal,
-    targetTotalIncludesIgv,
-    options.pricing,
-  ]);
-
   useEffect(() => {
     if (open) {
-      form.reset(
-        editingDetail
-          ? detailToValues(editingDetail, defaultHourlyCost)
-          : defaultValues(defaultHourlyCost, currentUserId)
-      );
-      form.clearErrors();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editingDetail]);
-
-  useEffect(() => {
-    if (open) {
-      form.reset(
-        editingDetail
-          ? detailToValues(editingDetail, defaultHourlyCost)
-          : defaultValues(defaultHourlyCost, currentUserId)
-      );
+      form.reset(editingDetail ? detailToValues(editingDetail) : defaultValues(currentUserId));
       form.clearErrors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -551,63 +115,29 @@ export function QuotationCreateDialog({
   function handleClose() {
     if (isPending) return;
     form.reset();
-    setStep(0);
     onOpenChange(false);
   }
 
-  function handleNext() {
-    return stepGuard.next(advanceStep);
-  }
-
-  async function advanceStep() {
-    let ok = true;
-    if (step === 1) {
-      const currentLines = form.getValues("lines") ?? [];
-      const cleaned = stripBlankProducts(currentLines as Parameters<typeof stripBlankProducts>[0]);
-      if (cleaned.some((line, i) => line !== currentLines[i])) {
-        form.setValue("lines", cleaned as never, { shouldDirty: true, shouldValidate: false });
-      }
-    }
-    if (step === 0) {
-      ok = await form.trigger(["clientId", "issueDate", "validUntil"]);
-    } else if (step === 1) {
-      ok = await form.trigger("lines");
-    }
-    if (ok) {
-      setStep((s) => Math.min(s + 1, STEPS.length - 1));
-    } else if (step === 1) {
-      const firstLineError = form.formState.errors.lines?.[0] as
-        | Record<string, { message?: string } | undefined>
-        | undefined;
-      const firstMessage = firstLineError
-        ? Object.values(firstLineError).find((v) => v?.message)?.message
-        : undefined;
-      toast.error("No se puede avanzar", {
-        description: firstMessage ?? "Revisa los datos de las líneas antes de continuar.",
-      });
-    }
-  }
-
-  function handleBack() {
-    setStep((s) => Math.max(s - 1, 0));
-  }
-
-  function handleSubmit(values: QuotationFormValues) {
-    // Enter en un campo envía el <form> desde cualquier paso: solo avanza.
-    if (step < STEPS.length - 1) {
-      void handleNext();
-      return;
-    }
-    if (stepGuard.justArrived()) return;
+  function handleSubmit(values: QuotationHeaderValues) {
     startTransition(async () => {
       const res = editingDetail
-        ? await updateQuotation(editingDetail.id, values)
-        : await createQuotation(values);
+        ? await updateQuotationHeader(editingDetail.id, values)
+        : await createQuotation({
+            ...values,
+            discountMode: "PERCENT",
+            discountRate: "0",
+            discountAmount: "0",
+            targetTotal: "",
+            targetTotalIncludesIgv: true,
+            showTaxBreakdown: true,
+            lines: [],
+          });
       if (res.success) {
-        toast.success(
-          editingDetail ? "Cotización actualizada" : "Cotización creada",
-          { description: res.message }
-        );
+        toast.success(editingDetail ? "Cotización actualizada" : "Cotización creada", {
+          description: editingDetail
+            ? res.message
+            : "Agrega ahora los equipos y servicios en Líneas de Cotización.",
+        });
         form.reset();
         onOpenChange(false);
         onSaved?.();
@@ -622,80 +152,24 @@ export function QuotationCreateDialog({
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent
         showCloseButton={false}
-        className="bg-card border-border sm:max-w-[980px] text-foreground shadow-lg max-h-[94dvh] overflow-y-auto"
+        className="bg-card border-border sm:max-w-[760px] text-foreground shadow-lg max-h-[94dvh] overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2">
             <FileText className="size-4 text-[#0066CC]" />
-            {editingDetail ? `Editar cotización ${editingDetail.quotationNumber}` : "Nueva cotización"}
+            {editingDetail
+              ? `Editar cotización ${editingDetail.quotationNumber}`
+              : "Nueva cotización"}
           </DialogTitle>
-           <DialogDescription className="hidden text-xs text-muted-foreground sm:block">
-            Precio de venta calculado con: materiales + mano de obra + gastos generales (
-            {Math.round(options.pricing.overheadRateQuote * 100)}%) + comisión (
-            {Math.round(options.pricing.commissionRate * 100)}%) + margen (
-            {Math.round(options.pricing.profitRate * 100)}%), más IGV (
-            {Math.round(options.pricing.igvRate * 100)}%).
-           </DialogDescription>
-           <button type="button" className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground sm:hidden" onClick={() => setShowPricingInfo((value) => !value)}>
-             <Info className="size-3.5" /> ¿Cómo se calcula el precio?
-           </button>
-           {showPricingInfo ? <p className="text-[11px] leading-4 text-muted-foreground sm:hidden">Materiales + mano de obra + gastos generales + comisión + margen + IGV.</p> : null}
+          <DialogDescription className="text-xs text-muted-foreground">
+            {editingDetail
+              ? "Datos generales de la cotización. Las líneas y los descuentos se editan en su detalle."
+              : "Registra los datos generales. Al crearla pasarás a su detalle para agregar las líneas."}
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="mb-1 flex items-center justify-between px-1 pt-1">
-          <div className="flex items-center gap-2 md:hidden">
-            <span className="flex size-7 items-center justify-center rounded-full bg-[#0066CC] text-xs font-bold text-white">{step + 1}</span>
-            <span className="text-sm font-semibold text-foreground">{STEPS[step]?.title}</span>
-          </div>
-          <span className="text-xs font-medium text-muted-foreground md:hidden">Paso {step + 1} de {STEPS.length}</span>
-          <div className="hidden w-full items-center gap-1.5 md:flex">
-          {STEPS.map((s, i) => {
-            const done = step > i;
-            const active = step === i;
-            return (
-              <div key={s.title} className="flex items-center gap-1.5">
-                <div className="flex items-center gap-1.5 whitespace-nowrap">
-                  <div
-                    className={cn(
-                      "size-6 rounded-full border flex items-center justify-center shrink-0",
-                      active
-                        ? "bg-[#0066CC] border-[#0066CC] text-white"
-                        : done
-                          ? "bg-emerald-500 border-emerald-500 text-white"
-                          : "bg-muted/60 border-border text-muted-foreground"
-                    )}
-                  >
-                    {done ? (
-                      <Check className="size-3.5" />
-                    ) : (
-                      <span className="text-[11px] font-bold">{i + 1}</span>
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      "text-xs font-semibold whitespace-nowrap",
-                      active
-                        ? "text-foreground"
-                        : done
-                          ? "text-foreground/70"
-                          : "text-muted-foreground"
-                    )}
-                  >
-                    {s.title}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div className="h-px w-6 sm:w-10 bg-border mx-1 shrink-0" />
-                )}
-              </div>
-            );
-          })}
-          </div>
-        </div>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 pt-2">
-            {step === 0 && (
             <div className="space-y-3">
               <SectionTitle icon={ReceiptText} title="Cliente y referencia" />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -712,7 +186,6 @@ export function QuotationCreateDialog({
                           onValueChange={(v) => {
                             field.onChange(v);
                             form.setValue("costCenterId", "");
-                            clearLinesOutsideScope(scopeFor(v, ""));
                           }}
                           getValue={(c) => c.id}
                           getLabel={(c) => c.legalName ?? "Sin nombre"}
@@ -736,10 +209,7 @@ export function QuotationCreateDialog({
                         <SearchableSelect
                           items={filteredCostCenters}
                           value={field.value ?? ""}
-                          onValueChange={(v) => {
-                            field.onChange(v);
-                            clearLinesOutsideScope(scopeFor(clientId, v));
-                          }}
+                          onValueChange={field.onChange}
                           getValue={(cc) => cc.id}
                           getLabel={(cc) => cc.name ?? "Sin nombre"}
                           getKeywords={(cc) => cc.address}
@@ -857,678 +327,32 @@ export function QuotationCreateDialog({
                   <span>IGV {Math.round(options.pricing.igvRate * 100)}%</span>
                 </div>
                 <div className="mt-1 text-[10px]">
-                  Los valores quedan congelados al crear la cotización.
+                  Las líneas y los descuentos se editan en el detalle de la cotización.
                 </div>
               </div>
             </div>
-            )}
-
-            {step === 1 && (
-            <div className="space-y-3">
-              <SectionTitle icon={Settings2} title="Equipos y servicios" />
-              <div className="space-y-4">
-                {fields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className="rounded-lg border border-border bg-muted/20 p-3 space-y-3"
-                  >
-                    <div className="grid grid-cols-12 gap-2">
-                      <FormField
-                        control={form.control}
-                        name={`lines.${index}.elevatorUnityId`}
-                        render={({ field: f }) => {
-                          const selectedEquipment = f.value
-                            ? equipmentById.get(f.value)
-                            : undefined;
-                          const equipmentOptions =
-                            selectedEquipment &&
-                            !filteredEquipment.some((e) => e.id === selectedEquipment.id)
-                              ? [...filteredEquipment, selectedEquipment]
-                              : filteredEquipment;
-                          return (
-                            <FormItem className="col-span-12 sm:col-span-4">
-                              <FormLabel className="text-[10px] text-muted-foreground">
-                                Seleccione el Equipo
-                              </FormLabel>
-                              <FormControl>
-                                <Select value={f.value} onValueChange={f.onChange}>
-                                  <SelectTrigger className="w-full bg-background border-border text-xs">
-                                    <SelectValue
-                                      placeholder={
-                                        equipmentScope && equipmentOptions.length === 0
-                                          ? "Sin equipos para esta sede"
-                                          : "Equipo (opcional)"
-                                      }
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {equipmentOptions.map((e) => (
-                                      <SelectItem key={e.id} value={e.id}>
-                                        {[e.internalCode, e.name].filter(Boolean).join(" — ")}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`lines.${index}.lineMode`}
-                        render={({ field: f }) => (
-                          <FormItem className="col-span-6 sm:col-span-4">
-                            <FormLabel className="text-[10px] text-muted-foreground">
-                              Modo de cobro
-                            </FormLabel>
-                            <FormControl>
-                              <Select
-                                value={f.value}
-                                onValueChange={(v) => {
-                                  f.onChange(v);
-                                  if (v === "MANUAL_PRICE") {
-                                    form.setValue(`lines.${index}.lineOverridePrice`, "");
-                                    form.setValue(`lines.${index}.lineOverrideReason`, "");
-                                    form.setValue(`lines.${index}.overridePrice`, false);
-                                  } else {
-                                    form.setValue(`lines.${index}.manualPrice`, "");
-                                    form.setValue(`lines.${index}.supplierName`, "");
-                                    form.setValue(`lines.${index}.supplierCost`, "");
-                                    form.setValue(`lines.${index}.lineModeReason`, "");
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className="w-full bg-background border-border text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {LINE_MODES.map((m) => (
-                                    <SelectItem key={m.value} value={m.value}>
-                                      {m.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="col-span-6 sm:col-span-4 flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="size-7 h-7 text-muted-foreground hover:text-foreground"
-                          onClick={() => move(index, index - 1)}
-                          disabled={index === 0}
-                        >
-                          <ArrowUp className="size-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="size-7 h-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => remove(index)}
-                          disabled={fields.length <= 1}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {lineModes[index] === "MANUAL_PRICE" ? (
-                      <div className="space-y-2.5 rounded-md border border-border/70 bg-background/60 p-2.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Modo precio manual
-                        </p>
-                        <FormField
-                          control={form.control}
-                          name={`lines.${index}.description`}
-                          render={({ field: f }) => (
-                            <FormItem>
-                              <FormControl>
-                                 <Textarea
-                                   rows={2}
-                                   placeholder="Descripción del servicio (ej: Cambio de tarjeta)"
-                                   {...f}
-                                    className="min-h-[96px] resize-y bg-background border-border text-xs"
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <div className="grid grid-cols-12 gap-2 items-start">
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.manualPrice`}
-                            render={({ field: f }) => (
-                              <FormItem className="col-span-6 sm:col-span-4">
-                                <FormLabel className="text-[10px] text-muted-foreground">
-                                  Precio final (S/)
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    inputMode="decimal"
-                                    placeholder="0.00"
-                                    {...f}
-                                    className="bg-background border-border text-xs"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.manualPriceIncludesIgv`}
-                            render={({ field: f }) => (
-                              <FormItem className="col-span-6 sm:col-span-3">
-                                <FormLabel
-                                  aria-hidden
-                                  className="invisible text-[10px] text-muted-foreground"
-                                >
-                                  IGV
-                                </FormLabel>
-                                <FormControl>
-                                  <label className="flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-[11px] transition-colors hover:bg-accent/40">
-                                    <Checkbox
-                                      checked={!!f.value}
-                                      onCheckedChange={(v) => f.onChange(v === true)}
-                                    />
-                                    Incluye IGV
-                                  </label>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.lineModeReason`}
-                            render={({ field: f }) => (
-                              <FormItem className="col-span-12 sm:col-span-5">
-                                <FormLabel className="text-[10px] text-muted-foreground">
-                                  Motivo
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    placeholder="Ej: servicio externo"
-                                    {...f}
-                                    className="bg-background border-border text-xs"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="rounded-md border border-dashed border-border bg-muted/20 p-2.5 space-y-2">
-                           <label className="flex cursor-pointer items-center justify-between gap-3 text-xs font-semibold">
-                             <span>
-                               <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Proveedor externo</span>
-                               <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">Opcional para cálculo pass-through</span>
-                             </span>
-                             <Checkbox
-                               checked={expandedProviders[index] ?? Boolean(currentLines?.[index]?.supplierName || Number(currentLines?.[index]?.supplierCost) > 0)}
-                               onCheckedChange={(value) => {
-                                 setExpandedProviders((current) => ({ ...current, [index]: value === true }));
-                                 if (value !== true) {
-                                   form.setValue(`lines.${index}.supplierName`, "");
-                                   form.setValue(`lines.${index}.supplierCost`, "");
-                                 }
-                               }}
-                             />
-                           </label>
-                           {(expandedProviders[index] ?? Boolean(currentLines?.[index]?.supplierName || Number(currentLines?.[index]?.supplierCost) > 0)) && <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
-                            <FormField
-                              control={form.control}
-                              name={`lines.${index}.supplierName`}
-                              render={({ field: f }) => (
-                                 <FormItem>
-                                  <FormLabel className="text-[10px] text-muted-foreground">
-                                    Proveedor
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      placeholder="Ej: Juan Pérez"
-                                      {...f}
-                                      className="bg-background border-border text-xs"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`lines.${index}.supplierCost`}
-                              render={({ field: f }) => (
-                                 <FormItem>
-                                  <FormLabel className="text-[10px] text-muted-foreground">
-                                    Costo del proveedor (S/)
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      inputMode="decimal"
-                                      placeholder="0.00"
-                                      {...f}
-                                      className="bg-background border-border text-xs"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                           </div>}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-gray-50/70 p-3 text-right text-[11px] dark:bg-gray-800/50">
-                          <div className="text-left">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              Valor cliente
-                            </div>
-                            <div className="font-medium">
-                              {money(summary.byLine.get(index)?.clientValue ?? 0)}
-                            </div>
-                          </div>
-                          <div className="text-left">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              IGV {Math.round(options.pricing.igvRate * 100)}%
-                            </div>
-                            <div className="font-medium">
-                              {money(summary.byLine.get(index)?.igv ?? 0)}
-                            </div>
-                          </div>
-                          <div className="col-span-2 flex items-center justify-between border-t border-border pt-3">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              Total
-                            </div>
-                             <div className="text-base font-extrabold text-[#0066CC]">
-                              {money(summary.byLine.get(index)?.clientPrice ?? 0)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        <div className="grid grid-cols-12 gap-2 items-start">
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.totalHours`}
-                            render={({ field: f }) => (
-                              <FormItem className="col-span-4 sm:col-span-2">
-                                <FormLabel className="text-[10px] text-muted-foreground">
-                                  Horas de trabajo (HH)
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    inputMode="decimal"
-                                    placeholder="0"
-                                    {...f}
-                                    className="bg-background border-border text-xs"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.hourlyCost`}
-                            render={({ field: f }) => (
-                              <FormItem className="col-span-4 sm:col-span-2">
-                                <FormLabel className="text-[10px] text-muted-foreground">
-                                  Costo/hora (S/)
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    inputMode="decimal"
-                                    placeholder="0.00"
-                                    {...f}
-                                    className="bg-background border-border text-xs"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <div className="col-span-4 sm:col-span-3 text-right">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                              Precio venta
-                            </div>
-                            <div className="text-sm font-bold">
-                              {money(summary.byLine.get(index)?.clientPrice ?? 0)}
-                            </div>
-                          </div>
-                        </div>
-
-                        <FormField
-                          control={form.control}
-                          name={`lines.${index}.description`}
-                          render={({ field: f }) => (
-                            <FormItem>
-                              <FormControl>
-                                 <Textarea
-                                   rows={2}
-                                   placeholder="Descripción del servicio (ej: Mantenimiento preventivo semestral)"
-                                   {...f}
-                                   className="min-h-[96px] resize-y bg-background border-border text-xs"
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <LineProductsField control={form.control} lineIndex={index} />
-
-                        <div className="rounded-md border border-dashed border-border bg-muted/20 p-2.5 space-y-2">
-                          <FormField
-                            control={form.control}
-                            name={`lines.${index}.overridePrice`}
-                            render={({ field: f }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <label className="flex items-center gap-2 text-[11px] cursor-pointer">
-                                    <Checkbox
-                                      checked={!!f.value}
-                                      onCheckedChange={(v) => {
-                                        f.onChange(v === true);
-                                        if (v !== true) {
-                                          form.setValue(`lines.${index}.lineOverridePrice`, "");
-                                          form.setValue(
-                                            `lines.${index}.lineOverrideReason`,
-                                            ""
-                                          );
-                                        }
-                                      }}
-                                    />
-                                    Sobrescribir precio de esta línea
-                                  </label>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          {currentLines?.[index]?.overridePrice && (
-                            <div className="grid grid-cols-12 gap-2 items-start">
-                              <FormField
-                                control={form.control}
-                                name={`lines.${index}.lineOverridePrice`}
-                                render={({ field: f }) => (
-                                  <FormItem className="col-span-6 sm:col-span-4">
-                                    <FormLabel className="text-[10px] text-muted-foreground">
-                                      Precio final c/IGV (S/)
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        inputMode="decimal"
-                                        placeholder="0.00"
-                                        {...f}
-                                        className="bg-background border-border text-xs"
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={form.control}
-                                name={`lines.${index}.lineOverrideReason`}
-                                render={({ field: f }) => (
-                                  <FormItem className="col-span-6 sm:col-span-8">
-                                    <FormLabel className="text-[10px] text-muted-foreground">
-                                      Motivo
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="Ej: precio pactado con el cliente"
-                                        {...f}
-                                        className="bg-background border-border text-xs"
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs gap-1"
-                onClick={() => append(makeDefaultLine(defaultHourlyCost))}
-              >
-                <Plus className="size-3.5" />
-                Agregar línea
-              </Button>
-            </div>
-            )}
-
-            {step === 2 && (
-            <>
-            <div className="space-y-3">
-              <SectionTitle icon={Pill} title="Descuento y observaciones" />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <FormField
-                  control={form.control}
-                  name="discountMode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-semibold">Tipo de descuento</FormLabel>
-                      <FormControl>
-                        <Select
-                          value={field.value}
-                          onValueChange={(v) => {
-                            field.onChange(v);
-                            form.setValue("discountRate", "0");
-                            form.setValue("discountAmount", "0");
-                            form.setValue("targetTotal", "");
-                          }}
-                        >
-                          <SelectTrigger className="w-full bg-background border-border text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DISCOUNT_MODES.map((m) => (
-                              <SelectItem key={m.value} value={m.value}>
-                                {m.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {discountMode === "PERCENT" && (
-                  <FormField
-                    control={form.control}
-                    name="discountRate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-semibold">Descuento (%)</FormLabel>
-                        <FormControl>
-                          <Input
-                            inputMode="decimal"
-                            placeholder="0"
-                            {...field}
-                            className="bg-background border-border text-xs"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-                {discountMode === "AMOUNT" && (
-                  <FormField
-                    control={form.control}
-                    name="discountAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-semibold">
-                          Monto del descuento (S/)
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            {...field}
-                            className="bg-background border-border text-xs"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-                {discountMode === "FINAL" && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="targetTotal"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-semibold">
-                            Precio final (S/)
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              {...field}
-                              className="bg-background border-border text-xs"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="sm:col-span-2 sm:pt-6">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                        <input
-                          type="checkbox"
-                          checked={targetTotalIncludesIgv ?? true}
-                          onChange={(e) =>
-                            form.setValue("targetTotalIncludesIgv", e.target.checked)
-                          }
-                          className="size-4 accent-[#0066CC]"
-                        />
-                        El precio final ya incluye IGV
-                      </label>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="rounded-lg border border-border bg-muted/20 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Resumen de cálculo
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-                <div>
-                  <div className="text-[10px] text-muted-foreground">Subtotal</div>
-                  <div className="text-sm font-semibold">{money(summary.header.subtotal)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">Descuento</div>
-                  <div className="text-sm font-semibold">
-                    {summary.header.discountAmount > 0
-                      ? `-${money(summary.header.discountAmount)}`
-                      : money(0)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">Base</div>
-                  <div className="text-sm font-semibold">{money(summary.header.taxableBase)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">
-                    IGV {Math.round(options.pricing.igvRate * 100)}%
-                  </div>
-                  <div className="text-sm font-semibold">{money(summary.header.igv)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground">Total</div>
-                  <div className="text-sm font-bold text-[#0066CC]">
-                    {money(summary.header.total)}
-                  </div>
-                </div>
-              </div>
-              <label className="mt-4 flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  checked={showTaxBreakdown ?? true}
-                  onChange={(e) => form.setValue("showTaxBreakdown", e.target.checked)}
-                  className="size-4 accent-[#0066CC]"
-                />
-                <span>Mostrar desglose (Subtotal, Base, IGV) en el PDF</span>
-              </label>
-            </div>
-            </>
-            )}
           </form>
         </Form>
 
-        <DialogFooter className="flex-col items-stretch gap-3 border-border bg-card py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-xs font-semibold text-muted-foreground">
-            Total:{" "}
-            <span className="text-foreground">
-              {step >= 1 ? money(summary.header.total) : "—"}
-            </span>
-          </span>
+        <DialogFooter className="flex-col items-stretch gap-3 border-border bg-card py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end">
           <div className="flex w-full items-center gap-2 sm:w-auto">
-            <Button variant="outline" onClick={handleClose} disabled={isPending} className="flex-1 text-xs sm:flex-none">
+            <Button
+              variant="outline"
+              onClick={handleClose}
+              disabled={isPending}
+              className="flex-1 text-xs sm:flex-none"
+            >
               Cancelar
             </Button>
-            {step > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleBack}
-                disabled={isPending}
-                 className="flex-1 gap-1 text-xs sm:flex-none"
-              >
-                <ChevronLeft className="size-3.5" />
-                Volver
-              </Button>
-            )}
-            {step < STEPS.length - 1 ? (
-              <Button
-                type="button"
-                onClick={handleNext}
-                disabled={isPending}
-                 className="flex-1 gap-1 text-xs sm:flex-none"
-              >
-                Siguiente
-                <ChevronRight className="size-3.5" />
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                onClick={form.handleSubmit(handleSubmit)}
-                disabled={isPending}
-                 className="flex-1 gap-2 text-xs sm:flex-none"
-              >
-                {isPending && <Loader2 className="size-3.5 animate-spin" />}
-                {editingDetail ? "Guardar cambios" : "Crear cotización"}
-              </Button>
-            )}
+            <Button
+              type="button"
+              onClick={form.handleSubmit(handleSubmit)}
+              disabled={isPending}
+              className="flex-1 gap-2 text-xs sm:flex-none"
+            >
+              {isPending && <Loader2 className="size-3.5 animate-spin" />}
+              {editingDetail ? "Guardar cambios" : "Crear y agregar líneas"}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

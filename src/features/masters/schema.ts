@@ -51,7 +51,25 @@ export const serviceTypeFormSchema = z.object({
   requiresContract: z.boolean(),
   defaultSlaMins: z.union([z.literal(""), z.coerce.number().int().nonnegative()]),
   isBillableByDefault: z.boolean(),
+  showInQuotations: z.boolean(),
+  price: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || parseServicePrice(v) !== null, {
+      message: "Ingresa un precio mayor a 0 o déjalo vacío",
+    }),
 });
+
+/**
+ * Convierte el precio de un tipo de servicio (columna TEXT) a número. Acepta coma
+ * decimal. Devuelve null si está vacío o no es un monto mayor a 0.
+ */
+export function parseServicePrice(value: string | null | undefined): number | null {
+  const raw = (value ?? "").trim().replace(",", ".");
+  if (raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export type ServiceTypeFormValues = z.infer<typeof serviceTypeFormSchema>;
 
