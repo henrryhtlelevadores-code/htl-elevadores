@@ -1,4 +1,4 @@
-import { getUsers, getAllRoles } from "@/features/users/actions";
+import { getUsers, getAllRoles, getSupplierOptions } from "@/features/users/actions";
 import { ensureDefaultRoles } from "@/features/users/queries";
 import { UsersTable } from "@/features/users/components/users-table";
 import { Users } from "lucide-react";
@@ -9,7 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   await requirePageAccess("users:read");
   await ensureDefaultRoles();
-  const [users, roles] = await Promise.all([getUsers(), getAllRoles()]);
+  const [users, roles, suppliers] = await Promise.all([
+    getUsers(),
+    getAllRoles(),
+    getSupplierOptions(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -26,7 +30,7 @@ export default async function UsersPage() {
         </div>
       </div>
 
-      <UsersTable initialUsers={users} roles={roles} />
+      <UsersTable initialUsers={users} roles={roles} suppliers={suppliers} />
     </div>
   );
 }

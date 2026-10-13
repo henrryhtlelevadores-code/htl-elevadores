@@ -10,6 +10,8 @@ import { type ServiceType } from "@/db";
 import {
   serviceTypeFormSchema,
   parseServicePrice,
+  normalizeServiceScope,
+  SERVICE_SCOPES,
   type ServiceTypeFormValues,
 } from "../schema";
 import { createServiceType, updateServiceType, deleteServiceType } from "../actions";
@@ -63,6 +65,7 @@ const createDefaultValues = (): ServiceTypeFormValues => ({
   requiresContract: false,
   defaultSlaMins: "",
   isBillableByDefault: true,
+  serviceScope: "ELEVATOR",
   showInQuotations: false,
   price: "",
 });
@@ -92,6 +95,7 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
       requiresContract: type.requiresContract ?? false,
       defaultSlaMins: type.defaultSlaMins != null ? type.defaultSlaMins : "",
       isBillableByDefault: type.isBillableByDefault ?? true,
+      serviceScope: normalizeServiceScope(type.serviceScope),
       showInQuotations: type.showInQuotations ?? false,
       price: type.price ?? "",
     });
@@ -179,6 +183,18 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">{row.getValue("category")}</span>
         ),
+      },
+      {
+        accessorKey: "serviceScope",
+        header: "Pertenece a",
+        cell: ({ row }) => {
+          const scope = normalizeServiceScope(row.getValue<string | null>("serviceScope"));
+          return (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${scope === "GENERAL" ? "bg-violet-500/10 text-violet-600 border-violet-500/20" : "bg-sky-500/10 text-sky-600 border-sky-500/20"}`}>
+              {SERVICE_SCOPES.find((s) => s.value === scope)?.label}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "requiresContract",
@@ -358,6 +374,31 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                         {...field}
                         className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                       />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={createForm.control}
+                name="serviceScope"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-semibold">Pertenece a</FormLabel>
+                    <FormControl>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SERVICE_SCOPES.map((scope) => (
+                            <SelectItem key={scope.value} value={scope.value}>
+                              {scope.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -577,6 +618,31 @@ export function ServiceTypesTab({ initialServiceTypes }: ServiceTypesTabProps) {
                         {...field}
                         className="bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]"
                       />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={createForm.control}
+                name="serviceScope"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-semibold">Pertenece a</FormLabel>
+                    <FormControl>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-full bg-background border-border text-xs focus-visible:ring-1 focus-visible:ring-[#0066CC]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SERVICE_SCOPES.map((scope) => (
+                            <SelectItem key={scope.value} value={scope.value}>
+                              {scope.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

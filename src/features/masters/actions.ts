@@ -6,6 +6,8 @@ import {
   brands,
   models,
   serviceTypes,
+  suppliers,
+  staffProfiles,
   ubigeos,
   maintenanceZones,
   maintenanceTasks,
@@ -14,6 +16,7 @@ import {
   type ElevatorType,
   type Model,
   type ServiceType,
+  type Supplier,
   type Ubigeo,
   type MaintenanceZone,
 } from "@/db/index";
@@ -25,7 +28,10 @@ import {
   elevatorTypeFormSchema,
   modelFormSchema,
   serviceTypeFormSchema,
+  supplierFormSchema,
+  type SupplierFormValues,
   parseServicePrice,
+  normalizeServiceScope,
   ubigeoFormSchema,
   ubigeoBulkImportSchema,
   type BrandFormValues,
@@ -37,7 +43,7 @@ import {
   maintenanceZoneFormSchema,
   type MaintenanceZoneFormValues,
 } from "./schema";
-import { and, eq, asc, max } from "drizzle-orm";
+import { and, eq, asc, count, max, ne } from "drizzle-orm";
 
 // ==========================================
 // 1. MARCAS (BRANDS)
@@ -422,6 +428,7 @@ export async function createServiceType(data: ServiceTypeFormValues) {
       isBillableByDefault: validated.isBillableByDefault,
       price: serviceTypePriceToDb(validated.price),
       showInQuotations: validated.showInQuotations,
+      serviceScope: validated.serviceScope,
     });
 
     revalidatePath("/masters");
@@ -449,7 +456,11 @@ export async function updateServiceType(id: string, data: Partial<ServiceTypeFor
       isActive?: boolean;
       price?: string | null;
       showInQuotations?: boolean;
+      serviceScope?: string;
     } = {};
+    if (data.serviceScope !== undefined) {
+      updateData.serviceScope = normalizeServiceScope(data.serviceScope);
+    }
     if (data.showInQuotations !== undefined) updateData.showInQuotations = data.showInQuotations;
     if (data.price !== undefined) {
       const parsedPrice = serviceTypeFormSchema.shape.price.safeParse(data.price);
@@ -616,6 +627,136 @@ export async function importUbigeosBulk(data: UbigeoBulkImportValues) {
         success: false,
         error:
           "Uno o más códigos de ubigeo ya existen. Revisa los datos e intenta nuevamente.",
+      };
+    }
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+// ==========================================
+// PROVEEDORES (SUPPLIERS)
+// ==========================================
+
+export type SupplierWithUsage = Supplier & {
+  /** Usuarios del sistema vinculados al proveedor. */
+  accountCount: number;
+};
+
+export async function getSuppliers(): Promise<SupplierWithUsage[]> {
+  await requirePermission("masters:read");
+  try {
+    return await db
+      .select({
+        id: suppliers.id,
+        name: suppliers.name,
+        taxId: suppliers.taxId,
+        contactName: suppliers.contactName,
+        phone: suppliers.phone,
+        email: suppliers.email,
+        isActive: suppliers.isActive,
+        accountCount: count(staffProfiles.userId),
+      })
+      .from(suppliers)
+      .leftJoin(staffProfiles, eq(staffProfiles.supplierId, suppliers.id))
+      .groupBy(suppliers.id)
+      .orderBy(asc(suppliers.name));
+  } catch (error) {
+    console.error("Error al obtener proveedores:", error);
+    return [];
+  }
+}
+
+const supplierValues = (validated: SupplierFormValues) => ({
+  name: validated.name,
+  taxId: validated.taxId || null,
+  contactName: validated.contactName || null,
+  phone: validated.phone || null,
+  email: validated.email.toLowerCase() || null,
+  isActive: validated.isActive,
+});
+
+/** El RUC identifica al proveedor: no puede repetirse. */
+async function supplierTaxIdTaken(taxId: string, exceptId?: string): Promise<boolean> {
+  if (!taxId) return false;
+  const rows = await db
+    .select({ id: suppliers.id })
+    .from(suppliers)
+    .where(
+      exceptId
+        ? and(eq(suppliers.taxId, taxId), ne(suppliers.id, exceptId))
+        : eq(suppliers.taxId, taxId)
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function createSupplier(data: SupplierFormValues) {
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
+  try {
+    const validated = supplierFormSchema.parse(data);
+    if (await supplierTaxIdTaken(validated.taxId)) {
+      return { success: false, error: "Ya existe un proveedor con ese RUC." };
+    }
+    await db.insert(suppliers).values({ id: generateUuid(), ...supplierValues(validated) });
+    revalidatePath("/masters");
+    revalidatePath("/users");
+    return { success: true, message: `"${validated.name}" quedó registrado.` };
+  } catch (error) {
+    console.error("Error al crear proveedor:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function updateSupplier(id: string, data: SupplierFormValues) {
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
+  try {
+    const validated = supplierFormSchema.parse(data);
+    if (await supplierTaxIdTaken(validated.taxId, id)) {
+      return { success: false, error: "Ya existe un proveedor con ese RUC." };
+    }
+    await db.update(suppliers).set(supplierValues(validated)).where(eq(suppliers.id, id));
+    // provider_company es el nombre del proveedor copiado en cada cuenta.
+    await db
+      .update(staffProfiles)
+      .set({ providerCompany: validated.name })
+      .where(eq(staffProfiles.supplierId, id));
+    revalidatePath("/masters");
+    revalidatePath("/users");
+    revalidatePath("/routes");
+    revalidatePath("/work-orders");
+    return { success: true, message: "Los cambios se guardaron." };
+  } catch (error) {
+    console.error("Error al actualizar proveedor:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function deleteSupplier(id: string) {
+  const denied = await denyUnless("masters:write");
+  if (denied) return denied;
+  try {
+    const [usage] = await db
+      .select({ accounts: count(staffProfiles.userId) })
+      .from(staffProfiles)
+      .where(eq(staffProfiles.supplierId, id));
+    if ((usage?.accounts ?? 0) > 0) {
+      return {
+        success: false,
+        error: "Tiene cuentas de usuario vinculadas. Desvincúlalas o márcalo como inactivo.",
+      };
+    }
+    await db.delete(suppliers).where(eq(suppliers.id, id));
+    revalidatePath("/masters");
+    revalidatePath("/users");
+    return { success: true, message: "Proveedor eliminado correctamente" };
+  } catch (error) {
+    console.error("Error al eliminar proveedor:", error);
+    if (getErrorMessage(error).includes("FOREIGN KEY constraint failed")) {
+      return {
+        success: false,
+        error: "No se puede eliminar: tiene registros asociados. Márcalo como inactivo.",
       };
     }
     return { success: false, error: getErrorMessage(error) };

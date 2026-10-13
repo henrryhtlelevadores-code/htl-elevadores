@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { type WorkOrderWithRelations, type WorkOrderElevatorWithRelations, type WorkOrderTaskWithRelations, type ServiceTypeOption } from "../actions";
+import type { WorkOrderServiceWithRelations } from "../services-actions";
+import { WorkOrderServicesSection } from "./work-order-services-section";
 import { getWorkOrderTasks, updateWorkOrder, toggleWorkOrderTask, createWorkOrderTask, deleteWorkOrderTask, deleteWorkOrder } from "../actions";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,8 @@ import {
 interface WorkOrderDetailProps {
   workOrder: WorkOrderWithRelations;
   workOrderElevators: WorkOrderElevatorWithRelations[];
+  /** Servicios generales de la OT (vacío en las OT de ascensores). */
+  workOrderServices: WorkOrderServiceWithRelations[];
   serviceTypes: ServiceTypeOption[];
   onClose: () => void;
 }
@@ -107,6 +111,7 @@ const ELEVATOR_STATUS_LABELS: Record<string, string> = {
 export function WorkOrderDetail({
   workOrder,
   workOrderElevators,
+  workOrderServices,
   serviceTypes,
   onClose,
 }: WorkOrderDetailProps) {
@@ -126,6 +131,11 @@ export function WorkOrderDetail({
     PRIORITY_LABELS[workOrder.priority ?? ""] ?? (workOrder.priority ?? "—");
   const isPreventive = serviceTypes.find((s) => s.id === workOrder.serviceTypeId)?.code === "PREV";
   const canDelete = workOrder.status === "PENDING";
+  // OT de servicios generales: atiende servicios, no equipos.
+  const isGeneral =
+    serviceTypes.find((s) => s.id === workOrder.serviceTypeId)?.serviceScope === "GENERAL" ||
+    workOrderServices.length > 0;
+  const unitLabel = isGeneral ? "servicio" : "equipo";
 
   const loadTasks = useCallback((elevatorId: string) => {
     if (tasksActiveId === elevatorId) {
@@ -177,9 +187,9 @@ export function WorkOrderDetail({
           <label className="space-y-1 text-xs font-semibold">Fecha de inicio<DatePicker value={draft.scheduledDate} onChange={(value) => setDraft({ ...draft, scheduledDate: value })} /></label>
           <label className="space-y-1 text-xs font-semibold">Hora de inicio<TimePicker value={draft.scheduledTime} onChange={(value) => setDraft({ ...draft, scheduledTime: value })} /></label>
           <label className="space-y-1 text-xs font-semibold">Prioridad<select className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}><option value="LOW">Baja</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="EMERGENCY">Emergencia</option></select></label>
-          <label className="space-y-1 text-xs font-semibold">Duración por equipo (min)<Input type="number" min="1" value={draft.estimatedDurationMins ?? ""} onChange={(e) => setDraft({ ...draft, estimatedDurationMins: e.target.value ? Number(e.target.value) : null })} /></label>
+          <label className="space-y-1 text-xs font-semibold">Duración por {unitLabel} (min)<Input type="number" min="1" value={draft.estimatedDurationMins ?? ""} onChange={(e) => setDraft({ ...draft, estimatedDurationMins: e.target.value ? Number(e.target.value) : null })} /></label>
           <label className="col-span-2 space-y-1 text-xs font-semibold">Técnicos de apoyo<Input value={draft.supportingTechnicians} onChange={(e) => setDraft({ ...draft, supportingTechnicians: e.target.value })} placeholder="Texto libre" /></label>
-          {!isPreventive && <label className="col-span-2 space-y-1 text-xs font-semibold">Descripción del problema<Textarea className="text-xs" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Descripción del problema" /></label>}
+          {!isPreventive && <label className="col-span-2 space-y-1 text-xs font-semibold">{isGeneral ? "Indicaciones generales" : "Descripción del problema"}<Textarea className="text-xs" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder={isGeneral ? "Indicaciones para toda la OT" : "Descripción del problema"} /></label>}
           </div>}
 
         <div className="grid grid-cols-2 gap-2 px-4 sm:grid-cols-4 sm:gap-3">
@@ -187,7 +197,7 @@ export function WorkOrderDetail({
             ["Tipo", typeLabel],
             ["Prioridad", priorityLabel],
             ["Programada", formatDate(workOrder.scheduledDate ?? null, workOrder.scheduledTime ?? null)],
-            ["Duración", workOrder.estimatedDurationMins ? `${workOrder.estimatedDurationMins} min/equipo` : "—"],
+            ["Duración", workOrder.estimatedDurationMins ? `${workOrder.estimatedDurationMins} min/${unitLabel}` : "—"],
             ["Fin estimado", workOrder.estimatedEndAt ? formatDateTime(workOrder.estimatedEndAt) : "—"],
             ["Estado", STATUS_LABELS[workOrder.status ?? ""] ?? workOrder.status ?? "—"],
           ].map(([label, value]) => (
@@ -200,10 +210,17 @@ export function WorkOrderDetail({
           ))}
         </div>
 
-        {workOrder.description && <details open className="mx-4 rounded-lg border border-border p-3"><summary className="cursor-pointer text-xs font-semibold">Descripción del problema</summary><p className="mt-2 whitespace-pre-wrap text-xs">{workOrder.description}</p></details>}
+        {workOrder.description && <details open className="mx-4 rounded-lg border border-border p-3"><summary className="cursor-pointer text-xs font-semibold">{isGeneral ? "Indicaciones generales" : "Descripción del problema"}</summary><p className="mt-2 whitespace-pre-wrap text-xs">{workOrder.description}</p></details>}
+
+        {isGeneral && (
+          <WorkOrderServicesSection
+            services={workOrderServices}
+            locked={workOrder.approvalStatus === "APPROVED"}
+          />
+        )}
 
         {/* Listado read-only de equipos de la OT */}
-        {workOrderElevators.length === 0 ? (
+        {isGeneral ? null : workOrderElevators.length === 0 ? (
           <div className="mx-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 py-10 text-center">
             <Cpu className="size-8 text-muted-foreground/40 mb-2" />
             <p className="text-xs text-muted-foreground font-semibold">

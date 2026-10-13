@@ -6,6 +6,8 @@ import {
   workOrders,
   workOrderElevators,
   workOrderTasks,
+  workOrderServices,
+  workOrderServiceTasks,
   workOrderElevatorSafety,
   workOrderElevatorSafetyItems,
   contractElevatorModuleExecutions,
@@ -37,7 +39,9 @@ import {
   type WorkOrderFormValues,
   type WorkOrderElevatorFormValues,
   type WorkOrderTaskFormValues,
+  parseServiceTasks,
 } from "./schema";
+import { normalizeServiceScope, type ServiceScope } from "@/features/masters/schema";
 import { eq, asc, desc, and, isNull, count, inArray, like } from "drizzle-orm";
 import { type BatchItem } from "drizzle-orm/batch";
 import { getApplicableModules } from "@/features/maintenance/constants";
@@ -80,21 +84,25 @@ export type ServiceTypeOption = {
   code: string;
   name: string;
   category: string;
+  /** ELEVATOR: la OT atiende equipos. GENERAL: atiende servicios generales. */
+  serviceScope: ServiceScope;
 };
 
 export async function getServiceTypes(): Promise<ServiceTypeOption[]> {
   await requirePermission("work_orders:panel:read", "reports:read", "masters:read");
   try {
-    return await db
+    const rows = await db
       .select({
         id: serviceTypes.id,
         code: serviceTypes.code,
         name: serviceTypes.name,
         category: serviceTypes.category,
+        serviceScope: serviceTypes.serviceScope,
       })
       .from(serviceTypes)
       .where(eq(serviceTypes.isActive, true))
       .orderBy(asc(serviceTypes.category), asc(serviceTypes.code));
+    return rows.map((row) => ({ ...row, serviceScope: normalizeServiceScope(row.serviceScope) }));
   } catch (error) {
     console.error("Error al obtener tipos de servicio:", error);
     return [];
@@ -394,7 +402,7 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
     const monthPrefix = `${monthLabel}-%`;
 
     const serviceTypeRows = await db
-      .select({ id: serviceTypes.id, code: serviceTypes.code, name: serviceTypes.name, category: serviceTypes.category })
+      .select({ id: serviceTypes.id, code: serviceTypes.code, name: serviceTypes.name, category: serviceTypes.category, serviceScope: serviceTypes.serviceScope })
       .from(serviceTypes)
       .where(eq(serviceTypes.id, validated.serviceTypeId))
       .limit(1);
@@ -402,17 +410,44 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
     if (!serviceType) {
       return { success: false, error: "Selecciona un tipo de servicio válido." };
     }
-    const requiresDescription = serviceType.code !== "PREV" &&
+    // Una OT es de ascensores o de servicios generales; nunca mezcla ambos.
+    const isGeneral = normalizeServiceScope(serviceType.serviceScope) === "GENERAL";
+    const serviceItems = isGeneral ? validated.services : [];
+    if (isGeneral) {
+      if (serviceItems.length === 0) {
+        return { success: false, error: "Agrega al menos un servicio a realizar." };
+      }
+      const itemTypeIds = [...new Set(serviceItems.map((s) => s.serviceTypeId).filter(Boolean))] as string[];
+      if (itemTypeIds.length > 0) {
+        const itemTypes = await db
+          .select({ id: serviceTypes.id, serviceScope: serviceTypes.serviceScope })
+          .from(serviceTypes)
+          .where(inArray(serviceTypes.id, itemTypeIds));
+        const generalIds = new Set(
+          itemTypes.filter((t) => normalizeServiceScope(t.serviceScope) === "GENERAL").map((t) => t.id)
+        );
+        if (itemTypeIds.some((typeId) => !generalIds.has(typeId))) {
+          return { success: false, error: "Cada servicio debe usar un tipo de Servicios Generales." };
+        }
+      }
+    } else if ((validated.elevatorUnityIds ?? []).length === 0) {
+      return { success: false, error: "Selecciona al menos un equipo." };
+    }
+    const requiresDescription = !isGeneral && serviceType.code !== "PREV" &&
       (serviceType.category === "MANTENIMIENTO" || serviceType.category === "EMERGENCIA");
     if (requiresDescription && (validated.description?.trim().length ?? 0) < 10) {
       return { success: false, error: "La descripción es obligatoria y debe tener mínimo 10 caracteres." };
     }
 
-    const elevatorIds = validated.elevatorUnityIds ?? [];
+    const elevatorIds = isGeneral ? [] : (validated.elevatorUnityIds ?? []);
+    // Equipos o servicios: lo que la OT atiende, para estimar su duración total.
+    const unitCount = isGeneral ? serviceItems.length : elevatorIds.length;
 
-    const selectedTypes = await db.select({ typeId: elevatorUnities.elevatorTypeId })
-      .from(elevatorUnities)
-      .where(inArray(elevatorUnities.id, elevatorIds));
+    const selectedTypes = elevatorIds.length > 0
+      ? await db.select({ typeId: elevatorUnities.elevatorTypeId })
+        .from(elevatorUnities)
+        .where(inArray(elevatorUnities.id, elevatorIds))
+      : [];
     const typeIds = [...new Set(selectedTypes.map((row) => row.typeId))];
     const templates = typeIds.length > 0
       ? await db.select({ equipmentTypeId: safetyTemplates.equipmentTypeId })
@@ -488,7 +523,7 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         supportingTechnicians: validated.supportingTechnicians?.trim() || null,
         estimatedDurationMins,
         estimatedEndAt: estimatedDurationMins && validated.scheduledTime
-          ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + estimatedDurationMins * elevatorIds.length * 60
+          ? scheduledTimestamp(validated.scheduledDate, validated.scheduledTime) + estimatedDurationMins * unitCount * 60
           : null,
       });
 
@@ -510,6 +545,31 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
         })
       );
     }
+
+    serviceItems.forEach((item, index) => {
+      const workOrderServiceId = generateUuid();
+      stmts.push(
+        db.insert(workOrderServices).values({
+          id: workOrderServiceId,
+          workOrderId,
+          serviceTypeId: item.serviceTypeId || serviceType.id,
+          locationDescription: item.locationDescription?.trim() || null,
+          description: item.description.trim(),
+          status: "PENDING",
+          orderIndex: index,
+        })
+      );
+      parseServiceTasks(item.tasks).forEach((taskDescription, taskIndex) => {
+        stmts.push(
+          db.insert(workOrderServiceTasks).values({
+            id: generateUuid(),
+            workOrderServiceId,
+            taskDescription,
+            orderIndex: taskIndex,
+          })
+        );
+      });
+    });
 
     if (serviceType.code === "PREV") {
       for (const elevator of workOrderElevatorRows) {
@@ -597,9 +657,12 @@ export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormVal
       const date = data.scheduledDate ?? row?.scheduledDate;
       const time = data.scheduledTime ?? row?.scheduledTime;
       const duration = data.estimatedDurationMins ?? row?.estimatedDurationMins;
-      const equipment = await db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, id));
+      const [equipment, services] = await Promise.all([
+        db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, id)),
+        db.select({ id: workOrderServices.id }).from(workOrderServices).where(eq(workOrderServices.workOrderId, id)),
+      ]);
       updateData.estimatedEndAt = date && time && duration
-        ? scheduledTimestamp(date, time) + duration * equipment.length * 60
+        ? scheduledTimestamp(date, time) + duration * (equipment.length + services.length) * 60
         : null;
     }
 
@@ -715,6 +778,17 @@ export async function deleteWorkOrder(id: string) {
         await tx
           .delete(workOrderElevators)
           .where(inArray(workOrderElevators.workOrderId, [id]));
+      }
+
+      const serviceRows = await tx
+        .select({ id: workOrderServices.id })
+        .from(workOrderServices)
+        .where(eq(workOrderServices.workOrderId, id));
+      if (serviceRows.length > 0) {
+        await tx
+          .delete(workOrderServiceTasks)
+          .where(inArray(workOrderServiceTasks.workOrderServiceId, serviceRows.map((row) => row.id)));
+        await tx.delete(workOrderServices).where(eq(workOrderServices.workOrderId, id));
       }
 
       await tx.delete(workOrders).where(eq(workOrders.id, id));

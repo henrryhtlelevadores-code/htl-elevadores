@@ -166,6 +166,12 @@ export async function getTechnicianContext(): Promise<TechnicianContext | null> 
   return { userId, fullName: row.fullName, roleName: row.role_name };
 }
 
+/**
+ * Las OT de servicios generales aún no se ejecutan desde la app (no tienen
+ * equipos): se dejan fuera del listado hasta que exista su pantalla.
+ */
+const notGeneralService = sql`COALESCE(${serviceTypes.serviceScope}, 'ELEVATOR') <> 'GENERAL'`;
+
 export async function getTechnicianWorkOrders(
   technicianId: string
 ): Promise<TechnicianWorkOrder[]> {
@@ -197,7 +203,8 @@ export async function getTechnicianWorkOrders(
       .where(
         and(
           eq(workOrders.technicianId, technicianId),
-          isNull(workOrders.deletedAt)
+          isNull(workOrders.deletedAt),
+          notGeneralService
         )
       )
       .orderBy(
@@ -236,6 +243,7 @@ export async function getTechnicianEmergencies(
         and(
           eq(workOrders.technicianId, technicianId),
           isNull(workOrders.deletedAt),
+          notGeneralService,
           eq(serviceTypes.category, "EMERGENCIA"),
           or(
             isNull(workOrders.status),

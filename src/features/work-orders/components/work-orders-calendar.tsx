@@ -40,6 +40,8 @@ import {
 import { workOrderFormSchema, type WorkOrderFormValues } from "../schema";
 import { DataTable } from "@/components/ui/data-table";
 import { WorkOrderDetail } from "./work-order-detail";
+import { emptyServiceItem, WorkOrderServicesField } from "./work-order-services-field";
+import type { WorkOrderServiceWithRelations } from "../services-actions";
 import {
   Sheet,
   SheetContent,
@@ -87,7 +89,16 @@ interface WorkOrdersCalendarProps {
   initialWorkOrders: WorkOrderWithRelations[];
   formData: WorkOrdersFormData;
   initialWorkOrderElevators: WorkOrderElevatorWithRelations[];
+  initialWorkOrderServices: WorkOrderServiceWithRelations[];
 }
+
+const GENERAL_BADGE_CLASS =
+  "inline-flex shrink-0 rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-bold text-violet-600 dark:text-violet-400";
+
+const SCOPE_FILTER_OPTIONS = [
+  { id: "ELEVATOR", name: "Ascensores" },
+  { id: "GENERAL", name: "Servicios Generales" },
+];
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
@@ -178,6 +189,7 @@ const emptyValues: WorkOrderFormValues = {
   scheduledDate: "",
   scheduledTime: "",
   elevatorUnityIds: [],
+  services: [],
   description: "",
   supportingTechnicians: "",
   estimatedDurationMins: null,
@@ -187,6 +199,7 @@ export function WorkOrdersCalendar({
   initialWorkOrders,
   formData,
   initialWorkOrderElevators,
+  initialWorkOrderServices,
 }: WorkOrdersCalendarProps) {
   const router = useRouter();
   const [isPending, startTransition] = useSubmitTransition();
@@ -210,6 +223,7 @@ export function WorkOrdersCalendar({
   const [clientFilter, setClientFilter] = useState("");
   const [costCenterFilter, setCostCenterFilter] = useState("");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("");
 
   // En móvil la vista por defecto debe ser "Lista", no el calendario.
   // Se ajusta tras el montaje para evitar mismatch en la hidratación SSR.
@@ -225,17 +239,26 @@ export function WorkOrdersCalendar({
   });
 
   const serviceTypeMap = useMemo(() => {
-    const map = new Map<string, { id: string; code: string; name: string; category: string }>();
+    const map = new Map<string, (typeof formData.serviceTypes)[number]>();
     for (const st of formData.serviceTypes) map.set(st.id, st);
     return map;
   }, [formData.serviceTypes]);
 
+  const generalServiceTypes = useMemo(
+    () => formData.serviceTypes.filter((st) => st.serviceScope === "GENERAL"),
+    [formData.serviceTypes]
+  );
+  /** Una OT es de servicios generales si lo es su tipo de servicio. */
+  const isGeneralOrder = (serviceTypeId: string | null | undefined) =>
+    serviceTypeMap.get(serviceTypeId ?? "")?.serviceScope === "GENERAL";
+
   const selectedCostCenterId = form.watch("costCenterId");
   const selectedServiceType = serviceTypeMap.get(form.watch("serviceTypeId"));
   const selectedClientId = form.watch("clientId");
+  const isGeneral = selectedServiceType?.serviceScope === "GENERAL";
   const isPreventive = selectedServiceType?.code === "PREV";
   const isEmergency = selectedServiceType?.category === "EMERGENCY" || selectedServiceType?.code.startsWith("EMER");
-  const isCorrective = selectedServiceType?.category === "MANTENIMIENTO" && !isPreventive;
+  const isCorrective = !isGeneral && selectedServiceType?.category === "MANTENIMIENTO" && !isPreventive;
 
   const costCentersByClient = useMemo(() => {
     if (!selectedClientId) return formData.costCenters;
@@ -266,7 +289,8 @@ export function WorkOrdersCalendar({
     (dayFilter ? 1 : 0) +
     (clientFilter ? 1 : 0) +
     (costCenterFilter ? 1 : 0) +
-    (serviceTypeFilter ? 1 : 0);
+    (serviceTypeFilter ? 1 : 0) +
+    (scopeFilter ? 1 : 0);
 
   const clientCostCenters = useMemo(() => {
     if (!clientFilter) return formData.costCenters;
@@ -289,9 +313,12 @@ export function WorkOrdersCalendar({
       if (costCenterFilter && wo.costCenterId !== costCenterFilter) return false;
       if (clientFilter && !clientCcIds?.has(wo.costCenterId)) return false;
       if (serviceTypeFilter && wo.serviceTypeId !== serviceTypeFilter) return false;
+      if (scopeFilter && (scopeFilter === "GENERAL") !== (serviceTypeMap.get(wo.serviceTypeId ?? "")?.serviceScope === "GENERAL")) return false;
       return true;
     });
   }, [
+    scopeFilter,
+    serviceTypeMap,
     filteredWorkOrders,
     dayFilter,
     weekFilter,
@@ -327,6 +354,7 @@ export function WorkOrdersCalendar({
     setClientFilter("");
     setCostCenterFilter("");
     setServiceTypeFilter("");
+    setScopeFilter("");
   }
 
   const woByDayKey = useMemo(() => {
@@ -388,6 +416,17 @@ export function WorkOrdersCalendar({
 
   function handleSubmit(values: WorkOrderFormValues) {
     const st = serviceTypeMap.get(values.serviceTypeId);
+    if (st?.serviceScope === "GENERAL") {
+      if (values.services.length === 0) {
+        toast.error("Servicios requeridos", {
+          description: "Agrega al menos un servicio a realizar.",
+        });
+        return;
+      }
+    } else if (values.elevatorUnityIds.length === 0) {
+      form.setError("elevatorUnityIds", { message: "Selecciona al menos un equipo" });
+      return;
+    }
     if (st?.code === "PREV" && values.elevatorUnityIds.length === 0) {
       toast.error("Equipos requeridos", {
         description: "Para un mantenimiento preventivo debes seleccionar al menos un equipo.",
@@ -459,7 +498,10 @@ export function WorkOrdersCalendar({
         accessorKey: "type",
         header: "Tipo de Servicio",
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground font-semibold">
+          <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground font-semibold">
+            {isGeneralOrder(row.original.serviceTypeId) && (
+              <span className={GENERAL_BADGE_CLASS}>General</span>
+            )}
             {typeLabelOf(row.getValue<string>("type"))}
           </span>
         ),
@@ -890,6 +932,25 @@ export function WorkOrdersCalendar({
                 />
               </div>
 
+              {/* Línea de servicio */}
+              <div className="space-y-1.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Línea
+                </span>
+                <SearchableSelect
+                  items={SCOPE_FILTER_OPTIONS}
+                  value={scopeFilter}
+                  onValueChange={setScopeFilter}
+                  getLabel={(s) => s.name}
+                  getValue={(s) => s.id}
+                  placeholder="Ascensores y servicios generales"
+                  searchPlaceholder="Buscar..."
+                  emptyText="Sin opciones"
+                  allowClear
+                  clearLabel="Ascensores y servicios generales"
+                />
+              </div>
+
               <div className="flex justify-end">
                 <Button
                   variant="ghost"
@@ -988,6 +1049,14 @@ export function WorkOrdersCalendar({
                           onValueChange={(v) => {
                             field.onChange(v ?? "");
                             form.setValue("elevatorUnityIds", []);
+                            form.clearErrors("elevatorUnityIds");
+                            // Servicios generales: la OT lista servicios en vez de equipos.
+                            form.setValue(
+                              "services",
+                              v && serviceTypeMap.get(v)?.serviceScope === "GENERAL"
+                                ? [emptyServiceItem(v)]
+                                : []
+                            );
                             if (v && (serviceTypeMap.get(v)?.category === "EMERGENCIA" || serviceTypeMap.get(v)?.code.startsWith("EMER"))) {
                               const now = new Date();
                               form.setValue("scheduledDate", toISO(now));
@@ -1010,7 +1079,7 @@ export function WorkOrdersCalendar({
                         </SelectTrigger>
                         <SelectContent>
                           {CATEGORY_ORDER.map((cat) => {
-                            const items = formData.serviceTypes.filter((st) => st.category === cat);
+                            const items = formData.serviceTypes.filter((st) => st.category === cat && st.serviceScope !== "GENERAL");
                             if (items.length === 0) return null;
                             return (
                               <SelectGroup key={cat}>
@@ -1024,6 +1093,17 @@ export function WorkOrdersCalendar({
                               </SelectGroup>
                             );
                           })}
+                          {generalServiceTypes.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Servicios Generales</SelectLabel>
+                              {generalServiceTypes.map((st) => (
+                                <SelectItem key={st.id} value={st.id}>
+                                  {st.name}
+                                  <span className="font-mono text-muted-foreground">{st.code}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
                           {formData.serviceTypes.length === 0 && (
                             <div className="px-2 py-6 text-center text-xs text-muted-foreground">
                               No hay tipos de servicio activos
@@ -1167,10 +1247,18 @@ export function WorkOrdersCalendar({
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="supportingTechnicians" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Técnicos de apoyo</FormLabel><FormControl><Input {...field} value={field.value ?? ""} placeholder="Si deseas colocar técnicos adicionales" className="text-xs" /></FormControl></FormItem>} />
-                <FormField control={form.control} name="estimatedDurationMins" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Duración estimada por Equipo (min)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)} className="text-xs" /></FormControl></FormItem>} />
+                <FormField control={form.control} name="estimatedDurationMins" render={({ field }) => <FormItem><FormLabel className="text-xs font-semibold">Duración estimada por {isGeneral ? "Servicio" : "Equipo"} (min)</FormLabel><FormControl><Input type="number" min="1" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)} className="text-xs" /></FormControl></FormItem>} />
               </div>
 
-              <FormField
+              {isGeneral && (
+                <WorkOrderServicesField
+                  form={form}
+                  generalServiceTypes={generalServiceTypes}
+                  defaultServiceTypeId={selectedServiceType?.id ?? ""}
+                />
+              )}
+
+              {!isGeneral && <FormField
                 control={form.control}
                 name="elevatorUnityIds"
                 render={({ field }) => (
@@ -1222,8 +1310,7 @@ export function WorkOrdersCalendar({
                     <FormMessage />
                   </FormItem>
                 )}
-              />
-
+              />}
 
               <DialogFooter className="pt-2">
                 <Button
@@ -1295,7 +1382,10 @@ export function WorkOrdersCalendar({
                     </span>
                   </div>
 
-                  <p className="mt-1.5 text-xs font-semibold text-foreground">
+                  <p className="mt-1.5 flex flex-wrap items-center gap-1 text-xs font-semibold text-foreground">
+                    {isGeneralOrder(wo.serviceTypeId) && (
+                      <span className={GENERAL_BADGE_CLASS}>General</span>
+                    )}
                     {typeLabelOf(wo.serviceTypeId)}
                   </p>
 
@@ -1379,6 +1469,9 @@ export function WorkOrdersCalendar({
           workOrder={viewingWorkOrder}
           workOrderElevators={initialWorkOrderElevators.filter(
             (e) => e.workOrderId === viewingWorkOrder.id
+          )}
+          workOrderServices={initialWorkOrderServices.filter(
+            (s) => s.workOrderId === viewingWorkOrder.id
           )}
           serviceTypes={formData.serviceTypes}
           onClose={() => setViewingWorkOrder(null)}

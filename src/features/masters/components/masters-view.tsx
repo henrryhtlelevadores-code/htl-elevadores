@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { type Brand, type ElevatorType, type ServiceType, type Ubigeo, type MaintenanceZone } from "@/db";
-import { type ModelWithBrand } from "../actions";
+import { type ModelWithBrand, type SupplierWithUsage } from "../actions";
 import { BrandsModelsTab } from "./brands-models-tab";
 import { TypesTab } from "./types-tab";
 import { ServiceTypesTab } from "./service-types-tab";
 import { UbigeosTab } from "./ubigeos-tab";
 import { MaintenanceZonesTab } from "./maintenance-zones-tab";
+import { SuppliersTab } from "./suppliers-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tag, Cpu, Layers, Database, Wrench, MapPin, MapPinned } from "lucide-react";
+import { Tag, Cpu, Layers, Database, Wrench, MapPin, MapPinned, Building2 } from "lucide-react";
 
 interface MastersViewProps {
   brands: Brand[];
@@ -19,9 +20,10 @@ interface MastersViewProps {
   ubigeos: Ubigeo[];
   maintenanceZones: MaintenanceZone[];
   maintenanceTypes: ElevatorType[];
+  suppliers: SupplierWithUsage[];
 }
 
-export function MastersView({ brands, types, models, serviceTypes, ubigeos, maintenanceZones, maintenanceTypes }: MastersViewProps) {
+export function MastersView({ brands, types, models, serviceTypes, ubigeos, maintenanceZones, maintenanceTypes, suppliers }: MastersViewProps) {
   const [activeTab, setActiveTab] = useState("brands-models");
 
   return (
@@ -102,6 +104,13 @@ export function MastersView({ brands, types, models, serviceTypes, ubigeos, main
             <span>Tipos de Servicio ({serviceTypes.length})</span>
           </TabsTrigger>
           <TabsTrigger
+            value="suppliers"
+            className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
+          >
+            <Building2 className="size-3.5" />
+            <span>Proveedores ({suppliers.length})</span>
+          </TabsTrigger>
+          <TabsTrigger
             value="ubigeos"
             className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-4 gap-2 rounded-md"
           >
@@ -120,6 +129,10 @@ export function MastersView({ brands, types, models, serviceTypes, ubigeos, main
 
         <TabsContent value="service-types" className="outline-hidden focus:outline-none">
           <ServiceTypesTab initialServiceTypes={serviceTypes} />
+        </TabsContent>
+
+        <TabsContent value="suppliers" className="outline-hidden focus:outline-none">
+          <SuppliersTab initialSuppliers={suppliers} />
         </TabsContent>
 
         <TabsContent value="ubigeos" className="outline-hidden focus:outline-none">

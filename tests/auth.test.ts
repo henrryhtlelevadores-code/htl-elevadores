@@ -31,7 +31,7 @@ function userForm(user: { email: string; roleId: string }, overrides: Record<str
     status: "ACTIVE" as const,
     documentType: "DNI" as const,
     documentNumber: "12345678",
-    providerType: "INTERNAL" as const,
+    relationshipType: "INTERNAL_EMPLOYEE" as const,
     hasSctr: false,
     password: "",
     ...overrides,

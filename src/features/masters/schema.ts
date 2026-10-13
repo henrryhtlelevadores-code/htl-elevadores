@@ -51,6 +51,7 @@ export const serviceTypeFormSchema = z.object({
   requiresContract: z.boolean(),
   defaultSlaMins: z.union([z.literal(""), z.coerce.number().int().nonnegative()]),
   isBillableByDefault: z.boolean(),
+  serviceScope: z.enum(["ELEVATOR", "GENERAL"]),
   showInQuotations: z.boolean(),
   price: z
     .string()
@@ -59,6 +60,18 @@ export const serviceTypeFormSchema = z.object({
       message: "Ingresa un precio mayor a 0 o déjalo vacío",
     }),
 });
+
+/** Línea de negocio de un tipo de servicio. */
+export const SERVICE_SCOPES = [
+  { value: "ELEVATOR", label: "Ascensores" },
+  { value: "GENERAL", label: "Servicios Generales" },
+] as const;
+
+export type ServiceScope = (typeof SERVICE_SCOPES)[number]["value"];
+
+/** Todo tipo de servicio sin alcance explícito es de ascensores. */
+export const normalizeServiceScope = (value: string | null | undefined): ServiceScope =>
+  value === "GENERAL" ? "GENERAL" : "ELEVATOR";
 
 /**
  * Convierte el precio de un tipo de servicio (columna TEXT) a número. Acepta coma
@@ -72,6 +85,24 @@ export function parseServicePrice(value: string | null | undefined): number | nu
 }
 
 export type ServiceTypeFormValues = z.infer<typeof serviceTypeFormSchema>;
+
+export const supplierFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "La razón social debe tener al menos 2 caracteres")
+    .max(150, "Máximo 150 caracteres"),
+  taxId: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d{11}$/.test(v), { message: "El RUC debe tener 11 dígitos" }),
+  contactName: z.string().trim().max(120, "Máximo 120 caracteres"),
+  phone: z.string().trim().max(20, "Máximo 20 caracteres"),
+  email: z.string().trim().max(160).email("Correo inválido").or(z.literal("")),
+  isActive: z.boolean(),
+});
+
+export type SupplierFormValues = z.infer<typeof supplierFormSchema>;
 
 export const ubigeoFormSchema = z.object({
   id: z

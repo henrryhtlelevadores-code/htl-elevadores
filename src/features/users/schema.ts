@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { STAFF_RELATIONSHIP_VALUES } from "@/lib/staff-relationship";
 
 export const userStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 
 export const documentTypeSchema = z.enum(["DNI", "CE", "RUC", "PASSPORT"]);
 
-export const providerTypeSchema = z.enum(["INTERNAL", "EXTERNAL"]);
+export const relationshipTypeSchema = z.enum(STAFF_RELATIONSHIP_VALUES);
 
 const optionalString = (max: number) =>
   z.string().max(max).optional().or(z.literal(""));
@@ -26,8 +27,9 @@ const baseUserFields = {
   specialization: z.string().max(100).optional().or(z.literal("")),
   licenseNumber: z.string().max(50).optional().or(z.literal("")),
   // Perfil de técnico (solo aplica si el rol tiene is_field_role).
-  providerType: providerTypeSchema,
-  providerCompany: optionalString(120),
+  relationshipType: relationshipTypeSchema,
+  // Empresa proveedora (suppliers.id): obligatoria para la cuenta de empresa.
+  supplierId: optionalString(60),
   hasSctr: z.boolean(),
   // Fecha de vencimiento del SCTR en ISO (YYYY-MM-DD) desde el DatePicker.
   sctrExpiryDate: z

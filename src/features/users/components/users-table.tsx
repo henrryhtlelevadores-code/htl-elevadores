@@ -52,13 +52,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toIso } from "@/lib/date";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  normalizeStaffRelationship,
+  representsHtl,
+  requiresSupplier,
+  STAFF_RELATIONSHIPS,
+  staffRelationshipLabel,
+  type StaffRelationship,
+} from "@/lib/staff-relationship";
+
+type SupplierOption = { id: string; name: string; taxId: string | null };
+const supplierValue = (supplier: SupplierOption) => supplier.id;
+const supplierLabel = (supplier: SupplierOption) => supplier.name;
+const supplierKeywords = (supplier: SupplierOption) => supplier.taxId;
 import { cn } from "@/lib/utils";
 import { PasswordGenerator } from "@/features/auth/components/password-generator";
 import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
 import {
   providerBadgeClassName,
   providerBadgeTag,
-  providerTypeLabel,
 } from "@/lib/provider-type";
 import {
   Plus,
@@ -85,6 +98,8 @@ import {
 interface UsersTableProps {
   initialUsers: UserListItem[];
   roles: Role[];
+  /** Empresas proveedoras activas (Maestros → Proveedores). */
+  suppliers: SupplierOption[];
 }
 
 const TYPE_STYLES: Record<string, string> = {
@@ -133,7 +148,7 @@ function SectionTitle({
   );
 }
 
-export function UsersTable({ initialUsers, roles }: UsersTableProps) {
+export function UsersTable({ initialUsers, roles, suppliers }: UsersTableProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserListItem | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserListItem | null>(null);
@@ -165,8 +180,8 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
       documentNumber: "",
       specialization: "",
       licenseNumber: "",
-      providerType: "INTERNAL",
-      providerCompany: "",
+      relationshipType: "INTERNAL_EMPLOYEE",
+      supplierId: "",
       hasSctr: false,
       sctrExpiryDate: "",
       baseSalary: "",
@@ -182,7 +197,9 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
 
   const selectedRoleId = form.watch("roleId");
   const isFieldStaff = fieldRoleIds.has(selectedRoleId);
-  const providerType = form.watch("providerType");
+  const relationshipType = form.watch("relationshipType");
+  const isExternal = !representsHtl(relationshipType);
+  const isCompanyAccount = relationshipType === "SUBCONTRACTED_COMPANY";
   const hasSctr = form.watch("hasSctr");
 
   function handleOpenCreate() {
@@ -198,8 +215,8 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
       documentNumber: "",
       specialization: "",
       licenseNumber: "",
-      providerType: "INTERNAL",
-      providerCompany: "",
+      relationshipType: "INTERNAL_EMPLOYEE",
+      supplierId: "",
       hasSctr: false,
       sctrExpiryDate: "",
       baseSalary: "",
@@ -222,8 +239,8 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
       documentNumber: user.documentNumber ?? "",
       specialization: user.specialization ?? "",
       licenseNumber: user.licenseNumber ?? "",
-      providerType: user.providerType === "EXTERNAL" ? "EXTERNAL" : "INTERNAL",
-      providerCompany: user.providerCompany ?? "",
+      relationshipType: normalizeStaffRelationship(user.relationshipType, user.providerType),
+      supplierId: user.supplierId ?? "",
       hasSctr: user.hasSctr ?? false,
       sctrExpiryDate: epochToIso(user.sctrExpiryDate),
       baseSalary: user.baseSalary != null ? String(user.baseSalary) : "",
@@ -266,9 +283,9 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
       });
       return;
     }
-    if (isFieldStaff && values.providerType === "EXTERNAL" && !values.providerCompany?.trim()) {
-      form.setError("providerCompany", {
-        message: "Obligatorio para proveedores externos",
+    if (isFieldStaff && requiresSupplier(values.relationshipType) && !values.supplierId) {
+      form.setError("supplierId", {
+        message: "Selecciona la empresa proveedora",
       });
       return;
     }
@@ -403,6 +420,11 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
               {user.providerType === "EXTERNAL" && user.providerCompany && (
                 <span className="text-[10px] text-muted-foreground/80">
                   · {user.providerCompany}
+                </span>
+              )}
+              {user.relationshipType && user.relationshipType !== "INTERNAL_EMPLOYEE" && (
+                <span className="text-[10px] text-muted-foreground/80">
+                  · {staffRelationshipLabel(user.relationshipType).replace(/ \(.*\)$/, "")}
                 </span>
               )}
             </span>
@@ -715,47 +737,65 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
                   <SectionTitle icon={UserRound} title="Perfil de Técnico" />
                   <FormField
                     control={form.control}
-                    name="providerType"
+                    name="relationshipType"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
                           <Building2 className="size-3 text-[#0066CC]" />
-                          Tipo de Trabajador
+                          Relación con HTL
                         </FormLabel>
                         <FormControl>
                           <RadioGroup
                             value={field.value}
                             onValueChange={(value) => {
                               field.onChange(value);
-                              if (value === "INTERNAL") {
-                                form.setValue("providerCompany", "");
+                              if (representsHtl(value as StaffRelationship)) {
+                                form.setValue("supplierId", "");
                               }
                             }}
-                            className="flex flex-wrap gap-4 pt-1"
+                            className="grid gap-2 pt-1 sm:grid-cols-2"
                           >
-                            <RadioGroupItem value="INTERNAL">
-                              {providerTypeLabel("INTERNAL")}
-                            </RadioGroupItem>
-                            <RadioGroupItem value="EXTERNAL">
-                              {providerTypeLabel("EXTERNAL")}
-                            </RadioGroupItem>
+                            {STAFF_RELATIONSHIPS.map((relationship) => (
+                              <RadioGroupItem key={relationship.value} value={relationship.value}>
+                                {relationship.label}
+                              </RadioGroupItem>
+                            ))}
                           </RadioGroup>
                         </FormControl>
+                        {isCompanyAccount && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Una sola cuenta para toda la empresa: sus trabajadores usan este mismo
+                            acceso y lo registrado queda a nombre del proveedor.
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
                   <div className="grid sm:grid-cols-2 gap-3">
-                    {providerType === "EXTERNAL" && (
+                    {isExternal && (
                       <FormField
                         control={form.control}
-                        name="providerCompany"
+                        name="supplierId"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-semibold">Empresa Proveedora *</FormLabel>
+                            <FormLabel className="text-xs font-semibold">
+                              Empresa Proveedora{isCompanyAccount ? " *" : " (opcional)"}
+                            </FormLabel>
                             <FormControl>
-                              <Input placeholder="Ej: Ingenieros SAC" {...field} className={inputClass} />
+                              <SearchableSelect
+                                items={suppliers}
+                                value={field.value ?? ""}
+                                onValueChange={field.onChange}
+                                getValue={supplierValue}
+                                getLabel={supplierLabel}
+                                getKeywords={supplierKeywords}
+                                placeholder="Selecciona un proveedor"
+                                searchPlaceholder="Buscar por nombre o RUC..."
+                                emptyText="Regístralo primero en Maestros → Proveedores"
+                                allowClear={!isCompanyAccount}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -794,14 +834,14 @@ export function UsersTable({ initialUsers, roles }: UsersTableProps) {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-xs font-semibold">
-                            {providerType === "EXTERNAL"
+                            {isExternal
                               ? "Tarifa referencia (S/)"
                               : "Sueldo base (S/)"}
                           </FormLabel>
                           <FormControl>
                             <Input
                               inputMode="decimal"
-                              placeholder={providerType === "EXTERNAL" ? "Ej: 85.00" : "Ej: 2500.00"}
+                              placeholder={isExternal ? "Ej: 85.00" : "Ej: 2500.00"}
                               {...field}
                               className={cn(inputClass, "font-mono")}
                             />

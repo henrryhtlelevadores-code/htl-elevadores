@@ -6,6 +6,7 @@ import {
   db,
   users,
   staffProfiles,
+  suppliers,
   roles,
   type User,
   type Role,
@@ -26,6 +27,12 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { createSession, getSessionUserId } from "@/features/auth/server";
 import { denyUnless, requirePermission } from "@/features/auth/guard";
 import { validateNewPassword } from "@/lib/password-policy";
+import {
+  allowsSupplier,
+  relationshipProviderType,
+  requiresSupplier,
+  type StaffRelationship,
+} from "@/lib/staff-relationship";
 
 /** `passwordGenerated`: la contraseña salió del generador asistido. */
 export interface PasswordOptions {
@@ -50,20 +57,51 @@ async function isFieldRole(roleId: string): Promise<boolean> {
   return role.isFieldRole === true || FIELD_ROLE_NAMES.includes(role.name);
 }
 
+/**
+ * Valida la relación con HTL y resuelve su empresa proveedora. Devuelve el
+ * nombre del proveedor (para provider_company) o un mensaje de error.
+ */
+async function resolveSupplier(
+  isField: boolean,
+  data: { relationshipType: StaffRelationship; supplierId?: string | null }
+): Promise<{ supplierId: string | null; supplierName: string | null } | { error: string }> {
+  const supplierId = data.supplierId?.trim() || null;
+  if (!isField) {
+    return data.relationshipType === "INTERNAL_EMPLOYEE"
+      ? { supplierId: null, supplierName: null }
+      : { error: "El tipo de relación solo aplica a roles de personal de campo." };
+  }
+  if (!allowsSupplier(data.relationshipType)) return { supplierId: null, supplierName: null };
+  if (!supplierId) {
+    return requiresSupplier(data.relationshipType)
+      ? { error: "Selecciona la empresa proveedora de esta cuenta." }
+      : { supplierId: null, supplierName: null };
+  }
+  const [supplier] = await db
+    .select({ name: suppliers.name })
+    .from(suppliers)
+    .where(eq(suppliers.id, supplierId))
+    .limit(1);
+  if (!supplier) return { error: "La empresa proveedora seleccionada ya no existe." };
+  return { supplierId, supplierName: supplier.name };
+}
+
 /** Mapea los campos del formulario a columnas de staff_profiles. */
 function staffProfileFields(data: {
-  providerType: "INTERNAL" | "EXTERNAL";
-  providerCompany?: string | null;
+  relationshipType: StaffRelationship;
+  supplierId: string | null;
+  supplierName: string | null;
   hasSctr?: boolean | null;
   sctrExpiryDate?: string | null;
   baseSalary?: string | null;
   signatureUrl?: string | null;
 }) {
   return {
-    providerType: data.providerType,
-    providerCompany: data.providerType === "EXTERNAL"
-      ? data.providerCompany?.trim() || null
-      : null,
+    relationshipType: data.relationshipType,
+    supplierId: data.supplierId,
+    // Derivados: los leen los badges [HTL] / [EXT] de rutas, OT y usuarios.
+    providerType: relationshipProviderType(data.relationshipType),
+    providerCompany: data.supplierName,
     hasSctr: data.hasSctr ?? false,
     // Epoch ms en UTC; el DatePicker trabaja con YYYY-MM-DD.
     sctrExpiryDate: data.hasSctr && data.sctrExpiryDate
@@ -85,11 +123,28 @@ export type UserListItem = Omit<User, "passwordHash" | "sessionVersion"> & {
   licenseNumber?: string | null;
   providerType?: string | null;
   providerCompany?: string | null;
+  relationshipType?: string | null;
+  supplierId?: string | null;
   hasSctr?: boolean | null;
   sctrExpiryDate?: number | null;
   baseSalary?: number | null;
   signatureUrl?: string | null;
 };
+
+/** Empresas proveedoras activas para el formulario de usuarios. */
+export async function getSupplierOptions(): Promise<Array<{ id: string; name: string; taxId: string | null }>> {
+  await requirePermission("users:read");
+  try {
+    return await db
+      .select({ id: suppliers.id, name: suppliers.name, taxId: suppliers.taxId })
+      .from(suppliers)
+      .where(eq(suppliers.isActive, true))
+      .orderBy(asc(suppliers.name));
+  } catch (error) {
+    console.error("Error al obtener proveedores:", error);
+    return [];
+  }
+}
 
 // ==========================================
 // ROLES
@@ -135,6 +190,8 @@ export async function getUsers(): Promise<UserListItem[]> {
         licenseNumber: staffProfiles.licenseNumber,
         providerType: staffProfiles.providerType,
         providerCompany: staffProfiles.providerCompany,
+        relationshipType: staffProfiles.relationshipType,
+        supplierId: staffProfiles.supplierId,
         hasSctr: staffProfiles.hasSctr,
         sctrExpiryDate: staffProfiles.sctrExpiryDate,
         baseSalary: staffProfiles.baseSalary,
@@ -167,18 +224,8 @@ export async function createUser(data: CreateUserFormValues, options: PasswordOp
     const userId = generateUuid();
 
     const isField = await isFieldRole(validated.roleId);
-    if (!isField && validated.providerType === "EXTERNAL") {
-      return {
-        success: false,
-        error: "El tipo de trabajador solo aplica a roles de personal de campo.",
-      };
-    }
-    if (isField && validated.providerType === "EXTERNAL" && !validated.providerCompany?.trim()) {
-      return {
-        success: false,
-        error: "La empresa proveedora es obligatoria para proveedores externos.",
-      };
-    }
+    const supplier = await resolveSupplier(isField, validated);
+    if ("error" in supplier) return { success: false, error: supplier.error };
     if (isField && validated.hasSctr && !validated.sctrExpiryDate) {
       return {
         success: false,
@@ -202,7 +249,7 @@ export async function createUser(data: CreateUserFormValues, options: PasswordOp
       documentNumber: validated.documentNumber.trim(),
       specialization: validated.specialization?.trim() || null,
       licenseNumber: validated.licenseNumber?.trim() || null,
-      ...(isField ? staffProfileFields(validated) : {}),
+      ...(isField ? staffProfileFields({ ...validated, ...supplier }) : {}),
     });
 
     revalidatePath("/users");
@@ -250,12 +297,11 @@ export async function updateUser(
     const validated = updateUserFormSchema.parse(data);
 
     const isField = await isFieldRole(validated.roleId);
-    if (isField && validated.providerType === "EXTERNAL" && !validated.providerCompany?.trim()) {
-      return {
-        success: false,
-        error: "La empresa proveedora es obligatoria para proveedores externos.",
-      };
-    }
+    // Fuera de roles de campo el perfil de técnico no se toca: no se valida.
+    const supplier = isField
+      ? await resolveSupplier(true, validated)
+      : { supplierId: null, supplierName: null };
+    if ("error" in supplier) return { success: false, error: supplier.error };
     if (isField && validated.hasSctr && !validated.sctrExpiryDate) {
       return {
         success: false,
@@ -300,7 +346,7 @@ export async function updateUser(
     }
 
     const staffFields = isField
-      ? staffProfileFields(validated)
+      ? staffProfileFields({ ...validated, ...supplier })
       : // Fuera de roles de campo se conservan los datos ya guardados.
         {};
 

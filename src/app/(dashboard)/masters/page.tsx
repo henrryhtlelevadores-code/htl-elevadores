@@ -1,4 +1,4 @@
-import { getBrands, getElevatorTypes, getModels, getServiceTypes, getUbigeos, getMaintenanceZones, getMaintenanceElevatorTypes } from "@/features/masters/actions";
+import { getBrands, getElevatorTypes, getModels, getServiceTypes, getUbigeos, getMaintenanceZones, getMaintenanceElevatorTypes, getSuppliers } from "@/features/masters/actions";
 import { MastersView } from "@/features/masters/components/masters-view";
 import { requirePageAccess } from "@/features/auth/guard";
 
@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MastersPage() {
   await requirePageAccess("masters:read");
-  const [brandsData, typesData, modelsData, serviceTypesData, ubigeosData, maintenanceZonesData, maintenanceTypesData] = await Promise.all([
+  const [brandsData, typesData, modelsData, serviceTypesData, ubigeosData, maintenanceZonesData, maintenanceTypesData, suppliersData] = await Promise.all([
     getBrands(),
     getElevatorTypes(),
     getModels(),
@@ -14,6 +14,7 @@ export default async function MastersPage() {
     getUbigeos(),
     getMaintenanceZones(),
     getMaintenanceElevatorTypes(),
+    getSuppliers(),
   ]);
 
   return (
@@ -26,6 +27,7 @@ export default async function MastersPage() {
         ubigeos={ubigeosData}
         maintenanceZones={maintenanceZonesData}
         maintenanceTypes={maintenanceTypesData}
+        suppliers={suppliersData}
       />
     </div>
   );

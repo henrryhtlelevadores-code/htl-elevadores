@@ -44,6 +44,10 @@ export const staffProfiles = sqliteTable("staff_profiles", {
   specialization: text("specialization"),
   providerType: text("provider_type").default("INTERNAL"),
   providerCompany: text("provider_company"),
+  /** Relación con HTL (ver src/lib/staff-relationship.ts). provider_type / provider_company se derivan de aquí. */
+  relationshipType: text("relationship_type").default("INTERNAL_EMPLOYEE"),
+  /** Empresa proveedora a la que pertenece la cuenta (obligatoria en SUBCONTRACTED_COMPANY). */
+  supplierId: text("supplier_id").references((): AnySQLiteColumn => suppliers.id),
   licenseNumber: text("license_number"),
   signatureUrl: text("signature_url"),
   hasSctr: integer("has_sctr", { mode: "boolean" }).default(false),
@@ -190,6 +194,8 @@ export const serviceTypes = sqliteTable("service_types", {
    * TEXT en la base: se lee siempre con `parseServicePrice`.
    */
   price: text("price"),
+  /** A qué línea de negocio pertenece: 'ELEVATOR' (ascensores) o 'GENERAL' (servicios generales). */
+  serviceScope: text("service_scope").default("ELEVATOR"),
   /** Si el tipo de servicio se ofrece al armar las líneas de una cotización. */
   showInQuotations: integer("show_in_quotations", { mode: "boolean" }).default(false),
   createdAt: integer("created_at").default(unixNow()),
@@ -331,6 +337,53 @@ export const workOrderElevators = sqliteTable("work_order_elevators", {
   startedAt: integer("started_at"),
   completedAt: integer("completed_at"),
 });
+
+/**
+ * Servicio general atendido en una OT (limpieza, jardinería, etc.): el hermano
+ * de work_order_elevators. Una OT es de ascensores o de servicios generales
+ * según el alcance de su tipo de servicio; nunca mezcla ambos.
+ */
+export const workOrderServices = sqliteTable(
+  "work_order_services",
+  {
+    id: text("id").primaryKey(),
+    workOrderId: text("work_order_id")
+      .notNull()
+      .references(() => workOrders.id, { onDelete: "cascade" }),
+    serviceTypeId: text("service_type_id").references(() => serviceTypes.id),
+    /** Dónde se realiza dentro de la sede: "Baños piso 1", "Jardín exterior". */
+    locationDescription: text("location_description"),
+    description: text("description"),
+    status: text("status").default("PENDING"),
+    startedAt: integer("started_at"),
+    completedAt: integer("completed_at"),
+    finalStatus: text("final_status"),
+    observations: text("observations"),
+    orderIndex: integer("order_index").default(0),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [index("idx_wos_work_order").on(t.workOrderId)]
+);
+
+export const workOrderServiceTasks = sqliteTable(
+  "work_order_service_tasks",
+  {
+    id: text("id").primaryKey(),
+    workOrderServiceId: text("work_order_service_id")
+      .notNull()
+      .references(() => workOrderServices.id, { onDelete: "cascade" }),
+    taskDescription: text("task_description").notNull(),
+    isCritical: integer("is_critical", { mode: "boolean" }).default(false),
+    isCompleted: integer("is_completed", { mode: "boolean" }).default(false),
+    status: text("status").default("PENDING"),
+    requiresPhoto: integer("requires_photo", { mode: "boolean" }).default(false),
+    observations: text("observations"),
+    evidencePhotoUrl: text("evidence_photo_url"),
+    completedAt: integer("completed_at"),
+    orderIndex: integer("order_index").default(0),
+  },
+  (t) => [index("idx_wost_service").on(t.workOrderServiceId)]
+);
 
 export const reports = sqliteTable("reports", {
   id: text("id").primaryKey(),
@@ -792,6 +845,8 @@ export const componentReplacements = sqliteTable("component_replacements", {
 export const suppliers = sqliteTable("suppliers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  /** RUC de la empresa proveedora. */
+  taxId: text("tax_id"),
   contactName: text("contact_name"),
   phone: text("phone"),
   email: text("email"),
@@ -843,6 +898,8 @@ export type WorkOrder = typeof workOrders.$inferSelect;
 export type NewWorkOrder = typeof workOrders.$inferInsert;
 export type WorkOrderElevator = typeof workOrderElevators.$inferSelect;
 export type NewWorkOrderElevator = typeof workOrderElevators.$inferInsert;
+export type WorkOrderService = typeof workOrderServices.$inferSelect;
+export type WorkOrderServiceTask = typeof workOrderServiceTasks.$inferSelect;
 export type WorkOrderTask = typeof workOrderTasks.$inferSelect;
 export type NewWorkOrderTask = typeof workOrderTasks.$inferInsert;
 export type ContractElevatorModuleExecution = typeof contractElevatorModuleExecutions.$inferSelect;
