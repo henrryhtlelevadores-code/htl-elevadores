@@ -652,6 +652,12 @@ function MarkdownBlock({ value }: { value: string | null }) {
   );
 }
 
+function chunkImages<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+  return rows;
+}
+
 export function QuotationPDF({ data }: { data: QuotationPdfData }) {
   const equipmentCodes = Array.from(
     new Set(
@@ -786,17 +792,28 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
         ) : null}
 
         {data.images.length > 0 ? (
-          <View wrap={false}>
+          <View>
             <Text style={styles.sectionTitle}>Imágenes referenciales</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: data.images.length === 1 ? "center" : "flex-start", gap: 8 }}>
-              {data.images.map((image, index) => (
-                <View key={index} style={{ width: data.images.length === 1 ? 240 : "48%", alignItems: "center" }}>
-                  <Image src={image.url} style={{ width: "100%", height: 160, objectFit: "contain", backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: BORDER, borderRadius: 6, padding: 4 }} />
-                  {image.caption ? <Text style={styles.termsLine}>{image.caption}</Text> : null}
-                  {image.isReferenceOnly ? <Text style={[styles.termsLine, { color: "#9CA3AF", fontStyle: "italic" }]}>Imagen referencial</Text> : null}
-                </View>
-              ))}
-            </View>
+            {chunkImages(data.images, 2).map((row, rowIndex) => (
+              <View
+                key={rowIndex}
+                wrap={false}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: data.images.length === 1 ? "center" : "flex-start",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                {row.map((image, index) => (
+                  <View key={index} style={{ width: data.images.length === 1 ? 240 : "48%", alignItems: "center" }}>
+                    <Image src={image.url} style={{ width: "100%", height: 160, objectFit: "contain", backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: BORDER, borderRadius: 6, padding: 4 }} />
+                    {image.caption ? <Text style={styles.termsLine}>{image.caption}</Text> : null}
+                    {image.isReferenceOnly ? <Text style={[styles.termsLine, { color: "#9CA3AF", fontStyle: "italic" }]}>Imagen referencial</Text> : null}
+                  </View>
+                ))}
+              </View>
+            ))}
           </View>
         ) : null}
 
