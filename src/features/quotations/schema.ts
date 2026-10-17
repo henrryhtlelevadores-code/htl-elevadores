@@ -11,10 +11,7 @@ const nonNegativeNumber = (label: string) =>
   });
 
 const quotationProductSchema = z.object({
-  description: z
-    .string()
-    .min(2, "La descripción es obligatoria")
-    .max(300, "Máximo 300 caracteres"),
+  description: z.string().min(2, "La descripción es obligatoria"),
   quantity: positiveNumber("La cantidad"),
   unit: z.string().optional().or(z.literal("")),
   unitCost: positiveNumber("El costo unitario"),
@@ -43,10 +40,7 @@ const quotationLineSchema = z.object({
   elevatorUnityId: z.string().optional().or(z.literal("")),
   /** Tipo de servicio de la línea (opcional). Si tiene precio, se propone en modo manual. */
   serviceTypeId: z.string().optional().or(z.literal("")),
-  description: z
-    .string()
-    .min(2, "La descripción es obligatoria")
-    .max(1000, "Máximo 1000 caracteres"),
+  description: z.string().min(2, "La descripción es obligatoria"),
   totalHours: nonNegativeNumber("Las horas"),
   hourlyCost: nonNegativeNumber("El costo/hora"),
   lineMode: z.enum(["CALCULATED", "MANUAL_PRICE"]).default("CALCULATED"),
