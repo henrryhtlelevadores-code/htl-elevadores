@@ -93,6 +93,11 @@ export async function POST(
       orderIndex: existing.length,
       isReferenceOnly: true,
     });
+    // El PDF guardado quedó obsoleto: al abrirlo se vuelve a generar con la nueva imagen.
+    await db
+      .update(quotations)
+      .set({ pdfGeneratedAt: null })
+      .where(eq(quotations.id, id));
     return NextResponse.json({ success: true, url, id: imageId });
   } catch (error) {
     console.error("Error al subir imagen de cotización:", error);

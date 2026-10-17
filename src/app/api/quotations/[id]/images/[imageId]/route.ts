@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, quotationImages } from "@/db/index";
+import { db, quotationImages, quotations } from "@/db/index";
 import { and, eq } from "drizzle-orm";
 import { deleteR2ObjectByUrl } from "@/lib/r2";
 import { authorizeApi } from "@/features/auth/api";
@@ -43,6 +43,8 @@ export async function PATCH(
     .update(quotationImages)
     .set({ caption, orderIndex })
     .where(and(eq(quotationImages.id, imageId), eq(quotationImages.quotationId, id)));
+  // El PDF guardado quedó obsoleto: se regenerará con el nuevo orden/comentario.
+  await db.update(quotations).set({ pdfGeneratedAt: null }).where(eq(quotations.id, id));
   return NextResponse.json({ success: true });
 }
 
@@ -58,6 +60,8 @@ export async function DELETE(
   if (!image) return notFound();
 
   await db.delete(quotationImages).where(eq(quotationImages.id, imageId));
+  // El PDF guardado quedó obsoleto: al abrirlo se vuelve a generar sin la imagen.
+  await db.update(quotations).set({ pdfGeneratedAt: null }).where(eq(quotations.id, id));
   try {
     await deleteR2ObjectByUrl(image.url);
   } catch (error) {
