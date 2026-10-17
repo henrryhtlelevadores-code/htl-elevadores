@@ -253,8 +253,8 @@ export function QuotationDetailPage({
 
   async function uploadImages(files: FileList | File[]) {
     const incoming = Array.from(files).filter((file) => file.type.startsWith("image/"));
-    if (quotationImages.length + incoming.length > 4) {
-      toast.error("Máximo 4 imágenes por cotización");
+    if (quotationImages.length + incoming.length > 15) {
+      toast.error("Máximo 15 imágenes por cotización");
       return;
     }
     const file = incoming[0];

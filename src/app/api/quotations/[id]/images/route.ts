@@ -8,7 +8,7 @@ import { MAX_IMAGE_BYTES, validateImageUpload } from "@/lib/image-validation";
 
 export const dynamic = "force-dynamic";
 
-const MAX_IMAGES_PER_QUOTATION = 4;
+const MAX_IMAGES_PER_QUOTATION = 15;
 const MAX_CAPTION_LENGTH = 200;
 
 async function quotationExists(id: string): Promise<boolean> {
@@ -78,7 +78,7 @@ export async function POST(
       .from(quotationImages)
       .where(eq(quotationImages.quotationId, id));
     if (existing.length >= MAX_IMAGES_PER_QUOTATION) {
-      return NextResponse.json({ error: "Una cotización admite máximo 4 imágenes." }, { status: 400 });
+      return NextResponse.json({ error: "Una cotización admite máximo 15 imágenes." }, { status: 400 });
     }
 
     // Nombre y extensión generados en servidor.
