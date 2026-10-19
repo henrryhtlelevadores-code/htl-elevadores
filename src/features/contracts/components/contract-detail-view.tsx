@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useProgressRouter } from "@/lib/navigation-progress";
 import { toast } from "sonner";
 import type { ContractTemplateData } from "./preventive-contract-pdf";
 import { EDITABLE_CLAUSES, resolveClauseText } from "../clause-defaults";
@@ -29,7 +29,7 @@ interface ContractDetailViewProps {
 }
 
 export function ContractDetailView({ contract }: ContractDetailViewProps) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [isPending, startTransition] = useTransition();
 
   const [signerName, setSignerName] = useState(contract.clientSignerName ?? "");

@@ -44,7 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRouter } from "next/navigation";
+import { useProgressRouter } from "@/lib/navigation-progress";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -154,7 +154,7 @@ export function ContractsTable({
   const [viewingContract, setViewingContract] = useState<ContractWithRelations | null>(null);
   const [activeTab, setActiveTab] = useState<ContractTab>("ACTIVE");
   const [isPending, startTransition] = useSubmitTransition();
-  const router = useRouter();
+  const router = useProgressRouter();
 
   const tabs = useMemo<Array<{ key: ContractTab; label: string; predicate: (c: ContractWithRelations) => boolean }>>(
     () => [

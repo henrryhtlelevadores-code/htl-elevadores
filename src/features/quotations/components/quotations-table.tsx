@@ -3,7 +3,7 @@
 import { withDownload } from "@/lib/pdf-paths";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useProgressRouter } from "@/lib/navigation-progress";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import type {
@@ -141,7 +141,7 @@ export function QuotationsTable({
   lineModes: initialLineModes,
   currentUser,
 }: QuotationsTableProps) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [isPending, startTransition] = useTransition();
 
   const [createOpen, setCreateOpen] = useState(false);
