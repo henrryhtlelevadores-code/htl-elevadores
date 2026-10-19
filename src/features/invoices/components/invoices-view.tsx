@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -28,6 +29,7 @@ import {
   type InvoiceFormData,
   getInvoiceItems,
   updateInvoiceStatus,
+  deleteInvoice,
 } from "../actions";
 import {
   PAYER_RELATIONSHIP_LABELS,
@@ -46,6 +48,7 @@ import {
   MapPin,
   Plus,
   ReceiptText,
+  Trash2,
   User,
 } from "lucide-react";
 
@@ -247,11 +250,29 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
     paymentStatus: string;
   } | null>(null);
   const [savingStatus, startStatusTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<InvoiceListItem | null>(null);
+  const [deleting, startDeleteTransition] = useTransition();
 
   const closeDetail = useCallback(() => {
     setViewingId(null);
     setStatusDraft(null);
   }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    startDeleteTransition(async () => {
+      const res = await deleteInvoice(target.id);
+      if (res.success) {
+        toast.success(res.message);
+        if (viewingId === target.id) closeDetail();
+        router.refresh();
+      } else {
+        toast.error("Error al eliminar", { description: res.error });
+      }
+    });
+  }, [deleteTarget, viewingId, closeDetail, router]);
 
   const filteredCostCenters = useMemo(
     () =>
@@ -461,7 +482,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
         id: "actions",
         header: () => <div className="text-right">Acciones</div>,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-1">
             <Button
               variant="outline"
               size="xs"
@@ -470,6 +491,15 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
             >
               <ReceiptText className="size-3" />
               Ver
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Eliminar"
+              className="size-7 h-7 text-muted-foreground hover:text-destructive"
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 className="size-3.5" />
             </Button>
           </div>
         ),
@@ -797,6 +827,37 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Confirmar eliminación */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar factura</DialogTitle>
+            <DialogDescription>
+              ¿Deseas eliminar la factura{" "}
+              <strong>
+                {deleteTarget?.number
+                  ? `${deleteTarget.series}-${deleteTarget.number}`
+                  : (deleteTarget ? DOCUMENT_TYPE_LABELS[deleteTarget.documentType] ?? deleteTarget.documentType : "")}
+              </strong>{" "}
+              de {deleteTarget?.client_name}? Se eliminarán también sus conceptos. Esta acción no
+              se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Eliminando..." : "Eliminar factura"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

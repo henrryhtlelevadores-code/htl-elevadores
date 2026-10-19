@@ -479,3 +479,31 @@ export async function updateInvoiceStatus(
     return { success: false, error: getErrorMessage(error) };
   }
 }
+
+/**
+ * Elimina una factura y sus conceptos (la FK `invoice_items.invoice_id` es
+ * `onDelete: cascade`). Es irreversible, así que la UI siempre confirma antes.
+ */
+export async function deleteInvoice(invoiceId: string): Promise<ActionResult> {
+  const denied = await denyUnless("invoices:write");
+  if (denied) return denied;
+  try {
+    const existing = await db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return { success: false, error: "La factura ya no existe." };
+    }
+
+    await db.delete(invoices).where(eq(invoices.id, invoiceId));
+
+    revalidatePath("/invoices");
+    return { success: true, message: "Factura eliminada" };
+  } catch (error) {
+    console.error("Error al eliminar factura:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
