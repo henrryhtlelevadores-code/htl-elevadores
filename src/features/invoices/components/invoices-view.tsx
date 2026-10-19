@@ -546,7 +546,7 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
       <Dialog open={!!viewing} onOpenChange={(open) => !open && closeDetail()}>
         <DialogContent
           showCloseButton={false}
-          className="w-[calc(100%-1rem)] max-w-[840px] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground shadow-lg sm:max-h-[92dvh] sm:p-4"
+          className="w-[calc(100%-1rem)] max-w-[840px] sm:max-w-[840px] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain bg-card p-3 text-foreground shadow-lg sm:max-h-[92dvh] sm:p-4"
         >
           <button
             onClick={closeDetail}
@@ -570,12 +570,13 @@ export function InvoicesView({ invoices, clients, costCenters, formData }: Invoi
                     )}
                   </span>
                   <span className="flex max-w-full flex-wrap items-center gap-1.5">
-                    {!viewing.number && (
+                    {/* Con estado SUNAT en borrador, su insignia ya lo dice. */}
+                    {!viewing.number && currentSunatStatus !== "DRAFT" && (
                       <Badge
                         variant="outline"
                         className="border text-[10px] font-bold text-muted-foreground"
                       >
-                        Borrador
+                        Sin número
                       </Badge>
                     )}
                     <SunatBadge status={currentSunatStatus} />

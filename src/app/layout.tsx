@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
+import { NavigationProgress } from "@/components/navigation-progress";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -55,6 +56,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange={false}
         >
+          <NavigationProgress />
           <TooltipProvider delay={200}>
             {children}
             <Toaster richColors position="top-right" />

@@ -300,7 +300,7 @@ export function TechnicianExecutionView({
       )}
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
-        <DialogContent className="fixed inset-x-0 bottom-0 top-auto grid max-h-[92dvh] w-full max-w-[560px] translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-t-2xl border-border bg-card p-0 sm:inset-y-1/2 sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[88dvh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+        <DialogContent className="fixed inset-x-0 bottom-0 top-auto grid max-h-[92dvh] w-full max-w-[560px] sm:max-w-[560px] translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-t-2xl border-border bg-card p-0 sm:inset-y-1/2 sm:left-1/2 sm:right-auto sm:top-1/2 sm:max-h-[88dvh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
           <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12 sm:px-6">
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <StickyNote className="size-4 text-[#0066CC]" />

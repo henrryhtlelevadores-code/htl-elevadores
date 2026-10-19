@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { useSubmitTransition } from "@/lib/use-submit-transition";
-import { useRouter } from "next/navigation";
+import { useProgressRouter } from "@/lib/navigation-progress";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -87,7 +87,7 @@ export function QuotationCreateDialog({
 }: QuotationCreateDialogProps) {
   const currentUserId = currentUser?.id ?? null;
   const [isPending, startTransition] = useSubmitTransition();
-  const router = useRouter();
+  const router = useProgressRouter();
 
   const form = useForm<QuotationHeaderValues>({
     resolver: zodResolver(quotationHeaderSchema),

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ClipboardEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useProgressRouter } from "@/lib/navigation-progress";
 import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -86,7 +86,7 @@ export function QuotationDetailPage({
   options: QuotationFormOptions;
   defaultHourlyCost: number;
 }) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [tab, setTab] = useState<TabId>("documento");
   const [isPending, startTransition] = useSubmitTransition();
   const [pdfUrl, setPdfUrl] = useState(quotation.pdfUrl ?? "");
