@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -10,7 +10,8 @@ import { ContactsTable } from "./contacts-table";
 import { CostCenterCalendar } from "./cost-center-calendar";
 import { UbigeoSelector } from "@/components/ubigeo-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "cn";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toTitleCase } from "@/lib/format";
@@ -25,6 +26,7 @@ import {
   IconUsers,
   IconSettings,
   IconLoader2,
+  IconFileText,
 } from "@tabler/icons-react";
 
 export type VenueTab = "credentials" | "contacts" | "settings" | "calendar";
@@ -82,7 +84,7 @@ export function CostCenterDetailView({
     startTransition(async () => {
       const res = await updateCostCenter(costCenter.id, { name, address, ubigeoId });
       if (res.success) {
-        toast.success("Sede actualizada", {
+        toast.success("Centro de costos actualizado", {
           description: "Los cambios de configuración se guardaron.",
         });
       } else {
@@ -103,7 +105,7 @@ export function CostCenterDetailView({
           className="gap-1.5 text-xs border-border font-semibold shadow-2xs"
         >
           <IconArrowLeft className="size-3.5" />
-          Volver a Sedes
+          Volver a Centro de Costos
         </Button>
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
@@ -152,7 +154,7 @@ export function CostCenterDetailView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 justify-start sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
             <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[160px]">
               {costCenter.id.slice(0, 8)}&hellip;
             </span>
@@ -166,38 +168,50 @@ export function CostCenterDetailView({
               {copied ? <IconCheck className="size-3.5 text-green-600" /> : <IconCopy className="size-3.5" />}
               {copied ? "¡Copiado!" : "Copiar ID"}
             </Button>
+            <a
+              href={`/api/cost-centers/${costCenter.id}/work-orders-report`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "text-xs gap-1.5 font-semibold shrink-0"
+              )}
+            >
+              <IconFileText className="size-3.5" />
+              Crear Reporte
+            </a>
           </div>
         </div>
       </div>
 
       {/* Tabs internas de la sede */}
       <Tabs value={tab} onValueChange={(v) => onTabChange(v as VenueTab)} className="min-w-0 space-y-4">
-        <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <TabsList className="inline-flex h-auto w-max flex-nowrap justify-start gap-1 bg-card border border-border p-1 rounded-lg shadow-xs">
+        <div className="w-full sm:overflow-x-auto sm:overscroll-x-contain sm:[-webkit-overflow-scrolling:touch] sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-card border border-border p-1 rounded-lg shadow-xs sm:inline-flex sm:w-max sm:flex-nowrap sm:justify-start">
             <TabsTrigger
               value="credentials"
-              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+              className="w-full sm:w-auto justify-start data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 gap-1.5 sm:gap-2 rounded-md"
             >
               <IconKey className="size-3.5" />
               <span className="whitespace-nowrap">Credenciales y Acceso</span>
             </TabsTrigger>
             <TabsTrigger
               value="contacts"
-              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+              className="w-full sm:w-auto justify-start data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 gap-1.5 sm:gap-2 rounded-md"
             >
               <IconUsers className="size-3.5" />
               <span className="whitespace-nowrap">Contactos ({contacts.length})</span>
             </TabsTrigger>
             <TabsTrigger
               value="settings"
-              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+              className="w-full sm:w-auto justify-start data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 gap-1.5 sm:gap-2 rounded-md"
             >
               <IconSettings className="size-3.5" />
               <span className="whitespace-nowrap">Configuración</span>
             </TabsTrigger>
             <TabsTrigger
               value="calendar"
-              className="shrink-0 data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-xs font-semibold px-3 gap-2 rounded-md"
+              className="w-full sm:w-auto justify-start data-active:bg-[#0066CC] data-active:text-white text-muted-foreground text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 gap-1.5 sm:gap-2 rounded-md"
             >
               <span className="whitespace-nowrap">Calendario de OTs</span>
             </TabsTrigger>
@@ -216,11 +230,11 @@ export function CostCenterDetailView({
           <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
               <IconSettings className="size-4 text-[#0066CC]" />
-              Información General de la Sede
+              Información del Centro de Costos
             </h3>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold">Nombre de la Sede</label>
+              <label className="text-xs font-semibold">Nombre del Centro de Costos</label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}

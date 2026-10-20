@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { getCostCenterCalendarWorkOrders } from "../actions";
 import { Button } from "@/components/ui/button";
+import { cn } from "cn";
 import {
   IconCalendar,
   IconCalendarOff,
   IconClock,
   IconElevator,
   IconLoader2,
+  IconRefresh,
   IconTool,
   IconUser,
 } from "@tabler/icons-react";
@@ -58,12 +60,29 @@ function equipmentLabel(order: CalendarOrder) {
 export function CostCenterCalendar({ costCenterId }: { costCenterId: string }) {
   const [range, setRange] = useState<Range>("current-month");
   const [orders, setOrders] = useState<CalendarOrder[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [isPending, startTransition] = useTransition();
   const { from, to } = getRange(range);
 
   useEffect(() => {
-    startTransition(async () => setOrders(await getCostCenterCalendarWorkOrders(costCenterId, from, to, "ALL", "ACTIVE")));
-  }, [costCenterId, from, to]);
+    let active = true;
+    startTransition(async () => {
+      const data = await getCostCenterCalendarWorkOrders(
+        costCenterId,
+        from,
+        to,
+        "ALL",
+        "ACTIVE"
+      );
+      if (!active) return;
+      setOrders(data);
+      setLastUpdated(new Date());
+    });
+    return () => {
+      active = false;
+    };
+  }, [costCenterId, from, to, reloadToken]);
 
   const grouped = useMemo(() => orders.reduce<Record<string, CalendarOrder[]>>((groups, order) => {
     const key = serviceGroup(order);
@@ -73,12 +92,32 @@ export function CostCenterCalendar({ costCenterId }: { costCenterId: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-2">
-        {RANGES.map(([value, label]) => (
-          <Button key={value} type="button" size="sm" variant={range === value ? "default" : "outline"} onClick={() => setRange(value)} className="min-h-10 text-xs">
-            {label}
+      <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          {RANGES.map(([value, label]) => (
+            <Button key={value} type="button" size="sm" variant={range === value ? "default" : "outline"} onClick={() => setRange(value)} className="min-h-10 text-xs">
+              {label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between gap-2 px-1 sm:justify-end">
+          <span className="text-[10px] text-muted-foreground">
+            {lastUpdated
+              ? `${orders.length} OT${orders.length === 1 ? "" : "s"} · Actualizado ${lastUpdated.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`
+              : "Cargando OTs..."}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setReloadToken((token) => token + 1)}
+            disabled={isPending}
+            className="min-h-9 gap-1.5 text-xs"
+          >
+            <IconRefresh className={cn("size-3.5", isPending && "animate-spin")} />
+            Actualizar
           </Button>
-        ))}
+        </div>
       </div>
 
       {isPending ? (

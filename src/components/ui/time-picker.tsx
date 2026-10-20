@@ -6,10 +6,10 @@ import { ClockIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { ClockHours } from "@/components/ui/clock-hours";
 import {
-  formatHourValue,
+  formatTimeValue,
   isHourOfDay,
-  parseHourInput,
-  toHourValue,
+  parseTimeInput,
+  toTimeValue,
   type IsoHour,
 } from "@/lib/date";
 
@@ -26,22 +26,14 @@ export interface TimePickerProps {
   name?: string;
 }
 
-function safeFormatHour(value: string): string {
-  if (!value) return "";
-  if (isHourOfDay(value)) return formatHourValue(value);
-  // Compatibilidad: si vienen minutos distintos de :00, redondeamos hacia abajo.
-  const match = /^(\d{1,2}):(\d{1,2})$/.exec(value);
-  if (!match) return "";
-  const hour = Number(match[1]);
-  return toHourValue(hour);
+function safeFormatTime(value: string): string {
+  return formatTimeValue(value);
 }
 
 /**
- * Selector de hora en punto (HH:00) con popover.
+ * Selector de hora con popover. Se elige la hora en el reloj y luego se
+ * pueden escribir los minutos (HH:MM) sin cerrar el popover.
  * Mismo contrato que <input type="time">: value y onChange reciben string HH:MM.
- * Por ahora solo se aceptan horas en punto (HH:00) para coincidir con la regla de
- * negocio del cliente; el resto del flujo sigue funcionando cuando se agreguen
- * minutos, ya que el parse acepta HH:MM.
  */
 export function TimePicker({
   value,
@@ -54,8 +46,9 @@ export function TimePicker({
   className,
   name,
 }: TimePickerProps) {
-  const display = safeFormatHour(value);
+  const display = safeFormatTime(value);
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [inputValue, setInputValue] = React.useState(display);
   const [syncedDisplay, setSyncedDisplay] = React.useState(display);
 
@@ -64,26 +57,42 @@ export function TimePicker({
     setInputValue(display);
   }
 
+  const clockValue: IsoHour | null = display
+    ? (`${display.slice(0, 2)}:00` as IsoHour)
+    : null;
+
   function commitInput(raw: string) {
-    const parsed = parseHourInput(raw);
+    const parsed = parseTimeInput(raw);
     if (parsed) {
       onChange(parsed);
-      setInputValue(formatHourValue(parsed));
+      setInputValue(parsed);
     } else {
       setInputValue(display);
     }
   }
 
+  function focusMinutes(next: string) {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(3, next.length);
+    });
+  }
+
   function pickHour(iso: IsoHour) {
-    onChange(iso);
-    triggerRef.current?.click();
+    const hour = iso.slice(0, 2);
+    const parsed = parseTimeInput(inputValue);
+    const minutes = parsed ? parsed.slice(3) : (display.split(":")[1] ?? "00");
+    const next = `${hour}:${minutes}`;
+    onChange(next);
+    setInputValue(next);
+    focusMinutes(next);
   }
 
   function pickNow() {
-    const now = new Date().getHours();
-    const iso = toHourValue(now);
+    const now = new Date();
+    const iso = toTimeValue(now.getHours(), now.getMinutes());
     onChange(iso);
-    setInputValue(formatHourValue(iso));
+    setInputValue(iso);
   }
 
   function clear() {
@@ -142,9 +151,10 @@ export function TimePicker({
               <div className="animate-in fade-in zoom-in-95 duration-150">
                 <div className="px-2 pt-1 pb-2 flex items-center gap-2">
                   <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Hora
+                    Hora / minutos
                   </label>
                   <input
+                    ref={inputRef}
                     type="text"
                     inputMode="numeric"
                     autoFocus
@@ -158,13 +168,13 @@ export function TimePicker({
                         triggerRef.current?.click();
                       }
                     }}
-                    placeholder="HH:00"
-                    className="ml-auto h-7 w-20 rounded-md border border-input bg-background px-2 text-xs font-mono font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0066CC]/40"
+                    placeholder="HH:MM"
+                    className="ml-auto h-7 w-24 rounded-md border border-input bg-background px-2 text-xs font-mono font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0066CC]/40"
                   />
                 </div>
                 <div className="px-1 pb-2">
                   <ClockHours
-                    value={isHourOfDay(value) ? value : null}
+                    value={clockValue && isHourOfDay(clockValue) ? clockValue : null}
                     onChange={pickHour}
                     disabled={disabled}
                   />

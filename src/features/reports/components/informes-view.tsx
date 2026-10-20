@@ -38,11 +38,14 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
 import {
+  AlertTriangle,
   ArrowUpDown,
   Building2,
+  CalendarDays,
   Camera,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   Circle,
   ClipboardList,
   Cpu,
@@ -71,6 +74,58 @@ interface InformesViewProps {
 }
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
+
+type ReportMonthRow = {
+  id: string;
+  otNumber: string;
+  clientId: string;
+  clientName: string;
+  costCenterId: string;
+  costCenterName: string;
+  technicianName: string | null;
+  status: string;
+  completedAt: number | null;
+  approvalStatus: string | null;
+  missingReport: boolean;
+  report: CompletedWorkOrderReport | null;
+  pending: ManualReportOrder | null;
+};
+
+type ReportState = "APROBADO" | "BORRADOR" | "FALTA_INFORME";
+
+function getReportState(row: ReportMonthRow): ReportState {
+  if (row.missingReport) return "FALTA_INFORME";
+  return row.approvalStatus === "APPROVED" ? "APROBADO" : "BORRADOR";
+}
+
+const REPORT_STATE_STYLES: Record<ReportState, string> = {
+  APROBADO:
+    "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  BORRADOR:
+    "border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  FALTA_INFORME:
+    "border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-400",
+};
+
+const REPORT_STATE_LABELS: Record<ReportState, string> = {
+  APROBADO: "Aprobado",
+  BORRADOR: "Borrador",
+  FALTA_INFORME: "Falta Informe",
+};
+
+function ReportStateBadge({ state }: { state: ReportState }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold",
+        REPORT_STATE_STYLES[state]
+      )}
+    >
+      {state === "FALTA_INFORME" && <AlertTriangle className="size-2.5" />}
+      {REPORT_STATE_LABELS[state]}
+    </span>
+  );
+}
 
 const PRIORITY_LABELS: Record<string, string> = {
   HIGH: "Alta",
@@ -125,6 +180,22 @@ function formatDayTime(date: string | null, time?: string | null): string {
   return time ? `${base} · ${time}` : base;
 }
 
+function monthKeyOf(ts: number | null): string {
+  if (!ts) return "";
+  const date = new Date(ts);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isInMonth(
+  dateIso: string | null | undefined,
+  timestamp: number | null | undefined,
+  monthPrefix: string
+): boolean {
+  if (dateIso) return dateIso.startsWith(monthPrefix);
+  if (timestamp) return monthKeyOf(timestamp) === monthPrefix;
+  return false;
+}
+
 function roundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -148,11 +219,11 @@ function roundedRect(
 }
 
 /**
- * Genera un sello "APROBADO POR EL PORTERO" en PNG (data URL) para los informes
+ * Genera un sello "APROBADO POR EL RESPONSABLE" en PNG (data URL) para los informes
  * manuales: reemplaza la foto de la firma escaneada por una firma referencial
  * creada por computadora.
  */
-function buildPorterStamp(name: string): string {
+function buildPorterStamp(name: string, timestamp?: number | null): string {
   const width = 640;
   const height = 240;
   const canvas = document.createElement("canvas");
@@ -162,7 +233,7 @@ function buildPorterStamp(name: string): string {
   if (!ctx) return "";
 
   const ink = "#0f766e";
-  const date = new Date().toLocaleDateString("es-PE", {
+  const date = new Date(timestamp ?? Date.now()).toLocaleDateString("es-PE", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -187,7 +258,7 @@ function buildPorterStamp(name: string): string {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = "700 25px 'Segoe UI', Arial, sans-serif";
-  ctx.fillText("APROBADO POR EL PORTERO", width / 2, 72);
+  ctx.fillText("APROBADO POR EL RESPONSABLE", width / 2, 72);
 
   ctx.font = "italic 46px 'Segoe Script', 'Brush Script MT', cursive";
   ctx.fillText(name.trim() || "—", width / 2, 138, width - 100);
@@ -197,6 +268,64 @@ function buildPorterStamp(name: string): string {
 
   ctx.restore();
   return canvas.toDataURL("image/png");
+}
+
+/**
+ * Sello automático para informes sin firma (incluye OTs antiguas): muestra
+ * "APROBADO POR EL RESPONSABLE" con el nombre disponible y la fecha del informe.
+ */
+function AutoApprovalStamp({
+  name,
+  timestamp,
+}: {
+  name: string;
+  timestamp?: number | null;
+}) {
+  const src = useMemo(() => buildPorterStamp(name, timestamp), [name, timestamp]);
+  if (!src) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt="Aprobado por el responsable"
+      className="h-16 w-40 object-contain bg-white border border-border rounded-lg"
+    />
+  );
+}
+
+/**
+ * Muestra la firma guardada. Si no existe, está rota o es un sello antiguo
+ * generado por el sistema (640×240), dibuja el sello vigente
+ * "APROBADO POR EL RESPONSABLE" en lugar de la imagen obsoleta.
+ */
+function SignaturePreview({
+  url,
+  name,
+  timestamp,
+}: {
+  url: string | null;
+  name: string;
+  timestamp?: number | null;
+}) {
+  const [useStamp, setUseStamp] = useState(false);
+  if (!url || useStamp) {
+    return <AutoApprovalStamp name={name} timestamp={timestamp} />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt="Firma del cliente"
+      className="h-16 w-40 object-contain bg-white border border-border rounded-lg"
+      onLoad={(event) => {
+        const image = event.currentTarget;
+        if (image.naturalWidth === 640 && image.naturalHeight === 240) {
+          setUseStamp(true);
+        }
+      }}
+      onError={() => setUseStamp(true)}
+    />
+  );
 }
 
 function InfoChip({ label, value }: { label: string; value: React.ReactNode }) {
@@ -222,6 +351,10 @@ export function InformesView({
   const [data, setData] = useState<CompletedWorkOrderReport[]>(workOrders);
   const [clientFilter, setClientFilter] = useState("");
   const [ccFilter, setCcFilter] = useState("");
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
   const [viewingId, setViewingId] = useState<string | null>(null);
 
@@ -270,7 +403,7 @@ export function InformesView({
   async function saveManual() {
     if (!manualOrder) return;
     if (!manualSigner.trim()) {
-      toast.error("Falta el nombre del portero", { description: "Indica quién aprueba el informe." });
+      toast.error("Falta el nombre del responsable", { description: "Indica quién aprueba el informe." });
       return;
     }
     setManualSaving(true);
@@ -290,14 +423,77 @@ export function InformesView({
     [clientFilter, costCenters]
   );
 
-  const filteredWorkOrders = useMemo(
+  const monthPrefix = useMemo(
     () =>
-      data.filter(
-        (wo) =>
-          (!clientFilter || wo.clientId === clientFilter) &&
-          (!ccFilter || wo.costCenterId === ccFilter)
+      `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`,
+    [currentMonth]
+  );
+
+  const monthTitle = useMemo(
+    () =>
+      currentMonth.toLocaleDateString("es-PE", {
+        month: "long",
+        year: "numeric",
+      }),
+    [currentMonth]
+  );
+
+  const monthRows = useMemo<ReportMonthRow[]>(() => {
+    const reports: ReportMonthRow[] = data
+      .filter((wo) => isInMonth(wo.scheduledDate, wo.completedAt, monthPrefix))
+      .map((wo) => ({
+        id: wo.id,
+        otNumber: wo.otNumber,
+        clientId: wo.clientId ?? "",
+        clientName: wo.client_name,
+        costCenterId: wo.costCenterId ?? "",
+        costCenterName: wo.cost_center_name,
+        technicianName: wo.technician_name,
+        status: wo.status ?? "COMPLETED",
+        completedAt: wo.completedAt,
+        approvalStatus: wo.approvalStatus,
+        missingReport: false,
+        report: wo,
+        pending: null,
+      }));
+
+    const missing: ReportMonthRow[] = pendingOrders
+      .filter((order) => isInMonth(order.scheduledDate, null, monthPrefix))
+      .map((order) => ({
+        id: order.id,
+        otNumber: order.otNumber,
+        clientId: order.clientId,
+        clientName: order.clientName,
+        costCenterId: order.costCenterId,
+        costCenterName: order.costCenterName,
+        technicianName: order.technicianName,
+        status: "PENDING",
+        completedAt: null,
+        approvalStatus: null,
+        missingReport: true,
+        report: null,
+        pending: order,
+      }));
+
+    return [...missing, ...reports].sort((a, b) => {
+      if (a.missingReport !== b.missingReport) return a.missingReport ? -1 : 1;
+      return (b.completedAt ?? 0) - (a.completedAt ?? 0);
+    });
+  }, [data, pendingOrders, monthPrefix]);
+
+  const filteredRows = useMemo(
+    () =>
+      monthRows.filter(
+        (row) =>
+          (!clientFilter || row.clientId === clientFilter) &&
+          (!ccFilter || row.costCenterId === ccFilter)
       ),
-    [data, clientFilter, ccFilter]
+    [monthRows, clientFilter, ccFilter]
+  );
+
+  const missingReportCount = useMemo(
+    () => filteredRows.filter((row) => row.missingReport).length,
+    [filteredRows]
   );
 
   const viewing = useMemo(
@@ -330,6 +526,39 @@ export function InformesView({
     setSignerDraft(wo.clientSignerName ?? "");
     setSignatureDraft("");
   }, []);
+
+  function changeMonth(delta: number) {
+    setCurrentMonth((date) => new Date(date.getFullYear(), date.getMonth() + delta, 1));
+  }
+
+  function goToCurrentMonth() {
+    const now = new Date();
+    setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+  }
+
+  const handleReviewRow = useCallback(
+    (row: ReportMonthRow) => {
+      if (row.report) {
+        handleOpen(row.report);
+        return;
+      }
+      if (row.pending) {
+        setManualOrder(row.pending);
+        setManualClientId(row.pending.clientId);
+        setManualCostCenterId(row.pending.costCenterId);
+        setManualServiceTypeId(row.pending.serviceTypeId ?? "");
+        setManualNumber("");
+        setManualSigner("");
+        setManualNotes("");
+        setManualFindings({});
+        setManualStartTime("");
+        setManualEndTime("");
+        setManualStep(2);
+        setManualOpen(true);
+      }
+    },
+    [handleOpen]
+  );
 
   async function handleSaveSignature() {
     if (!viewing) return;
@@ -541,7 +770,7 @@ export function InformesView({
     }
   }
 
-  const columns = useMemo<ColumnDef<CompletedWorkOrderReport>[]>(
+  const columns = useMemo<ColumnDef<ReportMonthRow>[]>(
     () => [
       {
         accessorKey: "otNumber",
@@ -557,36 +786,44 @@ export function InformesView({
           </Button>
         ),
         cell: ({ row }) => (
-          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
-            {row.getValue("otNumber")}
-          </span>
+          <div className="flex items-center gap-1.5">
+            {row.original.missingReport && (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-orange-500"
+                aria-hidden
+              />
+            )}
+            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-muted border border-border">
+              {row.getValue("otNumber")}
+            </span>
+          </div>
         ),
       },
       {
-        accessorKey: "client_name",
+        accessorKey: "clientName",
         header: "Cliente",
         cell: ({ row }) => (
           <div className="flex items-center gap-1.5 text-xs text-foreground max-w-[180px]">
             <Building2 className="size-3.5 text-[#0066CC] shrink-0" />
-            <span className="truncate font-semibold">{row.getValue("client_name")}</span>
+            <span className="truncate font-semibold">{row.getValue("clientName")}</span>
           </div>
         ),
       },
       {
-        accessorKey: "cost_center_name",
+        accessorKey: "costCenterName",
         header: "Centro de Costo",
         cell: ({ row }) => (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground max-w-[160px]">
             <MapPin className="size-3 shrink-0" />
-            <span className="truncate">{row.getValue("cost_center_name")}</span>
+            <span className="truncate">{row.getValue("costCenterName")}</span>
           </div>
         ),
       },
       {
-        accessorKey: "technician_name",
+        accessorKey: "technicianName",
         header: "Técnico",
         cell: ({ row }) => {
-          const name = row.getValue<string | null>("technician_name");
+          const name = row.getValue<string | null>("technicianName");
           return name ? (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <User className="size-3 shrink-0" />
@@ -598,27 +835,18 @@ export function InformesView({
         },
       },
       {
-        id: "evidence",
-        header: "Detalle",
-        cell: ({ row }) => {
-          const elevators = row.original.elevators;
-          const photos = elevators.reduce(
-            (acc, e) => acc + (e.evidencePhotoUrls?.length ?? 0),
-            0
-          );
-          return (
-            <span className="text-xs text-muted-foreground">
-              {elevators.length} equipo(s) · {photos} foto(s)
-            </span>
-          );
-        },
+        id: "state",
+        header: "Estado",
+        cell: ({ row }) => <ReportStateBadge state={getReportState(row.original)} />,
       },
       {
         accessorKey: "completedAt",
         header: "Completada",
         cell: ({ row }) => (
           <span className="text-xs font-mono text-muted-foreground">
-            {formatDate(row.getValue<number | null>("completedAt"))}
+            {row.original.missingReport
+              ? "—"
+              : formatDate(row.getValue<number | null>("completedAt"))}
           </span>
         ),
       },
@@ -630,8 +858,13 @@ export function InformesView({
             <Button
               variant="outline"
               size="xs"
-              onClick={() => handleOpen(row.original)}
-              className="h-7 px-2.5 text-xs font-semibold text-[#0066CC] dark:text-blue-400 border-[#0066CC]/30 hover:bg-[#0066CC]/10 gap-1.5 shadow-2xs"
+              onClick={() => handleReviewRow(row.original)}
+              className={cn(
+                "h-7 px-2.5 text-xs font-semibold gap-1.5 shadow-2xs",
+                row.original.missingReport
+                  ? "text-orange-600 dark:text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+                  : "text-[#0066CC] dark:text-blue-400 border-[#0066CC]/30 hover:bg-[#0066CC]/10"
+              )}
             >
               <PenLine className="size-3" />
               Revisar
@@ -640,7 +873,7 @@ export function InformesView({
         ),
       },
     ],
-    [handleOpen]
+    [handleReviewRow]
   );
 
   const totalPhotos = useMemo(
@@ -650,9 +883,56 @@ export function InformesView({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setManualOpen(true); setManualStep(1); }} className="gap-2"><FileText className="size-4" />Informe Manual</Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center rounded-xl border border-border bg-card shadow-xs">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => changeMonth(-1)}
+              aria-label="Mes anterior"
+              className="size-9 rounded-r-none"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <button
+              type="button"
+              onClick={goToCurrentMonth}
+              title="Ir al mes actual"
+              className="flex h-9 min-w-[164px] items-center justify-center gap-2 border-x border-border px-3 text-sm font-semibold capitalize transition-colors hover:bg-muted/50"
+            >
+              <CalendarDays className="size-4 text-[#0066CC]" />
+              <span className="capitalize">{monthTitle}</span>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => changeMonth(1)}
+              aria-label="Mes siguiente"
+              className="size-9 rounded-l-none"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {filteredRows.length} OT{filteredRows.length === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
+
+      {missingReportCount > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-orange-500/30 bg-orange-500/5 px-4 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-orange-500" />
+          <p className="text-xs text-orange-700 dark:text-orange-300">
+            <span className="font-semibold">
+              {missingReportCount} OT{missingReportCount === 1 ? "" : "s"} sin informe
+            </span>{" "}
+            este mes. Usa “Revisar” en las filas resaltadas para completar el
+            informe manual.
+          </p>
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-1 flex-wrap">
@@ -673,7 +953,7 @@ export function InformesView({
             emptyText="No hay clientes registrados"
             allowClear
             clearLabel="Todos los clientes"
-            className="h-7 sm:w-[220px]"
+            className="h-8 sm:w-[220px]"
           />
 
           <SearchableSelect
@@ -688,38 +968,88 @@ export function InformesView({
             emptyText="No hay centros de costo para este cliente"
             allowClear
             clearLabel="Todos los centros de costo"
-            className="h-7 sm:w-[220px]"
+            className="h-8 sm:w-[220px]"
           />
+
+          {(clientFilter || ccFilter) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setClientFilter("");
+                setCcFilter("");
+              }}
+              className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+            >
+              <X className="size-3" />
+              Limpiar filtros
+            </Button>
+          )}
         </div>
       </div>
 
       <DataTable
         columns={columns}
-        data={filteredWorkOrders}
+        data={filteredRows}
         searchPlaceholder="Buscar por OT, cliente o técnico..."
+        rowClassName={(row) =>
+          row.original.missingReport
+            ? "bg-orange-500/[0.04] hover:bg-orange-500/[0.08]"
+            : undefined
+        }
         mobileCard={(row) => {
-          const report = row.original;
-          const photoCount = report.elevators.reduce(
-            (acc, e) => acc + (e.evidencePhotoUrls?.length ?? 0),
-            0
-          );
+          const item = row.original;
+          const state = getReportState(item);
           return (
-            <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs">
+            <article
+              className={cn(
+                "min-w-0 overflow-hidden rounded-xl border bg-card p-4 shadow-xs",
+                item.missingReport ? "border-orange-500/40" : "border-border"
+              )}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <span className="inline-block rounded bg-muted px-2 py-0.5 font-mono text-xs font-semibold border border-border">{report.otNumber}</span>
-                  <h3 className="mt-2 truncate text-sm font-semibold">{report.client_name ?? "—"}</h3>
-                  <p className="truncate text-xs text-muted-foreground">{report.cost_center_name ?? "—"}</p>
+                  <span className="inline-block rounded bg-muted px-2 py-0.5 font-mono text-xs font-semibold border border-border">
+                    {item.otNumber}
+                  </span>
+                  <h3 className="mt-2 truncate text-sm font-semibold">
+                    {item.clientName || "—"}
+                  </h3>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {item.costCenterName || "—"}
+                  </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => handleOpen(report)} className="h-9 min-w-11 gap-1.5 px-3 text-xs text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10">
-                  <PenLine className="size-3.5" />
-                  Revisar
-                </Button>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <ReportStateBadge state={state} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReviewRow(item)}
+                    className={cn(
+                      "h-9 min-w-11 gap-1.5 px-3 text-xs",
+                      item.missingReport
+                        ? "text-orange-600 dark:text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+                        : "text-[#0066CC] border-[#0066CC]/30 hover:bg-[#0066CC]/10"
+                    )}
+                  >
+                    <PenLine className="size-3.5" />
+                    Revisar
+                  </Button>
+                </div>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <div><dt className="text-muted-foreground">Técnico</dt><dd className="truncate font-medium">{report.technician_name ?? "—"}</dd></div>
-                <div><dt className="text-muted-foreground">Completada</dt><dd className="font-medium">{formatDate(report.completedAt)}</dd></div>
-                <div><dt className="text-muted-foreground">Detalle</dt><dd className="font-medium">{report.elevators.length} equipo(s) · {photoCount} foto(s)</dd></div>
+                <div>
+                  <dt className="text-muted-foreground">Técnico</dt>
+                  <dd className="truncate font-medium">
+                    {item.technicianName ?? "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Completada</dt>
+                  <dd className="font-medium">
+                    {item.missingReport ? "—" : formatDate(item.completedAt)}
+                  </dd>
+                </div>
               </dl>
             </article>
           );
@@ -753,9 +1083,13 @@ export function InformesView({
 
                   {/* Fila 2 (móvil): badges de estado */}
                   <div className="flex flex-wrap items-center gap-2 mt-1 md:mt-0">
-                    {viewing.approvalStatus !== "PENDING" && (
+                    {viewing.approvalStatus === "APPROVED" ? (
                       <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                        Aprobada
+                        Aprobado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                        Borrador
                       </span>
                     )}
                     <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
@@ -823,12 +1157,25 @@ export function InformesView({
               {/* Firma del cliente */}
               {(
                 <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex flex-wrap items-center gap-4">
-                  {viewing.clientSignatureUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={viewing.clientSignatureUrl}
-                      alt="Firma del cliente"
-                      className="h-16 w-40 object-contain bg-white border border-border rounded-lg"
+                  {viewing.clientSignatureUrl ? (
+                    <SignaturePreview
+                      key={viewing.clientSignatureUrl}
+                      url={viewing.clientSignatureUrl}
+                      name={
+                        viewing.clientSignerName?.trim() ||
+                        viewing.approvedByName?.trim() ||
+                        "Responsable"
+                      }
+                      timestamp={viewing.approvedAt ?? viewing.completedAt}
+                    />
+                  ) : (
+                    <AutoApprovalStamp
+                      name={
+                        viewing.clientSignerName?.trim() ||
+                        viewing.approvedByName?.trim() ||
+                        "Responsable"
+                      }
+                      timestamp={viewing.approvedAt ?? viewing.completedAt}
                     />
                   )}
                   <div className="min-w-[220px] flex-1 space-y-2">
@@ -961,14 +1308,14 @@ export function InformesView({
         </DialogContent>
       </Dialog>
 
-       <Dialog open={manualOpen} onOpenChange={(open) => { setManualOpen(open); if (open) { setManualStep(1); setManualOrder(null); setManualClientId(""); setManualCostCenterId(""); setManualServiceTypeId(""); } }}>
+       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
          {manualStep === 1 ? <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl sm:max-w-2xl min-w-0 bg-card text-foreground sm:w-full">
            <DialogHeader><DialogTitle>Informe Manual</DialogTitle><DialogDescription className="sr-only">Selecciona la OT que deseas completar manualmente</DialogDescription></DialogHeader>
            <div className="space-y-4 py-2"><div className="grid min-w-0 gap-3 sm:grid-cols-2"><SearchableSelect className="w-full min-w-0" items={clients} value={manualClientId} onValueChange={(value) => { setManualClientId(value); setManualCostCenterId(""); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(client) => client.id} getLabel={(client) => client.legalName} placeholder="Cliente *" searchPlaceholder="Buscar cliente..." emptyText="No hay clientes" /><SearchableSelect className="w-full min-w-0" items={manualCostCenters} value={manualCostCenterId} onValueChange={(value) => { setManualCostCenterId(value); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(center) => center.id} getLabel={(center) => center.name} getKeywords={(center) => center.client_name} placeholder="Centro de costos *" searchPlaceholder="Buscar centro..." emptyText="Selecciona un cliente primero" disabled={!manualClientId} /></div><SearchableSelect className="w-full min-w-0" items={serviceTypes} value={manualServiceTypeId} onValueChange={(value) => { setManualServiceTypeId(value); setManualOrder(null); }} getValue={(type) => type.id} getLabel={(type) => type.name} placeholder="Tipo de servicio (Todos)" searchPlaceholder="Buscar servicio..." emptyText="No hay tipos de servicio" disabled={!manualCostCenterId} /><div className="border-t pt-4"><p className="mb-3 text-sm font-medium">OTs pendientes ({manualPendingOrders.length})</p>{!manualClientId || !manualCostCenterId ? <p className="text-sm text-muted-foreground">Selecciona un cliente y un centro de costos para consultar las OTs pendientes.</p> : manualPendingOrders.length === 0 ? <p className="text-sm text-muted-foreground">No hay OTs pendientes para esta selección.</p> : <div className="space-y-2">{manualPendingOrders.map((o) => <label key={o.id} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors", manualOrder?.id === o.id ? "border-primary bg-primary/5" : "hover:bg-muted/50")}><input type="radio" name="manual-order" checked={manualOrder?.id === o.id} onChange={() => setManualOrder(o)} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><span className="font-mono text-sm font-semibold">{o.otNumber}</span><span className="shrink-0 text-xs text-muted-foreground">{formatDayTime(o.scheduledDate, o.scheduledTime)}</span></div><p className="mt-1 text-xs text-muted-foreground">🔧 {o.elevators.length} equipo(s): {o.elevators.map((e) => e.internalCode).filter(Boolean).join(", ")}</p><p className="mt-0.5 text-xs text-muted-foreground">{o.serviceTypeName ?? "Sin tipo de servicio"}</p></div></label>)}</div>}</div></div>
            <DialogFooter><Button variant="ghost" onClick={() => setManualOpen(false)}>Cancelar</Button><Button disabled={!manualOrder} onClick={() => setManualStep(2)}>Continuar</Button></DialogFooter>
          </DialogContent> : <DialogContent showCloseButton={false} className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-3xl sm:max-w-3xl min-w-0 flex-col gap-0 overflow-hidden bg-card p-0 text-foreground max-sm:m-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none">
            <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">Informe Manual · Paso 2 de 2</p><p className="truncate font-mono text-sm font-semibold">{manualOrder?.otNumber}</p></div><Button variant="ghost" size="icon" onClick={() => setManualOpen(false)}><X className="size-4" /></Button></header>
-           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del portero *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><div className="rounded-lg border border-dashed p-3"><span className="text-xs font-semibold text-foreground">Firma referencial (automática)</span><div className="mt-2 rounded-md border-2 border-teal-700/60 px-3 py-2 text-center text-teal-700"><div className="text-[10px] font-bold uppercase tracking-widest">Aprobado por el portero</div><div className="py-0.5 text-xl italic leading-tight" style={{ fontFamily: "'Segoe Script', 'Brush Script MT', cursive" }}>{manualSigner.trim() || "Nombre del portero"}</div><div className="text-[9px] uppercase tracking-wide">Sello generado por computadora</div></div></div></div></section></div></div>
+           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del responsable *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><div className="rounded-lg border border-dashed p-3"><span className="text-xs font-semibold text-foreground">Firma referencial (automática)</span><div className="mt-2 rounded-md border-2 border-teal-700/60 px-3 py-2 text-center text-teal-700"><div className="text-[10px] font-bold uppercase tracking-widest">Aprobado por el responsable</div><div className="py-0.5 text-xl italic leading-tight" style={{ fontFamily: "'Segoe Script', 'Brush Script MT', cursive" }}>{manualSigner.trim() || "Nombre del responsable"}</div><div className="text-[9px] uppercase tracking-wide">Sello generado por computadora</div></div></div></div></section></div></div>
            <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-4 py-3"><Button variant="ghost" onClick={() => setManualStep(1)}>Volver</Button><Button disabled={manualSaving || !manualSigner.trim() || !manualStartTime || !manualEndTime} onClick={saveManual}>{manualSaving ? <Loader2 className="animate-spin" /> : "Guardar y aprobar"}</Button></footer>
          </DialogContent>}
        </Dialog>

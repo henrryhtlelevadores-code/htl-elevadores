@@ -114,12 +114,12 @@ export interface ActionResult {
   urls?: string[];
 }
 
-export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null }> };
+export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; technicianName: string | null; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null }> };
 
 export async function getPendingManualReportOrders(): Promise<ManualReportOrder[]> {
   await requirePermission("reports:read");
-  const rows = await db.select({ id: workOrders.id, otNumber: workOrders.otNumber, clientId: clients.id, clientName: clients.legalName, costCenterId: workOrders.costCenterId, costCenterName: costCenters.name, serviceTypeId: workOrders.serviceTypeId, serviceTypeName: serviceTypes.name, scheduledDate: workOrders.scheduledDate, scheduledTime: workOrders.scheduledTime, description: workOrders.description })
-    .from(workOrders).innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id)).innerJoin(clients, eq(costCenters.clientId, clients.id)).leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
+  const rows = await db.select({ id: workOrders.id, otNumber: workOrders.otNumber, clientId: clients.id, clientName: clients.legalName, costCenterId: workOrders.costCenterId, costCenterName: costCenters.name, technicianName: users.fullName, serviceTypeId: workOrders.serviceTypeId, serviceTypeName: serviceTypes.name, scheduledDate: workOrders.scheduledDate, scheduledTime: workOrders.scheduledTime, description: workOrders.description })
+    .from(workOrders).innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id)).innerJoin(clients, eq(costCenters.clientId, clients.id)).leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id)).leftJoin(users, eq(workOrders.technicianId, users.id))
     .where(and(eq(workOrders.status, "PENDING"), isNull(workOrders.deletedAt))).orderBy(desc(workOrders.createdAt));
   const elevators = await db.select({ id: workOrderElevators.id, workOrderId: workOrderElevators.workOrderId, name: elevatorUnities.name, internalCode: elevatorUnities.internalCode }).from(workOrderElevators).innerJoin(elevatorUnities, eq(workOrderElevators.elevatorUnityId, elevatorUnities.id));
   const byOrder = new Map<string, ManualReportOrder["elevators"]>(); for (const e of elevators) { const list = byOrder.get(e.workOrderId) ?? []; list.push({ id: e.id, name: e.name, internalCode: e.internalCode }); byOrder.set(e.workOrderId, list); }
@@ -138,11 +138,11 @@ export async function completeManualReport(data: { workOrderId: string; date: st
   try {
     const startedAt = peruTimestamp(data.date, data.startTime);
     const completedAt = peruTimestamp(data.date, data.endTime);
-    if (!data.workOrderId || !data.signerName.trim() || !startedAt || !completedAt) return { success: false, error: "Horas y nombre del portero son obligatorios." };
+    if (!data.workOrderId || !data.signerName.trim() || !startedAt || !completedAt) return { success: false, error: "Horas y nombre del responsable son obligatorios." };
     if (completedAt <= startedAt) return { success: false, error: "La hora de fin debe ser posterior a la hora de inicio." };
     const row = await db.select({ status: workOrders.status }).from(workOrders).where(eq(workOrders.id, data.workOrderId)).limit(1);
     if (row[0]?.status !== "PENDING") return { success: false, error: "La OT ya no está pendiente." };
-    // La firma es opcional: si no llega imagen, solo se guarda el nombre del portero.
+    // La firma es opcional: si no llega imagen, solo se guarda el nombre del responsable.
     const signatureUrl = data.signatureDataUrl
       ? await uploadToR2(buildEvidenceKey(data.workOrderId, "manual", 1, "png"), decodeDataUrl(data.signatureDataUrl), "image/png")
       : null;

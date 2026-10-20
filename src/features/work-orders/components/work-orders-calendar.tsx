@@ -297,21 +297,63 @@ export function WorkOrdersCalendar({
     return formData.costCenters.filter((cc) => cc.clientId === clientFilter);
   }, [clientFilter, formData.costCenters]);
 
-  const listWorkOrders = useMemo(() => {
-    const week = getWeekRange();
+  const monthPrefix = useMemo(
+    () =>
+      `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`,
+    [currentMonth]
+  );
+
+  const clientIdByCostCenter = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const cc of formData.costCenters) map.set(cc.id, cc.clientId);
+    return map;
+  }, [formData.costCenters]);
+
+  const monthWorkOrders = useMemo(
+    () => initialWorkOrders.filter((wo) => wo.scheduledDate?.startsWith(monthPrefix)),
+    [initialWorkOrders, monthPrefix]
+  );
+
+  const clientsForMonth = useMemo(() => {
+    const ids = new Set<string>();
+    for (const wo of monthWorkOrders) {
+      const clientId = clientIdByCostCenter.get(wo.costCenterId);
+      if (clientId) ids.add(clientId);
+    }
+    return formData.clients.filter((client) => ids.has(client.id));
+  }, [monthWorkOrders, clientIdByCostCenter, formData.clients]);
+
+  const serviceTypesForMonth = useMemo(() => {
+    const ids = new Set<string>();
+    for (const wo of monthWorkOrders) {
+      if (!wo.serviceTypeId) continue;
+      if (clientFilter && clientIdByCostCenter.get(wo.costCenterId) !== clientFilter) continue;
+      ids.add(wo.serviceTypeId);
+    }
+    return formData.serviceTypes.filter((serviceType) => ids.has(serviceType.id));
+  }, [monthWorkOrders, clientIdByCostCenter, clientFilter, formData.serviceTypes]);
+
+  useEffect(() => {
+    if (view !== "calendar") return;
+    if (clientFilter && !clientsForMonth.some((client) => client.id === clientFilter)) {
+      setClientFilter("");
+    }
+  }, [view, clientFilter, clientsForMonth]);
+
+  useEffect(() => {
+    if (view !== "calendar") return;
+    if (serviceTypeFilter && !serviceTypesForMonth.some((type) => type.id === serviceTypeFilter)) {
+      setServiceTypeFilter("");
+    }
+  }, [view, serviceTypeFilter, serviceTypesForMonth]);
+
+  const matchedWorkOrders = useMemo(() => {
     const clientCcIds = clientFilter
       ? new Set(clientCostCenters.map((cc) => cc.id))
       : null;
     return filteredWorkOrders.filter((wo) => {
-      if (dayFilter && wo.scheduledDate !== dayFilter) return false;
-      if (
-        weekFilter &&
-        (!wo.scheduledDate || wo.scheduledDate < week.start || wo.scheduledDate > week.end)
-      ) {
-        return false;
-      }
       if (costCenterFilter && wo.costCenterId !== costCenterFilter) return false;
-      if (clientFilter && !clientCcIds?.has(wo.costCenterId)) return false;
+      if (clientCcIds && !clientCcIds.has(wo.costCenterId)) return false;
       if (serviceTypeFilter && wo.serviceTypeId !== serviceTypeFilter) return false;
       if (scopeFilter && (scopeFilter === "GENERAL") !== (serviceTypeMap.get(wo.serviceTypeId ?? "")?.serviceScope === "GENERAL")) return false;
       return true;
@@ -320,13 +362,25 @@ export function WorkOrdersCalendar({
     scopeFilter,
     serviceTypeMap,
     filteredWorkOrders,
-    dayFilter,
-    weekFilter,
     clientFilter,
     clientCostCenters,
     costCenterFilter,
     serviceTypeFilter,
   ]);
+
+  const listWorkOrders = useMemo(() => {
+    const week = getWeekRange();
+    return matchedWorkOrders.filter((wo) => {
+      if (dayFilter && wo.scheduledDate !== dayFilter) return false;
+      if (
+        weekFilter &&
+        (!wo.scheduledDate || wo.scheduledDate < week.start || wo.scheduledDate > week.end)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [matchedWorkOrders, dayFilter, weekFilter]);
 
   function handleClientFilterChange(clientId: string) {
     setClientFilter(clientId);
@@ -359,7 +413,7 @@ export function WorkOrdersCalendar({
 
   const woByDayKey = useMemo(() => {
     const map = new Map<string, WorkOrderWithRelations[]>();
-    for (const wo of filteredWorkOrders) {
+    for (const wo of matchedWorkOrders) {
       if (!wo.scheduledDate) continue;
       map.set(wo.scheduledDate, [...(map.get(wo.scheduledDate) ?? []), wo]);
     }
@@ -371,7 +425,7 @@ export function WorkOrdersCalendar({
       )
     );
     return map;
-  }, [filteredWorkOrders]);
+  }, [matchedWorkOrders]);
 
   const calCells = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -651,8 +705,8 @@ export function WorkOrdersCalendar({
 
   const viewingDayList = useMemo(() => {
     if (!viewingDay) return [];
-    return filteredWorkOrders.filter((wo) => wo.scheduledDate === viewingDay.iso);
-  }, [viewingDay, filteredWorkOrders]);
+    return matchedWorkOrders.filter((wo) => wo.scheduledDate === viewingDay.iso);
+  }, [viewingDay, matchedWorkOrders]);
 
   const elevatorsByWorkOrder = useMemo(() => {
     const map = new Map<string, number>();
@@ -726,6 +780,60 @@ export function WorkOrdersCalendar({
             >
               Hoy
             </Button>
+          </div>
+
+          {/* Filtros del mes */}
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div className="w-full space-y-1 sm:w-[190px]">
+              <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                Cliente
+              </span>
+              <SearchableSelect
+                items={clientsForMonth}
+                value={clientFilter}
+                onValueChange={handleClientFilterChange}
+                getLabel={(c) => c.legalName}
+                getValue={(c) => c.id}
+                placeholder="Todos los clientes"
+                searchPlaceholder="Buscar cliente..."
+                emptyText="Sin clientes con OT este mes"
+                allowClear
+                clearLabel="Todos los clientes"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="w-full space-y-1 sm:w-[200px]">
+              <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                Tipo de servicio
+              </span>
+              <SearchableSelect
+                items={serviceTypesForMonth}
+                value={serviceTypeFilter}
+                onValueChange={setServiceTypeFilter}
+                getLabel={(s) => `${s.name} (${s.code})`}
+                getValue={(s) => s.id}
+                placeholder="Todos los servicios"
+                searchPlaceholder="Buscar tipo de servicio..."
+                emptyText="Sin tipos de servicio este mes"
+                allowClear
+                clearLabel="Todos los servicios"
+                className="h-8 text-xs"
+              />
+            </div>
+            {(clientFilter || serviceTypeFilter) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setClientFilter("");
+                  setServiceTypeFilter("");
+                }}
+                className="h-8 gap-1.5 text-xs text-muted-foreground"
+              >
+                <X className="size-3.5" />
+                Limpiar filtros
+              </Button>
+            )}
           </div>
 
           {/* Cabecera de días */}

@@ -171,3 +171,66 @@ export function parseHourInput(input: string): IsoHour | null {
   if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
   return toHourValue(hour);
 }
+
+// ==========================================
+// HORA CON MINUTOS (formato HH:MM)
+// ==========================================
+
+export type IsoTime = `${string}:${string}`;
+
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function isTimeOfDay(value: string): value is IsoTime {
+  return TIME_REGEX.test(value);
+}
+
+export function clampMinute(minute: number): number {
+  if (!Number.isFinite(minute)) return 0;
+  if (minute < 0) return 0;
+  if (minute > 59) return 59;
+  return Math.trunc(minute);
+}
+
+export function toTimeValue(hour: number, minute: number): IsoTime {
+  return `${String(clampHour(hour)).padStart(2, "0")}:${String(
+    clampMinute(minute)
+  ).padStart(2, "0")}` as IsoTime;
+}
+
+export function formatTimeValue(value: string): string {
+  const match = /^(\d{1,2}):(\d{1,2})$/.exec(value.trim());
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return "";
+  }
+  return toTimeValue(hour, minute);
+}
+
+export function parseTimeInput(input: string): IsoTime | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const match = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(trimmed);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+  return toTimeValue(hour, minute);
+}

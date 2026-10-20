@@ -45,6 +45,8 @@ interface DataTableProps<TData, TValue> {
   hideSearch?: boolean;
   emptyState?: React.ReactNode;
   mobileCard?: (row: Row<TData>) => React.ReactNode;
+  /** Clases extra por fila (p. ej. resaltar registros que requieren acción). */
+  rowClassName?: (row: Row<TData>) => string | undefined;
   /** Texto extra que encuentra el buscador, p. ej. el nombre de un distrito cuya columna guarda solo el id. */
   getSearchText?: (row: TData) => string | null | undefined;
 }
@@ -147,6 +149,7 @@ export function DataTable<TData, TValue>({
   hideSearch = false,
   emptyState,
   mobileCard,
+  rowClassName,
   getSearchText,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -313,7 +316,10 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="group border-border hover:bg-muted/40 transition-colors"
+                  className={cn(
+                    "group border-border hover:bg-muted/40 transition-colors",
+                    rowClassName?.(row)
+                  )}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
