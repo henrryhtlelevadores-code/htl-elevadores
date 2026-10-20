@@ -125,6 +125,80 @@ function formatDayTime(date: string | null, time?: string | null): string {
   return time ? `${base} · ${time}` : base;
 }
 
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/**
+ * Genera un sello "APROBADO POR EL PORTERO" en PNG (data URL) para los informes
+ * manuales: reemplaza la foto de la firma escaneada por una firma referencial
+ * creada por computadora.
+ */
+function buildPorterStamp(name: string): string {
+  const width = 640;
+  const height = 240;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const ink = "#0f766e";
+  const date = new Date().toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  // Ligera inclinación para que parezca un sello real.
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate((-4 * Math.PI) / 180);
+  ctx.translate(-width / 2, -height / 2);
+
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 6;
+  roundedRect(ctx, 16, 16, width - 32, height - 32, 20);
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  roundedRect(ctx, 30, 30, width - 60, height - 60, 14);
+  ctx.stroke();
+
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "700 25px 'Segoe UI', Arial, sans-serif";
+  ctx.fillText("APROBADO POR EL PORTERO", width / 2, 72);
+
+  ctx.font = "italic 46px 'Segoe Script', 'Brush Script MT', cursive";
+  ctx.fillText(name.trim() || "—", width / 2, 138, width - 100);
+
+  ctx.font = "600 17px 'Segoe UI', Arial, sans-serif";
+  ctx.fillText(`Conformidad registrada el ${date}`, width / 2, 190);
+
+  ctx.restore();
+  return canvas.toDataURL("image/png");
+}
+
 function InfoChip({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
@@ -173,7 +247,6 @@ export function InformesView({
   const [manualSigner, setManualSigner] = useState("");
   const [manualNotes, setManualNotes] = useState("");
   const [manualFindings, setManualFindings] = useState<Record<string, string>>({});
-  const [manualSignature, setManualSignature] = useState("");
   const [manualStartTime, setManualStartTime] = useState("");
   const [manualEndTime, setManualEndTime] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
@@ -194,14 +267,16 @@ export function InformesView({
     [pendingOrders, manualClientId, manualCostCenterId, manualServiceTypeId, serviceTypes]
   );
 
-  function readSignature(file: File | undefined) {
-    if (!file) return;
-    const reader = new FileReader(); reader.onload = () => setManualSignature(String(reader.result)); reader.readAsDataURL(file);
-  }
-
   async function saveManual() {
-    if (!manualOrder) return; setManualSaving(true);
-    const result = await completeManualReport({ workOrderId: manualOrder.id, date: manualOrder.scheduledDate, startTime: manualStartTime, endTime: manualEndTime, number: manualNumber, notes: manualNotes, findings: manualFindings, signerName: manualSigner, signatureDataUrl: manualSignature });
+    if (!manualOrder) return;
+    if (!manualSigner.trim()) {
+      toast.error("Falta el nombre del portero", { description: "Indica quién aprueba el informe." });
+      return;
+    }
+    setManualSaving(true);
+    // La firma ya no se adjunta como foto: se genera un sello referencial.
+    const signatureDataUrl = buildPorterStamp(manualSigner);
+    const result = await completeManualReport({ workOrderId: manualOrder.id, date: manualOrder.scheduledDate, startTime: manualStartTime, endTime: manualEndTime, number: manualNumber, notes: manualNotes, findings: manualFindings, signerName: manualSigner, signatureDataUrl });
     setManualSaving(false);
     if (!result.success) { toast.error("No se pudo guardar", { description: result.error }); return; }
     toast.success(result.message); setManualOpen(false); setManualStep(1); setManualOrder(null); router.refresh();
@@ -893,8 +968,8 @@ export function InformesView({
            <DialogFooter><Button variant="ghost" onClick={() => setManualOpen(false)}>Cancelar</Button><Button disabled={!manualOrder} onClick={() => setManualStep(2)}>Continuar</Button></DialogFooter>
          </DialogContent> : <DialogContent showCloseButton={false} className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-3xl sm:max-w-3xl min-w-0 flex-col gap-0 overflow-hidden bg-card p-0 text-foreground max-sm:m-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none">
            <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">Informe Manual · Paso 2 de 2</p><p className="truncate font-mono text-sm font-semibold">{manualOrder?.otNumber}</p></div><Button variant="ghost" size="icon" onClick={() => setManualOpen(false)}><X className="size-4" /></Button></header>
-           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del firmante *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><label className="block rounded-lg border border-dashed p-3 text-xs">Firma del cliente *<Input className="mt-2" type="file" accept="image/*" onChange={(e) => readSignature(e.target.files?.[0])} />{manualSignature && <span className="text-emerald-600">Firma cargada</span>}</label></div></section></div></div>
-           <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-4 py-3"><Button variant="ghost" onClick={() => setManualStep(1)}>Volver</Button><Button disabled={manualSaving || !manualSigner || !manualSignature || !manualStartTime || !manualEndTime} onClick={saveManual}>{manualSaving ? <Loader2 className="animate-spin" /> : "Guardar y aprobar"}</Button></footer>
+           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del portero *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><div className="rounded-lg border border-dashed p-3"><span className="text-xs font-semibold text-foreground">Firma referencial (automática)</span><div className="mt-2 rounded-md border-2 border-teal-700/60 px-3 py-2 text-center text-teal-700"><div className="text-[10px] font-bold uppercase tracking-widest">Aprobado por el portero</div><div className="py-0.5 text-xl italic leading-tight" style={{ fontFamily: "'Segoe Script', 'Brush Script MT', cursive" }}>{manualSigner.trim() || "Nombre del portero"}</div><div className="text-[9px] uppercase tracking-wide">Sello generado por computadora</div></div></div></div></section></div></div>
+           <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-4 py-3"><Button variant="ghost" onClick={() => setManualStep(1)}>Volver</Button><Button disabled={manualSaving || !manualSigner.trim() || !manualStartTime || !manualEndTime} onClick={saveManual}>{manualSaving ? <Loader2 className="animate-spin" /> : "Guardar y aprobar"}</Button></footer>
          </DialogContent>}
        </Dialog>
     </div>

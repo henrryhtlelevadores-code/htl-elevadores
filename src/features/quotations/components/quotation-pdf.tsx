@@ -819,7 +819,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
 
         <View style={styles.closing} wrap={false}>
           <Text style={styles.closingText}>
-            {data.closeMessage || "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios. Sin otro particular, me despido."}
+            {data.closeMessage || "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio.\nQuedamos a su total disposición para programar los trabajos a la brevedad y garantizar la seguridad de todos los usuarios."}
           </Text>
           <Text style={styles.closingText}>Sin otro particular, me despido.</Text>
           <Text style={styles.closingText}>Saludos.</Text>

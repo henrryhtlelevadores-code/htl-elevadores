@@ -132,17 +132,20 @@ function peruTimestamp(date: string | null, time: string): number | null {
   return Number.isNaN(value) ? null : value;
 }
 
-export async function completeManualReport(data: { workOrderId: string; date: string | null; startTime: string; endTime: string; number: string; notes: string; findings: Record<string, string>; signerName: string; signatureDataUrl: string }): Promise<ActionResult> {
+export async function completeManualReport(data: { workOrderId: string; date: string | null; startTime: string; endTime: string; number: string; notes: string; findings: Record<string, string>; signerName: string; signatureDataUrl?: string }): Promise<ActionResult> {
   const denied = await denyUnless("reports:write");
   if (denied) return denied;
   try {
     const startedAt = peruTimestamp(data.date, data.startTime);
     const completedAt = peruTimestamp(data.date, data.endTime);
-    if (!data.workOrderId || !data.signatureDataUrl || !data.signerName.trim() || !startedAt || !completedAt) return { success: false, error: "Horas, nombre del firmante y firma son obligatorios." };
+    if (!data.workOrderId || !data.signerName.trim() || !startedAt || !completedAt) return { success: false, error: "Horas y nombre del portero son obligatorios." };
     if (completedAt <= startedAt) return { success: false, error: "La hora de fin debe ser posterior a la hora de inicio." };
     const row = await db.select({ status: workOrders.status }).from(workOrders).where(eq(workOrders.id, data.workOrderId)).limit(1);
     if (row[0]?.status !== "PENDING") return { success: false, error: "La OT ya no está pendiente." };
-    const signatureUrl = await uploadToR2(buildEvidenceKey(data.workOrderId, "manual", 1, "png"), decodeDataUrl(data.signatureDataUrl), "image/png");
+    // La firma es opcional: si no llega imagen, solo se guarda el nombre del portero.
+    const signatureUrl = data.signatureDataUrl
+      ? await uploadToR2(buildEvidenceKey(data.workOrderId, "manual", 1, "png"), decodeDataUrl(data.signatureDataUrl), "image/png")
+      : null;
     const now = Date.now();
     await db.update(workOrders).set({ status: "COMPLETED", completedAt, startedAt, closingNotes: data.notes.trim() || null, clientSignatureUrl: signatureUrl, clientSignerName: data.signerName.trim(), filledByAdmin: true, manualReportNumber: data.number.trim().slice(0, 100), approvalStatus: "PENDING", approvedBy: null, approvedAt: null }).where(eq(workOrders.id, data.workOrderId));
     const es = await db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, data.workOrderId));

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ClipboardEvent } from "react";
 import { useProgressRouter } from "@/lib/navigation-progress";
+import { withDownload } from "@/lib/pdf-paths";
 import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -37,9 +38,8 @@ import type { quotationImages } from "@/db/schema";
 
 type QuotationImage = InferSelectModel<typeof quotationImages>;
 
-function defaultWelcome(clientName: string | null, firstLineDescription: string | undefined) {
-  const service = firstLineDescription?.trim() || "servicio de mantenimiento";
-  return `Sr. ${clientName ?? "Cliente"}\n\nEstimados Señores:\n\nMediante la presente hacemos llegar nuestra cotización por ${service}.\n\nInformación Adicional del ${service}\n\n- Tareas realizadas 01\n- Tareas realizadas 02`;
+function defaultWelcome() {
+  return "Estimados Señores:\n\nMediante la presente hacemos llegar nuestra cotización según sigue:";
 }
 
 const TABS = [
@@ -73,7 +73,7 @@ function firstPricingError(
   return { tab: "descuento", message: headerError?.message ?? "Revisa los datos antes de guardar." };
 }
 
-const DEFAULT_CLOSE_MESSAGE = "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio. Quedamos a su total disposición para programar la reparación a la brevedad y garantizar la seguridad de todos los usuarios. Sin otro particular, me despido.";
+const DEFAULT_CLOSE_MESSAGE = "Sabemos lo importante que es el funcionamiento de su ascensor en su edificio.\nQuedamos a su total disposición para programar los trabajos a la brevedad y garantizar la seguridad de todos los usuarios.";
 
 export function QuotationDetailPage({
   quotation,
@@ -142,7 +142,7 @@ export function QuotationDetailPage({
   const doc = {
     ...form,
     welcomeMessage:
-      form.welcomeMessage ?? defaultWelcome(quotation.client_name, firstLine?.description),
+      form.welcomeMessage ?? defaultWelcome(),
     executionTime:
       form.executionTime ?? `Un (01) día por ${firstEquipmentName || "equipo"} aproximadamente`,
   };
@@ -404,7 +404,7 @@ export function QuotationDetailPage({
       ) : tab === "preview" ? (
         <div className="space-y-3">
           {hasUnsavedChanges ? <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">Tienes cambios sin guardar. Al generar el PDF se guardarán primero.</p> : null}
-          <div className="flex gap-2"><Button onClick={generatePdf} disabled={isPending} className="gap-2">{isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}Generar PDF</Button>{pdfUrl ? <a href={pdfUrl} target="_blank" rel="noopener" className="inline-flex items-center rounded-md border border-border px-3 text-xs font-semibold">Descargar PDF</a> : null}</div>
+          <div className="flex gap-2"><Button onClick={generatePdf} disabled={isPending} className="gap-2">{isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}Generar PDF</Button>{pdfUrl ? <a href={withDownload(pdfUrl, `Cotizacion_${quotation.quotationNumber}.pdf`)} target="_blank" rel="noopener" download={`Cotizacion_${quotation.quotationNumber}.pdf`} className="inline-flex items-center rounded-md border border-border px-3 text-xs font-semibold">Descargar PDF</a> : null}</div>
           {pdfUrl ? <iframe title="Vista previa de cotización" src={pdfUrl} className="h-[760px] w-full rounded-lg border border-border" /> : <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">Genera el PDF para verlo aquí.</div>}
         </div>
       ) : null}
