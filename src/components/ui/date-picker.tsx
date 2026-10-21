@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { Popover } from "@base-ui/react/popover";
-import { CalendarIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 import { cn } from "cn";
 import { Calendar } from "@/components/ui/calendar";
+import { CalendarStatsIcon } from "@/components/ui/calendar-stats-icon";
 import { formatLong, parseIso, type IsoDate } from "@/lib/date";
 
 export interface DatePickerProps {
@@ -90,7 +91,7 @@ export function DatePicker({
                 <XIcon className="size-3.5" />
               </span>
             ) : null}
-            <CalendarIcon className="size-4 text-muted-foreground" />
+            <CalendarStatsIcon className="size-4 text-muted-foreground" />
           </div>
         </Popover.Trigger>
       </div>

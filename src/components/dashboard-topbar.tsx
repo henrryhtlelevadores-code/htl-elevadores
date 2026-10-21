@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LogoutButton } from "@/components/logout-button";
+import { ToolsMenu } from "@/features/tools/components/tools-menu";
 import { Button } from "@/components/ui/button";
 
 const routeNames: Record<string, string> = {
@@ -77,6 +78,8 @@ export function DashboardTopbar({
 
       {/* Right Tools / User */}
       <div className="flex items-center gap-3">
+        <ToolsMenu />
+
         {/* Theme Toggle (Claro / Oscuro) */}
         <ThemeToggle />
 

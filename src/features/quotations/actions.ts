@@ -17,6 +17,7 @@ import {
   quotations,
   quotationLines,
   quotationLineProducts,
+  quotationImages,
   type Quotation,
   type QuotationLine,
   type QuotationLineProduct,
@@ -25,7 +26,11 @@ import { eq, isNull, desc, count, asc, and, inArray } from "drizzle-orm";
 import { generateUuid } from "@/lib/uuid";
 import { getErrorMessage, isUniqueConstraintError } from "@/lib/errors";
 import { generateDocumentNumber } from "@/lib/document-number";
-import { deleteStoredPdf } from "@/lib/r2";
+import {
+  copyPublicObjectByUrl,
+  deleteR2ObjectByUrl,
+  deleteStoredPdf,
+} from "@/lib/r2";
 import { quotationPdfPath } from "@/lib/pdf-paths";
 import {
   quotationFormSchema,
@@ -283,6 +288,51 @@ export async function getQuotations(): Promise<QuotationWithRelations[]> {
     }));
   } catch (error) {
     console.error("Error al obtener cotizaciones:", error);
+    return [];
+  }
+}
+
+export interface ClientQuotationOption {
+  id: string;
+  quotationNumber: string;
+  issueDate: number;
+  total: number | null;
+  status: string | null;
+  costCenterName: string | null;
+  lineCount: number;
+}
+
+/**
+ * Cotizaciones previas del cliente para ofrecerlas como origen de una copia.
+ * Solo devuelve lo necesario para el selector; el preview carga el detalle
+ * aparte y la copia se valida de nuevo en el servidor.
+ */
+export async function getClientQuotationsForCopy(
+  clientId: string
+): Promise<ClientQuotationOption[]> {
+  await requirePermission("quotations:read");
+  if (!clientId) return [];
+  try {
+    const rows = await db
+      .select({
+        id: quotations.id,
+        quotationNumber: quotations.quotationNumber,
+        issueDate: quotations.issueDate,
+        total: quotations.total,
+        status: quotations.status,
+        costCenterName: costCenters.name,
+        lineCount: count(quotationLines.id),
+      })
+      .from(quotations)
+      .leftJoin(costCenters, eq(quotations.costCenterId, costCenters.id))
+      .leftJoin(quotationLines, eq(quotationLines.quotationId, quotations.id))
+      .where(eq(quotations.clientId, clientId))
+      .groupBy(quotations.id)
+      .orderBy(desc(quotations.createdAt))
+      .limit(100);
+    return rows;
+  } catch (error) {
+    console.error("Error al obtener cotizaciones del cliente:", error);
     return [];
   }
 }
@@ -794,6 +844,197 @@ export async function createQuotation(
     return { success: true, id: quotationId, message: `Cotización ${quotationNumber} creada` };
   } catch (error) {
     console.error("Error al crear cotización:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+function imageExtensionFromUrl(url: string): string {
+  try {
+    const ext = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
+    return ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
+  } catch {
+    return "jpg";
+  }
+}
+
+/**
+ * Crea una cotización nueva copiando una existente del mismo cliente.
+ *
+ * Se copian las filas tal cual (líneas, productos, importes y descuentos), los
+ * mensajes y condiciones del documento, y las imágenes referenciales. La
+ * cabecera elegida en el formulario manda sobre cliente, sede, asesor y fechas;
+ * el estado de la copia siempre es DRAFT y su número es nuevo. No se copia el
+ * PDF: se regenerará con los datos de la nueva cotización.
+ */
+export async function duplicateQuotation(
+  sourceId: string,
+  data: QuotationHeaderValues
+): Promise<ActionResult> {
+  const denied = await denyUnless("quotations:write");
+  if (denied) return denied;
+  try {
+    const validated = quotationHeaderSchema.parse(data);
+    const [source] = await db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, sourceId))
+      .limit(1);
+    if (!source) {
+      return { success: false, error: "La cotización de origen ya no existe." };
+    }
+    if (source.clientId !== validated.clientId) {
+      return {
+        success: false,
+        error: "Solo puedes copiar cotizaciones del mismo cliente.",
+      };
+    }
+    if (validated.costCenterId) {
+      const [center] = await db
+        .select({ id: costCenters.id })
+        .from(costCenters)
+        .where(
+          and(
+            eq(costCenters.id, validated.costCenterId),
+            eq(costCenters.clientId, validated.clientId)
+          )
+        )
+        .limit(1);
+      if (!center) {
+        return { success: false, error: "La sede no pertenece al cliente seleccionado." };
+      }
+    }
+
+    const sourceLines = await db
+      .select()
+      .from(quotationLines)
+      .where(eq(quotationLines.quotationId, sourceId))
+      .orderBy(asc(quotationLines.orderIndex));
+    const sourceProducts: QuotationLineProduct[] =
+      sourceLines.length > 0
+        ? ((await db
+            .select()
+            .from(quotationLineProducts)
+            .where(
+              inArray(
+                quotationLineProducts.quotationLineId,
+                sourceLines.map((line) => line.id)
+              )
+            )
+            .orderBy(asc(quotationLineProducts.orderIndex))) as QuotationLineProduct[])
+        : [];
+    const productsByLine = new Map<string, QuotationLineProduct[]>();
+    for (const product of sourceProducts) {
+      const list = productsByLine.get(product.quotationLineId) ?? [];
+      list.push(product);
+      productsByLine.set(product.quotationLineId, list);
+    }
+    const sourceImages = await loadQuotationImages(sourceId);
+
+    const quotationId = generateUuid();
+    const copiedImageUrls: string[] = [];
+    try {
+      const imageRows: Array<typeof quotationImages.$inferInsert> = [];
+      for (const image of sourceImages) {
+        const imageId = generateUuid();
+        const key = `quotations/images/${quotationId}/${imageId}.${imageExtensionFromUrl(image.url)}`;
+        const url = await copyPublicObjectByUrl(image.url, key);
+        copiedImageUrls.push(url);
+        imageRows.push({
+          ...image,
+          id: imageId,
+          quotationId,
+          url,
+          createdAt: undefined,
+        });
+      }
+
+      const statements: SqliteBatchItem[] = [];
+      for (const line of sourceLines) {
+        const lineId = generateUuid();
+        statements.push(
+          db.insert(quotationLines).values({
+            ...line,
+            id: lineId,
+            quotationId,
+            createdAt: undefined,
+          })
+        );
+        for (const product of productsByLine.get(line.id) ?? []) {
+          statements.push(
+            db.insert(quotationLineProducts).values({
+              ...product,
+              id: generateUuid(),
+              quotationLineId: lineId,
+            })
+          );
+        }
+      }
+      for (const image of imageRows) {
+        statements.push(db.insert(quotationImages).values(image));
+      }
+
+      const targetAdvisorId = (await resolveAdvisorId(validated.advisorId)) ?? undefined;
+      const insertQuotation = (quotationNumber: string): SqliteBatchItem =>
+        db.insert(quotations).values({
+          id: quotationId,
+          quotationNumber,
+          clientId: validated.clientId,
+          costCenterId: validated.costCenterId || null,
+          advisorId: targetAdvisorId,
+          issueDate: toTimestamp(validated.issueDate),
+          validUntil: toTimestamp(validated.validUntil),
+          status: "DRAFT",
+          discountMode: source.discountMode,
+          targetTotal: source.targetTotal,
+          targetTotalIncludesIgv: source.targetTotalIncludesIgv,
+          discountRate: source.discountRate,
+          subtotal: source.subtotal,
+          discountAmount: source.discountAmount,
+          taxableBase: source.taxableBase,
+          igv: source.igv,
+          total: source.total,
+          welcomeMessage: source.welcomeMessage,
+          closeMessage: source.closeMessage,
+          paymentTerms: source.paymentTerms,
+          executionTime: source.executionTime,
+          workingHours: source.workingHours,
+          validityDays: source.validityDays,
+          showTaxBreakdown: source.showTaxBreakdown,
+          configSnapshot: source.configSnapshot,
+        });
+
+      const maxAttempts = 5;
+      let quotationNumber = "";
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        quotationNumber = await nextQuotationNumber();
+        try {
+          await db.batch(
+            [insertQuotation(quotationNumber), ...statements] as unknown as [
+              SqliteBatchItem,
+              ...SqliteBatchItem[],
+            ]
+          );
+          break;
+        } catch (error) {
+          if (isUniqueConstraintError(error) && attempt < maxAttempts) continue;
+          throw error;
+        }
+      }
+
+      revalidatePath("/quotations");
+      return {
+        success: true,
+        id: quotationId,
+        message: `Cotización ${quotationNumber} creada como copia de ${source.quotationNumber}`,
+      };
+    } catch (error) {
+      if (copiedImageUrls.length > 0) {
+        await Promise.allSettled(copiedImageUrls.map((url) => deleteR2ObjectByUrl(url)));
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error("Error al copiar cotización:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

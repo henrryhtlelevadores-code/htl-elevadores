@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSubmitTransition } from "@/lib/use-submit-transition";
 import { useProgressRouter } from "@/lib/navigation-progress";
 import { useForm, useWatch } from "react-hook-form";
@@ -11,9 +11,19 @@ import {
   QUOTATION_STATUS,
   type QuotationHeaderValues,
 } from "../schema";
-import { createQuotation, updateQuotationHeader } from "../actions";
-import type { QuotationDetail, QuotationFormOptions } from "../actions";
+import {
+  createQuotation,
+  duplicateQuotation,
+  updateQuotationHeader,
+  type QuotationDetail,
+  type QuotationFormOptions,
+} from "../actions";
 import { plusDays, SectionTitle, todayInput, tsToInput } from "./quotation-form-shared";
+import { QuotationCopyHint } from "./quotation-copy-preview";
+import {
+  QuotationCopyPicker,
+  type QuotationCopySelection,
+} from "./quotation-copy-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Loader2, ReceiptText } from "lucide-react";
+import { Copy, FileText, Loader2, ReceiptText } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DatePicker } from "@/components/ui/date-picker";
 
@@ -95,6 +105,10 @@ export function QuotationCreateDialog({
   });
 
   const clientId = useWatch({ control: form.control, name: "clientId" });
+  const costCenterId = useWatch({ control: form.control, name: "costCenterId" });
+
+  const [copyId, setCopyId] = useState("");
+  const [copyDetail, setCopyDetail] = useState<QuotationDetail | null>(null);
 
   const filteredCostCenters = useMemo(
     () =>
@@ -112,33 +126,57 @@ export function QuotationCreateDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingDetail]);
 
+  function handleCopySelection(selection: QuotationCopySelection) {
+    setCopyId(selection.id);
+    setCopyDetail(selection.detail);
+  }
+
+  function clearCopySelection() {
+    setCopyId("");
+    setCopyDetail(null);
+  }
+
   function handleClose() {
     if (isPending) return;
     form.reset();
+    clearCopySelection();
     onOpenChange(false);
   }
 
   function handleSubmit(values: QuotationHeaderValues) {
     startTransition(async () => {
+      const copying = !editingDetail && Boolean(copyId);
       const res = editingDetail
         ? await updateQuotationHeader(editingDetail.id, values)
-        : await createQuotation({
-            ...values,
-            discountMode: "PERCENT",
-            discountRate: "0",
-            discountAmount: "0",
-            targetTotal: "",
-            targetTotalIncludesIgv: true,
-            showTaxBreakdown: true,
-            lines: [],
-          });
+        : copying
+          ? await duplicateQuotation(copyId, values)
+          : await createQuotation({
+              ...values,
+              discountMode: "PERCENT",
+              discountRate: "0",
+              discountAmount: "0",
+              targetTotal: "",
+              targetTotalIncludesIgv: true,
+              showTaxBreakdown: true,
+              lines: [],
+            });
       if (res.success) {
-        toast.success(editingDetail ? "Cotización actualizada" : "Cotización creada", {
-          description: editingDetail
-            ? res.message
-            : "Agrega ahora los equipos y servicios en Líneas de Cotización.",
-        });
+        toast.success(
+          editingDetail
+            ? "Cotización actualizada"
+            : copying
+              ? "Cotización copiada"
+              : "Cotización creada",
+          {
+            description: editingDetail
+              ? res.message
+              : copying
+                ? res.message
+                : "Agrega ahora los equipos y servicios en Líneas de Cotización.",
+          }
+        );
         form.reset();
+        clearCopySelection();
         onOpenChange(false);
         onSaved?.();
         if (!editingDetail && res.id) router.push(`/quotations/${res.id}`);
@@ -164,7 +202,7 @@ export function QuotationCreateDialog({
           <DialogDescription className="text-xs text-muted-foreground">
             {editingDetail
               ? "Datos generales de la cotización. Las líneas y los descuentos se editan en su detalle."
-              : "Registra los datos generales. Al crearla pasarás a su detalle para agregar las líneas."}
+              : "Registra los datos generales. Puedes crearla vacía o copiar una cotización anterior del mismo cliente."}
           </DialogDescription>
         </DialogHeader>
 
@@ -186,6 +224,7 @@ export function QuotationCreateDialog({
                           onValueChange={(v) => {
                             field.onChange(v);
                             form.setValue("costCenterId", "");
+                            clearCopySelection();
                           }}
                           getValue={(c) => c.id}
                           getLabel={(c) => c.legalName ?? "Sin nombre"}
@@ -204,7 +243,7 @@ export function QuotationCreateDialog({
                   name="costCenterId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs font-semibold">Sede</FormLabel>
+                      <FormLabel className="text-xs font-semibold">Centro de costos</FormLabel>
                       <FormControl>
                         <SearchableSelect
                           items={filteredCostCenters}
@@ -214,10 +253,12 @@ export function QuotationCreateDialog({
                           getLabel={(cc) => cc.name ?? "Sin nombre"}
                           getKeywords={(cc) => cc.address}
                           placeholder={
-                            clientId ? "Selecciona una sede" : "Elige un cliente primero"
+                            clientId
+                              ? "Selecciona un centro de costos"
+                              : "Elige un cliente primero"
                           }
-                          searchPlaceholder="Buscar sede..."
-                          emptyText="Este cliente no tiene sedes"
+                          searchPlaceholder="Buscar centro de costos..."
+                          emptyText="Este cliente no tiene centros de costos"
                           disabled={!clientId}
                         />
                       </FormControl>
@@ -250,6 +291,28 @@ export function QuotationCreateDialog({
                   )}
                 />
               </div>
+              {!editingDetail ? (
+                <div className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <SectionTitle icon={Copy} title="Copiar cotización anterior (opcional)" />
+                    {copyId ? <QuotationCopyHint /> : null}
+                  </div>
+                  {clientId ? (
+                    <QuotationCopyPicker
+                      key={`${clientId}-${open}`}
+                      clientId={clientId}
+                      selectedId={copyId}
+                      targetCostCenterId={costCenterId ?? ""}
+                      disabled={isPending}
+                      onSelectionChange={handleCopySelection}
+                    />
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      Elige un cliente para ver sus cotizaciones anteriores.
+                    </p>
+                  )}
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FormField
                   control={form.control}
@@ -347,11 +410,15 @@ export function QuotationCreateDialog({
             <Button
               type="button"
               onClick={form.handleSubmit(handleSubmit)}
-              disabled={isPending}
+              disabled={isPending || (!editingDetail && Boolean(copyId) && !copyDetail)}
               className="flex-1 gap-2 text-xs sm:flex-none"
             >
               {isPending && <Loader2 className="size-3.5 animate-spin" />}
-              {editingDetail ? "Guardar cambios" : "Crear y agregar líneas"}
+              {editingDetail
+                ? "Guardar cambios"
+                : copyId
+                  ? "Crear copia y revisar"
+                  : "Crear y agregar líneas"}
             </Button>
           </div>
         </DialogFooter>

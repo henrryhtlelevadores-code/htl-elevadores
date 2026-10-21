@@ -25,6 +25,8 @@ import { alias } from "drizzle-orm/sqlite-core";
 
 const MAX_EVIDENCE_PER_ELEVATOR = 10;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export type EvidenceTag = "BEFORE" | "AFTER" | "POINT";
+const EVIDENCE_TAGS: EvidenceTag[] = ["BEFORE", "AFTER", "POINT"];
 
 const LEGACY_TYPE_LABELS: Record<string, string> = {
   CORRECTIVE: "Correctivo",
@@ -112,9 +114,10 @@ export interface ActionResult {
   message?: string;
   error?: string;
   urls?: string[];
+  tag?: EvidenceTag;
 }
 
-export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; technicianName: string | null; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null }> };
+export type ManualReportOrder = { id: string; otNumber: string; clientId: string; clientName: string; costCenterId: string; costCenterName: string; technicianName: string | null; serviceTypeId: string | null; serviceTypeName: string | null; scheduledDate: string | null; scheduledTime: string | null; description: string | null; elevators: Array<{ id: string; name: string | null; internalCode: string | null; photos: Array<{ id: string; url: string; tag: string; description: string | null; createdAt: number | null }> }> };
 
 export async function getPendingManualReportOrders(): Promise<ManualReportOrder[]> {
   await requirePermission("reports:read");
@@ -122,7 +125,10 @@ export async function getPendingManualReportOrders(): Promise<ManualReportOrder[
     .from(workOrders).innerJoin(costCenters, eq(workOrders.costCenterId, costCenters.id)).innerJoin(clients, eq(costCenters.clientId, clients.id)).leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id)).leftJoin(users, eq(workOrders.technicianId, users.id))
     .where(and(eq(workOrders.status, "PENDING"), isNull(workOrders.deletedAt))).orderBy(desc(workOrders.createdAt));
   const elevators = await db.select({ id: workOrderElevators.id, workOrderId: workOrderElevators.workOrderId, name: elevatorUnities.name, internalCode: elevatorUnities.internalCode }).from(workOrderElevators).innerJoin(elevatorUnities, eq(workOrderElevators.elevatorUnityId, elevatorUnities.id));
-  const byOrder = new Map<string, ManualReportOrder["elevators"]>(); for (const e of elevators) { const list = byOrder.get(e.workOrderId) ?? []; list.push({ id: e.id, name: e.name, internalCode: e.internalCode }); byOrder.set(e.workOrderId, list); }
+  const photoRows = await db.select({ id: workOrderElevatorPhotos.id, workOrderElevatorId: workOrderElevatorPhotos.workOrderElevatorId, url: workOrderElevatorPhotos.url, tag: workOrderElevatorPhotos.tag, description: workOrderElevatorPhotos.description, createdAt: workOrderElevatorPhotos.createdAt }).from(workOrderElevatorPhotos).orderBy(asc(workOrderElevatorPhotos.createdAt));
+  const photosByElevator = new Map<string, ManualReportOrder["elevators"][number]["photos"]>();
+  for (const photo of photoRows) { const list = photosByElevator.get(photo.workOrderElevatorId) ?? []; list.push(photo); photosByElevator.set(photo.workOrderElevatorId, list); }
+  const byOrder = new Map<string, ManualReportOrder["elevators"]>(); for (const e of elevators) { const list = byOrder.get(e.workOrderId) ?? []; list.push({ id: e.id, name: e.name, internalCode: e.internalCode, photos: photosByElevator.get(e.id) ?? [] }); byOrder.set(e.workOrderId, list); }
   return rows.map((r) => ({ ...r, elevators: byOrder.get(r.id) ?? [] }));
 }
 
@@ -146,7 +152,6 @@ export async function completeManualReport(data: { workOrderId: string; date: st
     const signatureUrl = data.signatureDataUrl
       ? await uploadToR2(buildEvidenceKey(data.workOrderId, "manual", 1, "png"), decodeDataUrl(data.signatureDataUrl), "image/png")
       : null;
-    const now = Date.now();
     await db.update(workOrders).set({ status: "COMPLETED", completedAt, startedAt, closingNotes: data.notes.trim() || null, clientSignatureUrl: signatureUrl, clientSignerName: data.signerName.trim(), filledByAdmin: true, manualReportNumber: data.number.trim().slice(0, 100), approvalStatus: "PENDING", approvedBy: null, approvedAt: null }).where(eq(workOrders.id, data.workOrderId));
     const es = await db.select({ id: workOrderElevators.id }).from(workOrderElevators).where(eq(workOrderElevators.workOrderId, data.workOrderId));
     if (es.length) { await db.update(workOrderElevators).set({ status: "COMPLETED", finalStatus: "OPERATIVE", completedAt }).where(inArray(workOrderElevators.id, es.map((e) => e.id))); await db.update(workOrderTasks).set({ isCompleted: true, status: "COMPLETED", completedAt }).where(inArray(workOrderTasks.workOrderElevatorId, es.map((e) => e.id))); for (const elevator of es) { await db.update(workOrderElevators).set({ finding: data.findings[elevator.id]?.trim() || null }).where(eq(workOrderElevators.id, elevator.id)); } }
@@ -585,13 +590,18 @@ export async function updateTaskObservation(
 export async function addEvidencePhotos(
   workOrderId: string,
   elevatorId: string,
-  images: Array<{ dataUrl: string; contentType: string }>
+  images: Array<{ dataUrl: string; contentType: string }>,
+  tag: EvidenceTag = "POINT"
 ): Promise<ActionResult> {
   const denied = await denyUnless("reports:write");
   if (denied) return denied;
   try {
     if (!images || images.length === 0) {
       return { success: false, error: "No se recibieron imágenes." };
+    }
+    const evidenceTag = String(tag).toUpperCase() as EvidenceTag;
+    if (!EVIDENCE_TAGS.includes(evidenceTag)) {
+      return { success: false, error: "Tipo de foto inválido." };
     }
     const [elevator] = await db
       .select({ workOrderId: workOrderElevators.workOrderId })
@@ -631,7 +641,8 @@ export async function addEvidencePhotos(
         id: generateUuid(),
         workOrderElevatorId: elevatorId,
         url,
-        tag: "POINT",
+        tag: evidenceTag,
+        createdAt: Date.now(),
       });
     }
 
@@ -640,6 +651,7 @@ export async function addEvidencePhotos(
       success: true,
       message: `${uploadedUrls.length} foto(s) agregada(s).`,
       urls: uploadedUrls,
+      tag: evidenceTag,
     };
   } catch (error) {
     console.error("Error al agregar evidencias:", error);

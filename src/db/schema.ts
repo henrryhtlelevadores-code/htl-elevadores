@@ -984,3 +984,40 @@ export const workOrderElevatorAudios = sqliteTable(
   },
   (t) => [index("idx_woea_elevator").on(t.workOrderElevatorId)]
 );
+
+// Notas rápidas del usuario desde el menú de herramientas del navbar.
+export const userNotes = sqliteTable(
+  "user_notes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content"),
+    color: text("color").default("#ffffff"),
+    createdAt: integer("created_at").default(unixNow()),
+    updatedAt: integer("updated_at").default(unixNow()),
+  },
+  (t) => [index("idx_user_notes_user_updated").on(t.userId, t.updatedAt)]
+);
+
+// Últimas operaciones de la calculadora flotante, por usuario.
+export const calculatorHistory = sqliteTable(
+  "calculator_history",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expression: text("expression").notNull(),
+    result: text("result").notNull(),
+    createdAt: integer("created_at").default(unixNow()),
+  },
+  (t) => [index("idx_calculator_history_user_created").on(t.userId, t.createdAt)]
+);
+
+export type UserNote = typeof userNotes.$inferSelect;
+export type NewUserNote = typeof userNotes.$inferInsert;
+export type CalculatorHistoryEntry = typeof calculatorHistory.$inferSelect;
+export type NewCalculatorHistoryEntry = typeof calculatorHistory.$inferInsert;

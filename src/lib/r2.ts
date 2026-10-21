@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import {
   S3Client,
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -39,6 +40,30 @@ export async function uploadToR2(
   contentType: string
 ): Promise<string> {
   return putR2(key, body, contentType);
+}
+
+/**
+ * Duplica un objeto del bucket público sin descargarlo ni volver a subirlo.
+ * Se usa al copiar una cotización: cada imagen conserva su tipo y contenido,
+ * pero vive bajo la clave de la nueva cotización.
+ */
+export async function copyPublicObjectByUrl(
+  sourceUrl: string,
+  destKey: string
+): Promise<string> {
+  const bucket = process.env.R2_BUCKET_NAME;
+  const sourceKey = publicKeyFromUrl(sourceUrl);
+  if (!bucket || !sourceKey) {
+    throw new Error("No se pudo identificar la imagen de origen.");
+  }
+  await R2.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${sourceKey}`,
+      Key: destKey,
+    })
+  );
+  return `${process.env.R2_PUBLIC_URL}/${destKey}`;
 }
 
 export async function deleteR2ObjectByUrl(url: string | null | undefined): Promise<void> {

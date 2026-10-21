@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -15,11 +15,11 @@ import {
   updateElevatorFinding,
   updateWorkOrderClosingNotes,
   updateTaskObservation,
-  addEvidencePhotos,
-   removeEvidencePhoto,
-   updateClientSignature,
+  removeEvidencePhoto,
+  updateClientSignature,
   completeManualReport,
   type ManualReportOrder,
+  type EvidenceTag,
 } from "../actions";
 import { type ServiceTypeOption } from "@/features/work-orders/actions";
 import { DataTable } from "@/components/ui/data-table";
@@ -27,6 +27,7 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { fileToCompressedDataUrl } from "@/features/technician/lib/media";
+import { CalendarStatsIcon } from "@/components/ui/calendar-stats-icon";
+import { EvidenceUploadDialog } from "./evidence-upload-dialog";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -92,6 +94,14 @@ type ReportMonthRow = {
 };
 
 type ReportState = "APROBADO" | "BORRADOR" | "FALTA_INFORME";
+
+type EvidenceTarget = {
+  workOrderId: string;
+  elevatorId: string;
+  elevatorLabel: string;
+  remaining: number;
+  source: "report" | "manual";
+};
 
 function getReportState(row: ReportMonthRow): ReportState {
   if (row.missingReport) return "FALTA_INFORME";
@@ -362,8 +372,6 @@ export function InformesView({
   const [findingsDraft, setFindingsDraft] = useState<Record<string, string>>({});
   const [taskObsDraft, setTaskObsDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [approvalDate, setApprovalDate] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
@@ -376,13 +384,21 @@ export function InformesView({
   const [manualClientId, setManualClientId] = useState("");
   const [manualCostCenterId, setManualCostCenterId] = useState("");
   const [manualServiceTypeId, setManualServiceTypeId] = useState("");
-  const [manualNumber, setManualNumber] = useState("");
   const [manualSigner, setManualSigner] = useState("");
   const [manualNotes, setManualNotes] = useState("");
   const [manualFindings, setManualFindings] = useState<Record<string, string>>({});
   const [manualStartTime, setManualStartTime] = useState("");
   const [manualEndTime, setManualEndTime] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+  const [manualPhotos, setManualPhotos] = useState<Record<string, ReportPhoto[]>>({});
+  const [evidenceTarget, setEvidenceTarget] = useState<EvidenceTarget | null>(null);
+
+  function selectManualOrder(order: ManualReportOrder) {
+    setManualOrder(order);
+    setManualPhotos(
+      Object.fromEntries(order.elevators.map((elevator) => [elevator.id, elevator.photos]))
+    );
+  }
 
   const manualCostCenters = useMemo(
     () => costCenters.filter((center) => center.clientId === manualClientId),
@@ -409,7 +425,7 @@ export function InformesView({
     setManualSaving(true);
     // La firma ya no se adjunta como foto: se genera un sello referencial.
     const signatureDataUrl = buildPorterStamp(manualSigner);
-    const result = await completeManualReport({ workOrderId: manualOrder.id, date: manualOrder.scheduledDate, startTime: manualStartTime, endTime: manualEndTime, number: manualNumber, notes: manualNotes, findings: manualFindings, signerName: manualSigner, signatureDataUrl });
+    const result = await completeManualReport({ workOrderId: manualOrder.id, date: manualOrder.scheduledDate, startTime: manualStartTime, endTime: manualEndTime, number: "", notes: manualNotes, findings: manualFindings, signerName: manualSigner, signatureDataUrl });
     setManualSaving(false);
     if (!result.success) { toast.error("No se pudo guardar", { description: result.error }); return; }
     toast.success(result.message); setManualOpen(false); setManualStep(1); setManualOrder(null); router.refresh();
@@ -543,11 +559,10 @@ export function InformesView({
         return;
       }
       if (row.pending) {
-        setManualOrder(row.pending);
+        selectManualOrder(row.pending);
         setManualClientId(row.pending.clientId);
         setManualCostCenterId(row.pending.costCenterId);
         setManualServiceTypeId(row.pending.serviceTypeId ?? "");
-        setManualNumber("");
         setManualSigner("");
         setManualNotes("");
         setManualFindings({});
@@ -645,63 +660,80 @@ export function InformesView({
     }
   }
 
-  async function handleAddPhotos(
-    elevator: ReportElevator,
-    files: FileList | null
-  ) {
-    if (!elevator || !files || files.length === 0) return;
-    const remaining =
-      MAX_EVIDENCE_PER_ELEVATOR - (elevator.evidencePhotoUrls?.length ?? 0);
-    if (remaining <= 0) {
-      toast.error("Límite alcanzado", {
-        description: `Máximo ${MAX_EVIDENCE_PER_ELEVATOR} fotos por equipo.`,
-      });
-      return;
+  function handleEvidenceUploaded(urls: string[], tag: EvidenceTag) {
+    const target = evidenceTarget;
+    if (!target) return;
+    const uploaded: ReportPhoto[] = urls.map((url) => ({
+      id: url,
+      url,
+      tag,
+      description: null,
+      createdAt: Date.now(),
+    }));
+    if (target.source === "report") {
+      patchWorkOrder(target.workOrderId, (wo) => ({
+        ...wo,
+        elevators: wo.elevators.map((elevator) =>
+          elevator.id === target.elevatorId
+            ? {
+                ...elevator,
+                evidencePhotoUrls: [...elevator.evidencePhotoUrls, ...urls],
+                photos: [...elevator.photos, ...uploaded],
+              }
+            : elevator
+        ),
+      }));
+    } else {
+      setManualPhotos((prev) => ({
+        ...prev,
+        [target.elevatorId]: [...(prev[target.elevatorId] ?? []), ...uploaded],
+      }));
     }
-    const key = `upload:${elevator.id}`;
-    setBusyKey(key, true);
-    try {
-      const images = await Promise.all(
-        Array.from(files)
-          .slice(0, Math.min(4, remaining))
-          .map((file) => fileToCompressedDataUrl(file))
-      );
-      const res = await addEvidencePhotos(elevator.workOrderId, elevator.id, images);
-      if (res.success && res.urls) {
-        patchWorkOrder(elevator.workOrderId, (wo) => ({
-          ...wo,
-          elevators: wo.elevators.map((e) =>
-                  e.id === elevator.id
-                    ? {
-                        ...e,
-                        evidencePhotoUrls: [...e.evidencePhotoUrls, ...(res.urls ?? [])],
-                        photos: [
-                          ...e.photos,
-                          ...(res.urls ?? []).map((url) => ({
-                            id: url,
-                            url,
-                            tag: "POINT",
-                            description: null,
-                            createdAt: Date.now(),
-                          })),
-                        ],
-                      }
-              : e
-          ),
-        }));
-        toast.success(res.message);
-      } else {
-        toast.error("Error", { description: res.error });
-      }
-    } catch (error) {
-      toast.error("Error", {
-        description:
-          error instanceof Error ? error.message : "No se pudieron subir las fotos.",
-      });
-    } finally {
-      setBusyKey(key, false);
-      setPhotoTargetId(null);
+    setEvidenceTarget(null);
+  }
+
+  function openReportEvidence(elevator: ReportElevator, workOrderId: string) {
+    setEvidenceTarget({
+      workOrderId,
+      elevatorId: elevator.id,
+      elevatorLabel:
+        [elevator.internalCode, elevator.elevatorName].filter(Boolean).join(" · ") ||
+        "Equipo",
+      remaining: Math.max(0, MAX_EVIDENCE_PER_ELEVATOR - elevator.photos.length),
+      source: "report",
+    });
+  }
+
+  async function handleRemoveManualPhoto(elevatorId: string, url: string) {
+    const previous = manualPhotos[elevatorId] ?? [];
+    setManualPhotos((prev) => ({
+      ...prev,
+      [elevatorId]: (prev[elevatorId] ?? []).filter((photo) => photo.url !== url),
+    }));
+    const res = await removeEvidencePhoto(elevatorId, url);
+    if (res.success) {
+      toast.success(res.message);
+    } else {
+      setManualPhotos((prev) => ({ ...prev, [elevatorId]: previous }));
+      toast.error("Error", { description: res.error });
     }
+  }
+
+  function renderEvidenceDialog(source: EvidenceTarget["source"]) {
+    if (!evidenceTarget || evidenceTarget.source !== source) return null;
+    return (
+      <EvidenceUploadDialog
+        open
+        onOpenChange={(open) => {
+          if (!open) setEvidenceTarget(null);
+        }}
+        workOrderId={evidenceTarget.workOrderId}
+        elevatorId={evidenceTarget.elevatorId}
+        elevatorLabel={evidenceTarget.elevatorLabel}
+        remaining={evidenceTarget.remaining}
+        onUploaded={handleEvidenceUploaded}
+      />
+    );
   }
 
   async function handleRemovePhoto(elevator: ReportElevator, url: string) {
@@ -1249,10 +1281,7 @@ export function InformesView({
                         setTaskObsDraft((prev) => ({ ...prev, [taskId]: value }))
                       }
                       busy={busy}
-                      onPhotoTarget={(id) => {
-                        setPhotoTargetId(id);
-                        if (fileRef.current) fileRef.current.click();
-                      }}
+                      onPhotoTarget={() => openReportEvidence(elevator, viewing.id)}
                       onSaveFinding={() => handleSaveFinding(elevator)}
                       onRemovePhoto={(url) => handleRemovePhoto(elevator, url)}
                       onSaveTask={(task) =>
@@ -1263,22 +1292,6 @@ export function InformesView({
                   ))
                 )}
               </div>
-
-              {/* Input oculto para fotos */}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const target = viewing.elevators.find(
-                    (ev) => ev.id === photoTargetId
-                  );
-                  if (target) handleAddPhotos(target, e.target.files);
-                  e.target.value = "";
-                }}
-              />
             </>
           )}
         </DialogContent>
@@ -1306,19 +1319,22 @@ export function InformesView({
             </Button>
           </DialogFooter>
         </DialogContent>
+        {renderEvidenceDialog("report")}
       </Dialog>
 
        <Dialog open={manualOpen} onOpenChange={setManualOpen}>
          {manualStep === 1 ? <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl sm:max-w-2xl min-w-0 bg-card text-foreground sm:w-full">
            <DialogHeader><DialogTitle>Informe Manual</DialogTitle><DialogDescription className="sr-only">Selecciona la OT que deseas completar manualmente</DialogDescription></DialogHeader>
-           <div className="space-y-4 py-2"><div className="grid min-w-0 gap-3 sm:grid-cols-2"><SearchableSelect className="w-full min-w-0" items={clients} value={manualClientId} onValueChange={(value) => { setManualClientId(value); setManualCostCenterId(""); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(client) => client.id} getLabel={(client) => client.legalName} placeholder="Cliente *" searchPlaceholder="Buscar cliente..." emptyText="No hay clientes" /><SearchableSelect className="w-full min-w-0" items={manualCostCenters} value={manualCostCenterId} onValueChange={(value) => { setManualCostCenterId(value); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(center) => center.id} getLabel={(center) => center.name} getKeywords={(center) => center.client_name} placeholder="Centro de costos *" searchPlaceholder="Buscar centro..." emptyText="Selecciona un cliente primero" disabled={!manualClientId} /></div><SearchableSelect className="w-full min-w-0" items={serviceTypes} value={manualServiceTypeId} onValueChange={(value) => { setManualServiceTypeId(value); setManualOrder(null); }} getValue={(type) => type.id} getLabel={(type) => type.name} placeholder="Tipo de servicio (Todos)" searchPlaceholder="Buscar servicio..." emptyText="No hay tipos de servicio" disabled={!manualCostCenterId} /><div className="border-t pt-4"><p className="mb-3 text-sm font-medium">OTs pendientes ({manualPendingOrders.length})</p>{!manualClientId || !manualCostCenterId ? <p className="text-sm text-muted-foreground">Selecciona un cliente y un centro de costos para consultar las OTs pendientes.</p> : manualPendingOrders.length === 0 ? <p className="text-sm text-muted-foreground">No hay OTs pendientes para esta selección.</p> : <div className="space-y-2">{manualPendingOrders.map((o) => <label key={o.id} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors", manualOrder?.id === o.id ? "border-primary bg-primary/5" : "hover:bg-muted/50")}><input type="radio" name="manual-order" checked={manualOrder?.id === o.id} onChange={() => setManualOrder(o)} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><span className="font-mono text-sm font-semibold">{o.otNumber}</span><span className="shrink-0 text-xs text-muted-foreground">{formatDayTime(o.scheduledDate, o.scheduledTime)}</span></div><p className="mt-1 text-xs text-muted-foreground">🔧 {o.elevators.length} equipo(s): {o.elevators.map((e) => e.internalCode).filter(Boolean).join(", ")}</p><p className="mt-0.5 text-xs text-muted-foreground">{o.serviceTypeName ?? "Sin tipo de servicio"}</p></div></label>)}</div>}</div></div>
+           <div className="space-y-4 py-2"><div className="grid min-w-0 gap-3 sm:grid-cols-2"><SearchableSelect className="w-full min-w-0" items={clients} value={manualClientId} onValueChange={(value) => { setManualClientId(value); setManualCostCenterId(""); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(client) => client.id} getLabel={(client) => client.legalName} placeholder="Cliente *" searchPlaceholder="Buscar cliente..." emptyText="No hay clientes" /><SearchableSelect className="w-full min-w-0" items={manualCostCenters} value={manualCostCenterId} onValueChange={(value) => { setManualCostCenterId(value); setManualServiceTypeId(""); setManualOrder(null); }} getValue={(center) => center.id} getLabel={(center) => center.name} getKeywords={(center) => center.client_name} placeholder="Centro de costos *" searchPlaceholder="Buscar centro..." emptyText="Selecciona un cliente primero" disabled={!manualClientId} /></div><SearchableSelect className="w-full min-w-0" items={serviceTypes} value={manualServiceTypeId} onValueChange={(value) => { setManualServiceTypeId(value); setManualOrder(null); }} getValue={(type) => type.id} getLabel={(type) => type.name} placeholder="Tipo de servicio (Todos)" searchPlaceholder="Buscar servicio..." emptyText="No hay tipos de servicio" disabled={!manualCostCenterId} /><div className="border-t pt-4"><p className="mb-3 text-sm font-medium">OTs pendientes ({manualPendingOrders.length})</p>{!manualClientId || !manualCostCenterId ? <p className="text-sm text-muted-foreground">Selecciona un cliente y un centro de costos para consultar las OTs pendientes.</p> : manualPendingOrders.length === 0 ? <p className="text-sm text-muted-foreground">No hay OTs pendientes para esta selección.</p> : <div className="space-y-2">{manualPendingOrders.map((o) => <label key={o.id} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors", manualOrder?.id === o.id ? "border-primary bg-primary/5" : "hover:bg-muted/50")}><input type="radio" name="manual-order" checked={manualOrder?.id === o.id} onChange={() => selectManualOrder(o)} className="mt-1" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><span className="font-mono text-sm font-semibold">{o.otNumber}</span><span className="shrink-0 text-xs text-muted-foreground">{formatDayTime(o.scheduledDate, o.scheduledTime)}</span></div><p className="mt-1 text-xs text-muted-foreground">🔧 {o.elevators.length} equipo(s): {o.elevators.map((e) => e.internalCode).filter(Boolean).join(", ")}</p><p className="mt-0.5 text-xs text-muted-foreground">{o.serviceTypeName ?? "Sin tipo de servicio"}</p></div></label>)}</div>}</div></div>
            <DialogFooter><Button variant="ghost" onClick={() => setManualOpen(false)}>Cancelar</Button><Button disabled={!manualOrder} onClick={() => setManualStep(2)}>Continuar</Button></DialogFooter>
          </DialogContent> : <DialogContent showCloseButton={false} className="flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-3xl sm:max-w-3xl min-w-0 flex-col gap-0 overflow-hidden bg-card p-0 text-foreground max-sm:m-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none">
            <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3"><div className="min-w-0"><p className="text-xs text-muted-foreground">Informe Manual · Paso 2 de 2</p><p className="truncate font-mono text-sm font-semibold">{manualOrder?.otNumber}</p></div><Button variant="ghost" size="icon" onClick={() => setManualOpen(false)}><X className="size-4" /></Button></header>
-           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">📅 {manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<Input type="time" value={manualStartTime} onChange={(event) => setManualStartTime(event.target.value)} /></label><label className="text-xs font-semibold">Fin *<Input type="time" value={manualEndTime} onChange={(event) => setManualEndTime(event.target.value)} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="N° Informe (opcional)" value={manualNumber} onChange={(e) => setManualNumber(e.target.value)} /><Input placeholder="Nombre del responsable *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><div className="rounded-lg border border-dashed p-3"><span className="text-xs font-semibold text-foreground">Firma referencial (automática)</span><div className="mt-2 rounded-md border-2 border-teal-700/60 px-3 py-2 text-center text-teal-700"><div className="text-[10px] font-bold uppercase tracking-widest">Aprobado por el responsable</div><div className="py-0.5 text-xl italic leading-tight" style={{ fontFamily: "'Segoe Script', 'Brush Script MT', cursive" }}>{manualSigner.trim() || "Nombre del responsable"}</div><div className="text-[9px] uppercase tracking-wide">Sello generado por computadora</div></div></div></div></section></div></div>
+           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><div className="space-y-6 px-4 py-4"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="flex items-center gap-1.5 font-medium"><CalendarStatsIcon className="size-3.5 text-[#0066CC]" />{manualOrder && formatDayTime(manualOrder.scheduledDate, manualOrder.scheduledTime)}</p><p className="mt-1 text-xs text-muted-foreground">{manualOrder?.serviceTypeName}</p></div><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Horario real</h3><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Inicio *<TimePicker value={manualStartTime} onChange={setManualStartTime} /></label><label className="text-xs font-semibold">Fin *<TimePicker value={manualEndTime} onChange={setManualEndTime} /></label></div><p className="mt-2 text-[11px] text-muted-foreground">Se guardará usando la hora oficial de Perú (UTC-05:00).</p></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipos ({manualOrder?.elevators.length ?? 0})</h3><div className="space-y-3">{manualOrder?.elevators.map((elevator) => <div key={elevator.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border px-2 py-0.5 font-mono text-xs">{elevator.internalCode}</span><span className="truncate text-sm font-medium">{elevator.name}</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Safety</span><span className="text-muted-foreground">Se completará al guardar</span></div><div className="mt-3 flex items-center justify-between border-t pt-3 text-xs"><span>Tareas</span><span className="text-muted-foreground">Se completarán al guardar</span></div><Textarea className="mt-3" placeholder="Hallazgos propios de este equipo..." rows={3} value={manualFindings[elevator.id] ?? ""} onChange={(event) => setManualFindings((current) => ({ ...current, [elevator.id]: event.target.value }))} /><ManualElevatorEvidence photos={manualPhotos[elevator.id] ?? elevator.photos} onAdd={() => { if (!manualOrder) return; setEvidenceTarget({ workOrderId: manualOrder.id, elevatorId: elevator.id, elevatorLabel: [elevator.internalCode, elevator.name].filter(Boolean).join(" · ") || "Equipo", remaining: Math.max(0, MAX_EVIDENCE_PER_ELEVATOR - (manualPhotos[elevator.id]?.length ?? elevator.photos.length)), source: "manual" }); }} onRemove={(url) => void handleRemoveManualPhoto(elevator.id, url)} /></div>)}</div></section><section><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cierre</h3><div className="space-y-3"><Textarea placeholder="Observaciones generales" rows={3} value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} /><Input placeholder="Nombre del responsable *" value={manualSigner} onChange={(e) => setManualSigner(e.target.value)} /><div className="rounded-lg border border-dashed p-3"><span className="text-xs font-semibold text-foreground">Firma referencial (automática)</span><div className="mt-2 rounded-md border-2 border-teal-700/60 px-3 py-2 text-center text-teal-700"><div className="text-[10px] font-bold uppercase tracking-widest">Aprobado por el responsable</div><div className="py-0.5 text-xl italic leading-tight" style={{ fontFamily: "'Segoe Script', 'Brush Script MT', cursive" }}>{manualSigner.trim() || "Nombre del responsable"}</div><div className="text-[9px] uppercase tracking-wide">Sello generado por computadora</div></div></div></div></section></div></div>
            <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-4 py-3"><Button variant="ghost" onClick={() => setManualStep(1)}>Volver</Button><Button disabled={manualSaving || !manualSigner.trim() || !manualStartTime || !manualEndTime} onClick={saveManual}>{manualSaving ? <Loader2 className="animate-spin" /> : "Guardar y aprobar"}</Button></footer>
-         </DialogContent>}
-       </Dialog>
+          </DialogContent>}
+          {renderEvidenceDialog("manual")}
+        </Dialog>
+
     </div>
   );
 }
@@ -1731,6 +1747,59 @@ function AudioNoteEditor({
             {saving && <Loader2 className="size-3 animate-spin" />}
             Guardar transcripción
           </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManualElevatorEvidence({
+  photos,
+  onAdd,
+  onRemove,
+}: {
+  photos: ReportPhoto[];
+  onAdd: () => void;
+  onRemove: (url: string) => void;
+}) {
+  return (
+    <div className="mt-3 border-t pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Camera className="size-3.5" />
+          Evidencias ({photos.length})
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          onClick={onAdd}
+          disabled={photos.length >= MAX_EVIDENCE_PER_ELEVATOR}
+          className="gap-1.5 text-xs font-semibold"
+        >
+          <Camera className="size-3" />
+          Agregar fotos
+        </Button>
+      </div>
+      {photos.length === 0 ? (
+        <p className="py-1 text-xs italic text-muted-foreground/60">
+          Adjunta fotos Antes, Después o Puntuales.
+        </p>
+      ) : (
+        <div className="mt-2 space-y-3">
+          {(["BEFORE", "AFTER", "POINT"] as const).map((tag) => {
+            const items = photos.filter((photo) => photo.tag === tag);
+            if (items.length === 0) return null;
+            return (
+              <PhotoSection
+                key={tag}
+                title={{ BEFORE: "Antes", AFTER: "Después", POINT: "Puntuales" }[tag]}
+                photos={items}
+                readOnly={false}
+                onRemovePhoto={onRemove}
+              />
+            );
+          })}
         </div>
       )}
     </div>

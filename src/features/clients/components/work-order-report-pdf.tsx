@@ -67,12 +67,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   logo: { width: 160, height: 46, objectFit: "contain" },
-  headerRight: { alignItems: "flex-end", width: 240 },
+  headerRight: { alignItems: "flex-end", width: 290 },
   headerTitle: {
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: 700,
     color: BRAND,
-    letterSpacing: 0.7,
+    letterSpacing: 0.5,
     textAlign: "right",
     lineHeight: 1.2,
   },
@@ -344,7 +344,7 @@ function Header({ data, short = false }: { data: WorkOrderReportData; short?: bo
         <Text style={styles.headerTitle}>HTL ELEVADORES</Text>
       )}
       <View style={styles.headerRight}>
-        <Text style={styles.headerTitle}>
+        <Text style={styles.headerTitle} wrap={false}>
           {short ? "ANEXO 1" : "REPORTE DE ÓRDENES DE TRABAJO"}
         </Text>
         <Text style={styles.headerSubtitle}>
@@ -407,12 +407,6 @@ export function WorkOrderReportPDF({ data }: { data: WorkOrderReportData }) {
               {data.clientName}
             </Text>
             <View style={styles.metaInline}>
-              {data.clientTaxId ? (
-                <View style={styles.metaInlineItem}>
-                  <Text style={styles.metaLabel}>RUC</Text>
-                  <Text style={styles.metaValue}>{data.clientTaxId}</Text>
-                </View>
-              ) : null}
               <View style={styles.metaInlineItem}>
                 <Text style={styles.metaLabel}>Reporte emitido</Text>
                 <Text style={styles.metaValue}>{data.generatedAt}</Text>

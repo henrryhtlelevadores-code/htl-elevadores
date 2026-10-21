@@ -1,8 +1,28 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, quotationLines, quotations, serviceTypes } from "@/db";
+import {
+  db,
+  quotationImages,
+  quotationLineProducts,
+  quotationLines,
+  quotations,
+  serviceTypes,
+} from "@/db";
+const r2Copies = vi.hoisted(() => ({ keys: [] as string[] }));
+vi.mock("@/lib/r2", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/r2")>();
+  return {
+    ...actual,
+    copyPublicObjectByUrl: async (_sourceUrl: string, destKey: string) => {
+      r2Copies.keys.push(destKey);
+      return `https://public.example/${destKey}`;
+    },
+  };
+});
 import {
   createQuotation,
+  duplicateQuotation,
+  getClientQuotationsForCopy,
   getQuotationFormData,
   getQuotations,
   issueQuotation,
@@ -57,6 +77,25 @@ const manualLine = (
   discountValue: "",
   products: [],
   ...discount,
+});
+
+const calculatedLineWithProduct = (): QuotationFormValues["lines"][number] => ({
+  elevatorUnityId: "",
+  description: "Mantenimiento preventivo",
+  totalHours: "2",
+  hourlyCost: "50",
+  lineMode: "CALCULATED",
+  lineModeReason: "",
+  manualPrice: "",
+  manualPriceIncludesIgv: true,
+  supplierName: "",
+  supplierCost: "",
+  overridePrice: false,
+  lineOverridePrice: "",
+  lineOverrideReason: "",
+  discountMode: "NONE",
+  discountValue: "",
+  products: [{ description: "Filtro de aceite", quantity: "2", unit: "u", unitCost: "10" }],
 });
 
 describe("descuento por línea (cálculo)", () => {
@@ -197,6 +236,115 @@ describe("cotizaciones: líneas, descuento por línea y datos generales", () => 
       ...overrides,
     };
   };
+
+  it("copia una cotización del mismo cliente con líneas, productos, descuentos y mensajes", async () => {
+    const center = await createCostCenter();
+    const source = await createQuotation(emptyQuotation(center));
+    await updateQuotation(source.id!, {
+      ...emptyQuotation(center),
+      lines: [
+        manualLine("1180", { discountMode: "AMOUNT", discountValue: "180" }),
+        calculatedLineWithProduct(),
+      ],
+    });
+    await db
+      .update(quotations)
+      .set({
+        welcomeMessage: "Mensaje de bienvenida original",
+        closeMessage: "Mensaje de cierre original",
+        paymentTerms: "Contado",
+        executionTime: "Un día",
+        workingHours: "8:00 a 17:00",
+        validityDays: 30,
+        showTaxBreakdown: false,
+      })
+      .where(eq(quotations.id, source.id!));
+    const [sourceRow] = await db.select().from(quotations).where(eq(quotations.id, source.id!));
+
+    const copy = await duplicateQuotation(source.id!, header(center));
+    expect(copy.success).toBe(true);
+    expect(copy.id).not.toBe(source.id);
+
+    const [copyRow] = await db.select().from(quotations).where(eq(quotations.id, copy.id!));
+    expect(copyRow).toMatchObject({
+      clientId: center.clientId,
+      costCenterId: center.id,
+      status: "DRAFT",
+      discountMode: sourceRow.discountMode,
+      subtotal: sourceRow.subtotal,
+      discountAmount: sourceRow.discountAmount,
+      total: sourceRow.total,
+      welcomeMessage: "Mensaje de bienvenida original",
+      closeMessage: "Mensaje de cierre original",
+      paymentTerms: "Contado",
+      executionTime: "Un día",
+      workingHours: "8:00 a 17:00",
+      validityDays: 30,
+      showTaxBreakdown: false,
+    });
+    expect(copyRow.quotationNumber).not.toBe(sourceRow.quotationNumber);
+
+    const copiedLines = await db
+      .select()
+      .from(quotationLines)
+      .where(eq(quotationLines.quotationId, copy.id!))
+      .orderBy(quotationLines.orderIndex);
+    expect(copiedLines).toHaveLength(2);
+    expect(copiedLines[0]).toMatchObject({
+      lineDiscountMode: "AMOUNT",
+      lineDiscountValue: 180,
+      lineDiscountAmount: 180,
+      clientPrice: 1000,
+    });
+
+    const copiedProducts = await db
+      .select()
+      .from(quotationLineProducts)
+      .where(eq(quotationLineProducts.quotationLineId, copiedLines[1].id));
+    expect(copiedProducts).toHaveLength(1);
+    expect(copiedProducts[0]).toMatchObject({ description: "Filtro de aceite", quantity: 2 });
+
+    const options = await getClientQuotationsForCopy(center.clientId);
+    expect(options.find((option) => option.id === source.id)).toMatchObject({ lineCount: 2 });
+  });
+
+  it("duplica las imágenes referenciales bajo la clave de la nueva cotización", async () => {
+    const center = await createCostCenter();
+    const source = await createQuotation(emptyQuotation(center));
+    await db.insert(quotationImages).values({
+      id: randomUUID().toUpperCase(),
+      quotationId: source.id!,
+      url: `https://public.example/quotations/images/${source.id}/original.jpg`,
+      caption: "Fachada del edificio",
+      orderIndex: 0,
+      isReferenceOnly: true,
+    });
+
+    const copy = await duplicateQuotation(source.id!, header(center));
+    expect(copy.success).toBe(true);
+
+    const copied = await db
+      .select()
+      .from(quotationImages)
+      .where(eq(quotationImages.quotationId, copy.id!));
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toMatchObject({
+      caption: "Fachada del edificio",
+      isReferenceOnly: true,
+    });
+    expect(copied[0].url).toContain(`/quotations/images/${copy.id}/`);
+    expect(r2Copies.keys.at(-1)).toContain(`quotations/images/${copy.id}/`);
+  });
+
+  it("no permite copiar una cotización de otro cliente", async () => {
+    const own = await createCostCenter();
+    const other = await createCostCenter();
+    const foreign = await createQuotation(emptyQuotation(other));
+
+    const result = await duplicateQuotation(foreign.id!, header(own));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/mismo cliente/i);
+  });
 
   it("el indicador de cotizaciones decide qué tipos de servicio se ofrecen; el precio es opcional", async () => {
     const priced = makeServiceType({ price: "350.50" });
