@@ -44,6 +44,7 @@ import {
   like,
   max,
   ne,
+  notInArray,
   or,
 } from "drizzle-orm";
 import { getSessionUserId } from "@/features/auth/server";
@@ -1074,15 +1075,30 @@ export async function generateMonth(
           continue;
         }
 
+        // Una sola OT preventiva por equipo y mes, sin importar el día elegido.
+        // Se excluyen las OTs generadas por esta misma visita, que se liberan y
+        // regeneran al mover la parada de fecha dentro del mes.
+        const ownGeneratedIds = [
+          ...new Set(
+            group
+              .filter((stop) => stop.generatedMonth === month)
+              .map((stop) => stop.generatedWorkOrderId)
+              .filter((id): id is string => id !== null)
+          ),
+        ];
         const existingElevators = await db
           .select({ elevatorUnityId: workOrderElevators.elevatorUnityId })
           .from(workOrderElevators)
           .innerJoin(workOrders, eq(workOrderElevators.workOrderId, workOrders.id))
           .where(and(
             inArray(workOrderElevators.elevatorUnityId, dueStops.map((stop) => stop.elevatorUnityId)),
-            eq(workOrders.scheduledDate, date),
+            like(workOrders.scheduledDate, `${month}-%`),
             eq(workOrders.serviceTypeId, prevServiceTypeId),
-            ne(workOrders.status, "CANCELLED")
+            isNull(workOrders.deletedAt),
+            ne(workOrders.status, "CANCELLED"),
+            ownGeneratedIds.length > 0
+              ? notInArray(workOrders.id, ownGeneratedIds)
+              : undefined
           ));
         const existingIds = new Set(existingElevators.map((row) => row.elevatorUnityId));
         const newStops = dueStops.filter((stop) => !existingIds.has(stop.elevatorUnityId));

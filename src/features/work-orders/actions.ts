@@ -42,13 +42,28 @@ import {
   parseServiceTasks,
 } from "./schema";
 import { normalizeServiceScope, type ServiceScope } from "@/features/masters/schema";
-import { eq, asc, desc, and, isNull, count, inArray, like } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, count, inArray, like, ne } from "drizzle-orm";
 import { type BatchItem } from "drizzle-orm/batch";
 import { getApplicableModules } from "@/features/maintenance/constants";
 import {
   checklistQuestion,
   parseChecklistItems,
 } from "@/features/safety/checklist-content";
+
+function monthPrefixOf(date: string): string {
+  return `${date.slice(0, 7)}-%`;
+}
+
+function preventiveConflictMessage(
+  conflicts: Array<{ internalCode: string | null }>
+): string {
+  const codes = [
+    ...new Set(conflicts.map((conflict) => conflict.internalCode ?? "equipo")),
+  ];
+  const preview = codes.slice(0, 4).join(", ");
+  const extra = codes.length > 4 ? ` y ${codes.length - 4} más` : "";
+  return `Mantenimiento preventivo ya programado este mes para: ${preview}${extra}. No se puede registrar otro para el mismo equipo.`;
+}
 
 function scheduledTimestamp(date: string, time: string): number {
   const [year, month, day] = date.split("-").map(Number);
@@ -479,17 +494,15 @@ export async function createWorkOrder(data: WorkOrderFormValues) {
             isNull(workOrders.deletedAt),
             inArray(workOrderElevators.elevatorUnityId, elevatorIds),
             eq(workOrders.serviceTypeId, serviceType.id),
-            like(workOrders.scheduledDate, monthPrefix)
+            like(workOrders.scheduledDate, monthPrefix),
+            ne(workOrders.status, "CANCELLED")
           )
         );
 
       if (conflicts.length > 0) {
-        const codes = [...new Set(conflicts.map((c) => c.internalCode))];
-        const preview = codes.slice(0, 4).join(", ");
-        const extra = codes.length > 4 ? ` y ${codes.length - 4} más` : "";
         return {
           success: false,
-          error: `Mantenimiento preventivo ya programado este mes para: ${preview}${extra}. No se puede registrar otro para el mismo equipo.`,
+          error: preventiveConflictMessage(conflicts),
         };
       }
     }
@@ -664,6 +677,48 @@ export async function updateWorkOrder(id: string, data: Partial<WorkOrderFormVal
       updateData.estimatedEndAt = date && time && duration
         ? scheduledTimestamp(date, time) + duration * (equipment.length + services.length) * 60
         : null;
+    }
+
+    // Mover una preventiva a otro mes no puede duplicar el equipo ese mes.
+    if (data.scheduledDate) {
+      const [preventive] = await db
+        .select({ serviceTypeId: workOrders.serviceTypeId, code: serviceTypes.code })
+        .from(workOrders)
+        .leftJoin(serviceTypes, eq(workOrders.serviceTypeId, serviceTypes.id))
+        .where(eq(workOrders.id, id))
+        .limit(1);
+      if (preventive?.code === "PREV" && preventive.serviceTypeId) {
+        const elevators = await db
+          .select({ elevatorUnityId: workOrderElevators.elevatorUnityId })
+          .from(workOrderElevators)
+          .where(eq(workOrderElevators.workOrderId, id));
+        if (elevators.length > 0) {
+          const conflicts = await db
+            .select({ internalCode: elevatorUnities.internalCode })
+            .from(workOrderElevators)
+            .innerJoin(workOrders, eq(workOrderElevators.workOrderId, workOrders.id))
+            .innerJoin(
+              elevatorUnities,
+              eq(workOrderElevators.elevatorUnityId, elevatorUnities.id)
+            )
+            .where(
+              and(
+                isNull(workOrders.deletedAt),
+                ne(workOrders.id, id),
+                ne(workOrders.status, "CANCELLED"),
+                eq(workOrders.serviceTypeId, preventive.serviceTypeId),
+                like(workOrders.scheduledDate, monthPrefixOf(data.scheduledDate)),
+                inArray(
+                  workOrderElevators.elevatorUnityId,
+                  elevators.map((elevator) => elevator.elevatorUnityId)
+                )
+              )
+            );
+          if (conflicts.length > 0) {
+            return { success: false, error: preventiveConflictMessage(conflicts) };
+          }
+        }
+      }
     }
 
     await db.update(workOrders).set(updateData).where(eq(workOrders.id, id));
