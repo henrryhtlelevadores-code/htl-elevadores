@@ -12,7 +12,6 @@ import {
   Text,
   View,
 } from "@react-pdf/renderer";
-import type { Style } from "@react-pdf/types";
 import type { WorkOrderReportData } from "../work-order-report";
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts");
@@ -329,7 +328,7 @@ function formatScheduled(date: string | null, time: string | null): string {
   return time ? `${formatted} · ${time}` : formatted;
 }
 
-function statusLabel(status: string): { label: string; style: Style } {
+function statusLabel(status: string) {
   if (status === "IN_PROGRESS") {
     return { label: "En curso", style: styles.statusProgress };
   }
