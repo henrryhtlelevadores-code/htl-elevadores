@@ -96,23 +96,6 @@ const byName = (a: FilterOption, b: FilterOption) => a.name.localeCompare(b.name
 const SERVICE_BADGE_CLASS =
   "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400 text-[10px] font-semibold";
 
-function ServiceTypeBadges({ services }: { services: FilterOption[] }) {
-  if (services.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
-  return (
-    <div className="flex max-w-[220px] flex-wrap gap-1">
-      {services.map((service) => (
-        <Badge
-          key={service.id}
-          variant="outline"
-          className={`h-auto whitespace-normal text-left leading-tight ${SERVICE_BADGE_CLASS}`}
-        >
-          {service.name}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 function openPdf(url: string, filename: string) {
   const link = document.createElement("a");
   link.href = withDownload(url, filename);
@@ -328,28 +311,6 @@ export function QuotationsTable({
         ),
       },
       {
-        accessorKey: "cost_center_name",
-        header: "Sede",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {row.original.cost_center_name ?? "—"}
-          </span>
-        ),
-      },
-      {
-        id: "serviceTypes",
-        header: "Tipo de servicio",
-        accessorFn: (row) => row.serviceTypes.map((s) => s.name).join(" "),
-        cell: ({ row }) => <ServiceTypeBadges services={row.original.serviceTypes} />,
-      },
-      {
-        accessorKey: "advisor_name",
-        header: "Asesor",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{row.original.advisor_name ?? "—"}</span>
-        ),
-      },
-      {
         accessorKey: "issueDate",
         header: "Emisión",
         cell: ({ row }) => <span className="text-xs">{formatDate(row.original.issueDate)}</span>,
@@ -422,13 +383,6 @@ export function QuotationsTable({
         header: "Total",
         cell: ({ row }) => (
           <span className="block text-right text-xs font-bold">{money(row.original.total)}</span>
-        ),
-      },
-      {
-        accessorKey: "lineCount",
-        header: "Líneas",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{row.original.lineCount}</span>
         ),
       },
       {
@@ -629,16 +583,8 @@ export function QuotationsTable({
                 </Badge>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                <div><dt className="text-muted-foreground">Sede</dt><dd className="truncate font-medium">{q.cost_center_name ?? "—"}</dd></div>
                 <div><dt className="text-muted-foreground">Emisión</dt><dd className="font-medium">{formatDate(q.issueDate)}</dd></div>
-                <div><dt className="text-muted-foreground">Asesor</dt><dd className="truncate font-medium">{q.advisor_name ?? "—"}</dd></div>
-                <div><dt className="text-muted-foreground">Líneas</dt><dd className="font-medium">{q.lineCount}</dd></div>
               </dl>
-              {q.serviceTypes.length > 0 ? (
-                <div className="mt-3">
-                  <ServiceTypeBadges services={q.serviceTypes} />
-                </div>
-              ) : null}
               <div className="mt-3 flex min-w-0 items-center justify-between gap-3 overflow-hidden border-t border-border pt-3">
                 <span className="flex items-center gap-1 text-xs font-semibold">Total <span title="Precio final de la cotización"><Info className="size-3.5 text-muted-foreground" /></span></span>
                 <span className="shrink-0 whitespace-nowrap text-right text-base font-bold">{money(q.total)}</span>
