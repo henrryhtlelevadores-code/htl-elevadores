@@ -309,7 +309,12 @@ export function QuotationDiscountEditor({
           <input
             type="checkbox"
             checked={showTaxBreakdown ?? true}
-            onChange={(e) => form.setValue("showTaxBreakdown", e.target.checked)}
+            onChange={(e) =>
+              form.setValue("showTaxBreakdown", e.target.checked, {
+                shouldDirty: true,
+                shouldTouch: true,
+              })
+            }
             className="size-4 accent-[#0066CC]"
           />
           <span>Mostrar desglose (Subtotal, Base, IGV) en el PDF</span>

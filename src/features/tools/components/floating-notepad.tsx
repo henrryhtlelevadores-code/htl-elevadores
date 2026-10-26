@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Check,
   Loader2,
   NotebookPen,
@@ -68,6 +69,10 @@ export function FloatingNotepad({
   const [deleting, setDeleting] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** En ventanas angostas se ve la lista o la nota, no ambas. */
+  const [pane, setPane] = useState<"list" | "editor">("list");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const loaded = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -135,14 +140,21 @@ export function FloatingNotepad({
       dirtyRef.current = false;
       versionRef.current = 0;
       setSaveState("idle");
+      setConfirmingDelete(false);
     },
     [flushSave]
   );
+
+  function openNote(note: UserNote) {
+    selectNote(note);
+    setPane("editor");
+  }
 
   useEffect(() => {
     if (!isOpen || loaded.current) return;
     loaded.current = true;
     let cancelled = false;
+    let finished = false;
 
     loadNotes()
       .then((result) => {
@@ -160,11 +172,14 @@ export function FloatingNotepad({
         if (!cancelled) setLoadError("No se pudieron cargar las notas.");
       })
       .finally(() => {
+        finished = true;
         if (!cancelled) setLoading(false);
       });
 
     return () => {
       cancelled = true;
+      // Si se desmonta antes de responder (p. ej. StrictMode), se vuelve a pedir.
+      if (!finished) loaded.current = false;
     };
   }, [isOpen, selectNote]);
 
@@ -213,15 +228,18 @@ export function FloatingNotepad({
       return;
     }
     setNotes((previous) => [result.data, ...previous]);
-    selectNote(result.data);
+    openNote(result.data);
+    // Listo para escribir el título de inmediato.
+    requestAnimationFrame(() => {
+      titleRef.current?.focus();
+      titleRef.current?.select();
+    });
   }
 
   async function handleDelete() {
     const noteId = selectedIdRef.current;
     if (!noteId || deleting) return;
-    if (!window.confirm("¿Eliminar esta nota? Esta acción no se puede deshacer.")) {
-      return;
-    }
+    setConfirmingDelete(false);
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -239,6 +257,7 @@ export function FloatingNotepad({
     const nextNotes = notes.filter((note) => note.id !== noteId);
     setNotes(nextNotes);
     selectNote(nextNotes[0] ?? null);
+    setPane("list");
     toast.success("Nota eliminada.");
   }
 
@@ -269,12 +288,25 @@ export function FloatingNotepad({
       zIndex={zIndex}
       defaultWidth={720}
       defaultHeight={500}
-      minWidth={340}
+      minWidth={320}
       minHeight={300}
       offsetIndex={1}
     >
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-44 shrink-0 flex-col border-r border-border bg-muted/20 sm:w-52">
+      <div
+        className="flex min-h-0 flex-1"
+        onKeyDown={(event) => {
+          // Ctrl/Cmd + S guarda sin esperar al autoguardado.
+          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+            event.preventDefault();
+            flushSave();
+          }
+        }}
+      >
+        <aside
+          className={`flex w-full shrink-0 flex-col bg-muted/20 @min-[520px]:w-56 @min-[520px]:border-r @min-[520px]:border-border ${
+            pane === "editor" ? "@max-[519px]:hidden" : ""
+          }`}
+        >
           <div className="border-b border-border p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -307,8 +339,8 @@ export function FloatingNotepad({
                 <button
                   key={note.id}
                   type="button"
-                  onClick={() => selectNote(note)}
-                  className={`mb-1 flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors ${
+                  onClick={() => openNote(note)}
+                  className={`mb-1 flex w-full items-start gap-2 rounded-md px-2 py-2.5 text-left transition-colors ${
                     note.id === selectedId
                       ? "bg-background shadow-xs ring-1 ring-border"
                       : "hover:bg-background/70"
@@ -322,8 +354,11 @@ export function FloatingNotepad({
                     <span className="block truncate text-xs font-semibold">
                       {note.title.trim() || "Sin título"}
                     </span>
-                    <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                    <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                       {note.content?.trim() || "Nota vacía"}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
+                      {formatDate(note.updatedAt)}
                     </span>
                   </span>
                 </button>
@@ -346,19 +381,35 @@ export function FloatingNotepad({
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
+        <section
+          className={`flex min-w-0 flex-1 flex-col ${pane === "list" ? "@max-[519px]:hidden" : ""}`}
+        >
           {draft && selectedId ? (
             <>
-              <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border px-2 py-2 @min-[520px]:px-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="@min-[520px]:hidden"
+                  aria-label="Volver a la lista de notas"
+                  onClick={() => {
+                    flushSave();
+                    setPane("list");
+                  }}
+                >
+                  <ArrowLeft />
+                </Button>
                 <Input
+                  ref={titleRef}
                   value={draft.title}
                   onChange={(event) => updateDraft({ title: event.target.value })}
                   placeholder="Título de la nota"
                   maxLength={200}
                   aria-label="Título de la nota"
-                  className="h-8 flex-1 border-0 bg-transparent px-1 text-sm font-semibold shadow-none focus-visible:ring-0"
+                  className="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-semibold shadow-none focus-visible:ring-0"
                 />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   {NOTE_COLORS.map((color) => (
                     <button
                       key={color}
@@ -367,7 +418,7 @@ export function FloatingNotepad({
                       aria-label={`Color ${color}`}
                       aria-pressed={draft.color === color}
                       onClick={() => updateDraft({ color })}
-                      className={`size-4 rounded-full border transition-transform hover:scale-110 ${
+                      className={`size-5 rounded-full border transition-transform hover:scale-110 ${
                         draft.color === color
                           ? "border-foreground ring-2 ring-foreground/20"
                           : "border-black/15 dark:border-white/25"
@@ -407,27 +458,35 @@ export function FloatingNotepad({
                   ) : (
                     <span>Autoguardado activo</span>
                   )}
-                  <span className="hidden sm:inline">
+                  <span className="hidden @min-[420px]:inline">
                     · {formatDate(
                       notes.find((note) => note.id === selectedId)?.updatedAt ?? null
                     )}
                   </span>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                >
-                  {deleting ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <Trash2 />
-                  )}
-                  Eliminar
-                </Button>
+                {confirmingDelete ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-muted-foreground">¿Eliminar nota?</span>
+                    <Button type="button" variant="ghost" size="xs" onClick={() => setConfirmingDelete(false)}>
+                      No
+                    </Button>
+                    <Button type="button" variant="destructive" size="xs" onClick={handleDelete}>
+                      Sí, eliminar
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setConfirmingDelete(true)}
+                    disabled={deleting}
+                  >
+                    {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                    Eliminar
+                  </Button>
+                )}
               </div>
             </>
           ) : (

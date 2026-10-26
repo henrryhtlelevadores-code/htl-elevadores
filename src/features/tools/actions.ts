@@ -16,7 +16,7 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_NOTE_CONTENT_LENGTH = 50_000;
 const MAX_EXPRESSION_LENGTH = 500;
 const MAX_RESULT_LENGTH = 500;
-const HISTORY_LIMIT = 10;
+const HISTORY_LIMIT = 30;
 const DEFAULT_NOTE_COLOR = "#ffffff";
 
 function nowSeconds(): number {
@@ -170,5 +170,33 @@ export async function saveCalculation(
     if (message) return { success: false, error: message };
     console.error("Error al guardar operación:", error);
     return { success: false, error: "No se pudo guardar la operación." };
+  }
+}
+
+export async function deleteCalculation(id: string): Promise<ToolsResult<{ id: string }>> {
+  try {
+    const user = await requireStaffSession();
+    await db
+      .delete(calculatorHistory)
+      .where(and(eq(calculatorHistory.id, id), eq(calculatorHistory.userId, user.id)));
+    return { success: true, data: { id } };
+  } catch (error) {
+    const message = authError(error);
+    if (message) return { success: false, error: message };
+    console.error("Error al eliminar operación:", error);
+    return { success: false, error: "No se pudo eliminar la operación." };
+  }
+}
+
+export async function clearCalculatorHistory(): Promise<ToolsResult<null>> {
+  try {
+    const user = await requireStaffSession();
+    await db.delete(calculatorHistory).where(eq(calculatorHistory.userId, user.id));
+    return { success: true, data: null };
+  } catch (error) {
+    const message = authError(error);
+    if (message) return { success: false, error: message };
+    console.error("Error al limpiar historial de calculadora:", error);
+    return { success: false, error: "No se pudo limpiar el historial." };
   }
 }

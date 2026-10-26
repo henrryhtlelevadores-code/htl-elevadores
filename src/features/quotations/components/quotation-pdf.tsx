@@ -584,7 +584,7 @@ function Totals({ data }: { data: QuotationPdfData }) {
       <View style={styles.totalsOuter} wrap={false}>
         <View style={styles.totalsBox}>
           <View style={styles.grandRow}>
-             <Text>TOTAL (Se incluye el IGV)</Text>
+            <Text>TOTAL</Text>
             <Text>{money(data.total)}</Text>
           </View>
         </View>
@@ -766,9 +766,6 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
                 >
                   <Text style={styles.linePriceLabel}>
                     {line.equipment ? "PRECIO POR EQUIPO" : "PRECIO POR SERVICIO"}
-                    {line.manualPriceIncludesIgv ? (
-                      <Text style={styles.linePriceNote}> (incluye IGV)</Text>
-                    ) : null}
                   </Text>
                   <Text style={styles.linePriceValue}>{money(line.clientPrice)}</Text>
                 </View>
