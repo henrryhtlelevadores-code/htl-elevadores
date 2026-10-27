@@ -719,7 +719,7 @@ export function QuotationPDF({ data }: { data: QuotationPdfData }) {
           </View>
         ) : null}
 
-        <View wrap={false}>
+        <View>
         <Text style={styles.sectionTitle}>Detalle de Cotización</Text>
         {data.lines.map((line, index) => {
           const isManual = (line.lineMode ?? "CALCULATED") === "MANUAL_PRICE";

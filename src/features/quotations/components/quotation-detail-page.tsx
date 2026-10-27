@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ClipboardEvent } from "react";
+import type { ClipboardEvent, FocusEvent } from "react";
 import { useProgressRouter } from "@/lib/navigation-progress";
 import { withDownload } from "@/lib/pdf-paths";
 import { useForm, type FieldErrors } from "react-hook-form";
@@ -229,6 +229,22 @@ export function QuotationDetailPage({
     return true;
   }
 
+  const autosaveInFlight = useRef(false);
+
+  function handleEditorBlur(event: FocusEvent<HTMLElement>) {
+    // React's blur bubbles; ignore focus changes between fields in this editor.
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    if (!needsSave || autosaveInFlight.current) return;
+    autosaveInFlight.current = true;
+    startTransition(async () => {
+      try {
+        await saveAll();
+      } finally {
+        autosaveInFlight.current = false;
+      }
+    });
+  }
+
   function saveChanges() {
     startTransition(async () => {
       if (!needsSave) {
@@ -356,7 +372,7 @@ export function QuotationDetailPage({
             {quotation.status === "DRAFT" ? <Button size="sm" onClick={emitQuotation} className="gap-1.5"><Send className="size-3.5" />Emitir</Button> : null}
             <Button size="sm" disabled={isPending} onClick={saveChanges} className="gap-1.5">
               {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              {needsSave ? "Guardar cambios" : "Guardado"}
+              {isPending ? "Guardando..." : needsSave ? "Guardar cambios" : "Guardado automático"}
             </Button>
           </div>
         </div>
@@ -371,7 +387,7 @@ export function QuotationDetailPage({
       </div>
 
       {tab === "documento" ? (
-        <div className="space-y-5 rounded-lg border border-border p-5">
+        <div className="space-y-5 rounded-lg border border-border p-5" onBlur={handleEditorBlur}>
           <div>
              <p className="mb-1 text-xs font-medium">Mensaje de bienvenida</p>
              <div className="mb-2 flex gap-2 rounded-t border border-b-0 border-border bg-muted/30 p-2">
@@ -393,7 +409,7 @@ export function QuotationDetailPage({
         </div>
       ) : tab === "lineas" || tab === "descuento" ? (
         <Form {...pricingForm}>
-          <form onSubmit={(event) => { event.preventDefault(); saveChanges(); }} className="rounded-lg border border-border p-5">
+          <form onSubmit={(event) => { event.preventDefault(); saveChanges(); }} onBlur={handleEditorBlur} className="rounded-lg border border-border p-5">
             {tab === "lineas" ? (
               <QuotationLinesEditor form={pricingForm} options={options} defaultHourlyCost={defaultHourlyCost} />
             ) : (
