@@ -39,6 +39,7 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { CalendarStatsIcon } from "@/components/ui/calendar-stats-icon";
 import { EvidenceUploadDialog } from "./evidence-upload-dialog";
+import { reportPdfPath, withDownload } from "@/lib/pdf-paths";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -51,6 +52,7 @@ import {
   Circle,
   ClipboardList,
   Cpu,
+  Download,
   FileText,
   Loader2,
   MapPin,
@@ -885,24 +887,42 @@ export function InformesView({
       {
         id: "actions",
         header: () => <div className="text-right">Acciones</div>,
-        cell: ({ row }) => (
-          <div className="flex items-center justify-end">
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => handleReviewRow(row.original)}
-              className={cn(
-                "h-7 px-2.5 text-xs font-semibold gap-1.5 shadow-2xs",
-                row.original.missingReport
-                  ? "text-orange-600 dark:text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
-                  : "text-[#0066CC] dark:text-blue-400 border-[#0066CC]/30 hover:bg-[#0066CC]/10"
+        cell: ({ row }) => {
+          const isApproved = row.original.approvalStatus === "APPROVED";
+          return (
+            <div className="flex items-center justify-end gap-1.5">
+              {isApproved && (
+                <a
+                  href={withDownload(
+                    reportPdfPath(row.original.id),
+                    `Informe_${row.original.otNumber}.pdf`
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                  title="Exportar PDF"
+                >
+                  <Download className="size-3" />
+                  <span className="hidden sm:inline">PDF</span>
+                </a>
               )}
-            >
-              <PenLine className="size-3" />
-              Revisar
-            </Button>
-          </div>
-        ),
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => handleReviewRow(row.original)}
+                className={cn(
+                  "h-7 px-2.5 text-xs font-semibold gap-1.5 shadow-2xs",
+                  row.original.missingReport
+                    ? "text-orange-600 dark:text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+                    : "text-[#0066CC] dark:text-blue-400 border-[#0066CC]/30 hover:bg-[#0066CC]/10"
+                )}
+              >
+                <PenLine className="size-3" />
+                Revisar
+              </Button>
+            </div>
+          );
+        },
       },
     ],
     [handleReviewRow]
@@ -1116,9 +1136,23 @@ export function InformesView({
                   {/* Fila 2 (móvil): badges de estado */}
                   <div className="flex flex-wrap items-center gap-2 mt-1 md:mt-0">
                     {viewing.approvalStatus === "APPROVED" ? (
-                      <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                        Aprobado
-                      </span>
+                      <>
+                        <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          Aprobado
+                        </span>
+                        <a
+                          href={withDownload(
+                            reportPdfPath(viewing.id),
+                            `Informe_${viewing.otNumber}.pdf`
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#0066CC] px-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0052A3]"
+                        >
+                          <Download className="size-3.5" />
+                          Descargar PDF
+                        </a>
+                      </>
                     ) : (
                       <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
                         Borrador

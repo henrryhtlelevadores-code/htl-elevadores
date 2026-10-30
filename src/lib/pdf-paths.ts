@@ -15,6 +15,10 @@ export function contractPdfPath(contractId: string): string {
   return `/api/contracts/${contractId}/pdf`;
 }
 
+export function reportPdfPath(workOrderId: string): string {
+  return `/api/reports/${workOrderId}/pdf`;
+}
+
 export function portalQuotationPdfPath(
   costCenterId: string,
   quotationId: string,

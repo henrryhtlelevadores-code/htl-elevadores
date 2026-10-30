@@ -106,9 +106,6 @@ export function WorkOrderDocument({
         {/* Membrete */}
         <div className="flex items-center justify-between gap-4 pb-6 border-b-4 border-[#021133]">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-[#021133] text-white flex items-center justify-center font-extrabold text-xl">
-              H
-            </div>
             <div>
               <p className="text-lg font-bold tracking-tight leading-none">
                 HTL ELEVADORES
